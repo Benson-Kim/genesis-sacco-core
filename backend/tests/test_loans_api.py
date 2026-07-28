@@ -725,3 +725,134 @@ def test_zero_amount_application_rejected() -> None:
         assert res.status_code == 422
 
     asyncio.run(run())
+
+
+def test_product_update_all_fields() -> None:
+    """Covers update_product when updating deposit_multiplier, max_term_months, etc."""
+
+    async def run() -> None:
+        _, _, token = await _seed_actor()
+        headers = _headers(token)
+        pid = await _make_product(headers, "Full Update Product")
+        async with api_client() as client:
+            res = await client.put(
+                f"/products/{pid}",
+                json={
+                    "version": 1,
+                    "rate_pct": "15.00",
+                    "deposit_multiplier": "4.50",
+                    "max_term_months": 60,
+                },
+                headers=headers,
+            )
+            assert res.status_code == 200
+            body = res.json()
+            assert body["rate_pct"] == "15.00"
+            assert body["deposit_multiplier"] == "4.50"
+            assert body["max_term_months"] == 60
+
+    asyncio.run(run())
+
+
+def test_vote_and_consent_and_guarantor_404s_and_409s() -> None:
+    """Covers NotFound and Capacity error paths in voting and guarantees."""
+
+    async def run() -> None:
+        tid, _, token = await _seed_actor()
+        headers = _headers(token)
+        borrower = await _make_member(headers, "Error Borrower")
+        product_id = await _make_product(headers, "Error Product")
+        app = await _make_application(headers, borrower, product_id, "10000.00")
+        aid = app["id"]
+
+        async with api_client() as client:
+            # 404 on voting for non-existent application
+            vote_missing = await client.post(
+                f"/applications/{uuid.uuid4()}/vote",
+                json={"vote": "approve"},
+                headers=headers,
+            )
+            assert vote_missing.status_code == 404
+
+            # 404 on consenting non-existent guarantee
+            consent_missing = await client.post(
+                f"/guarantees/{uuid.uuid4()}/consent",
+                json={"version": 1},
+                headers=headers,
+            )
+            assert consent_missing.status_code == 404
+
+            # 404 on guarantor without deposit account
+            no_dep_guarantor = uuid.uuid4()
+            async with tenant_session(factory(), tid) as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO members (id, tenant_id, member_no, type, name) "
+                        "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), "
+                        "'GP-9999', 'person', 'No Deposit')"
+                    ),
+                    {"id": str(no_dep_guarantor), "tid": str(tid)},
+                )
+            pledge_no_dep = await client.post(
+                f"/applications/{aid}/guarantees",
+                json={"guarantor_member_id": str(no_dep_guarantor), "amount": "1000.00"},
+                headers=headers,
+            )
+            assert pledge_no_dep.status_code == 404
+
+            # Capacity exceeded error (409)
+            guarantor = await _make_member(headers, "Broke Guarantor")
+            await _set_deposit_balance(tid, guarantor, "100.00")
+            over_capacity = await client.post(
+                f"/applications/{aid}/guarantees",
+                json={"guarantor_member_id": guarantor, "amount": "500.00"},
+                headers=headers,
+            )
+            assert over_capacity.status_code == 409
+
+    asyncio.run(run())
+
+
+def test_release_guarantees_for_loan_service() -> None:
+    """Covers release_guarantees_for_loan in guarantees.py."""
+
+    async def run() -> None:
+        tid, _, token = await _seed_actor()
+        headers = _headers(token)
+        borrower = await _make_member(headers, "Release Borrower")
+        guarantor = await _make_member(headers, "Release Guarantor")
+        await _set_deposit_balance(tid, guarantor, "10000.00")
+        product_id = await _make_product(headers, "Release Product")
+        app = await _make_application(headers, borrower, product_id, "5000.00")
+        aid = app["id"]
+
+        async with api_client() as client:
+            pledge = await client.post(
+                f"/applications/{aid}/guarantees",
+                json={"guarantor_member_id": guarantor, "amount": "2000.00"},
+                headers=headers,
+            )
+            assert pledge.status_code == 201
+            gid = pledge.json()["id"]
+
+        loan_id = uuid.uuid4()
+        async with tenant_session(factory(), tid) as session:
+            await session.execute(
+                text(
+                    "UPDATE guarantees SET loan_id = CAST(:lid AS uuid) "
+                    "WHERE id = CAST(:gid AS uuid)"
+                ),
+                {"lid": str(loan_id), "gid": gid},
+            )
+
+        from genesis.application.guarantees import release_guarantees_for_loan
+
+        async with tenant_session(factory(), tid) as session:
+            released = await release_guarantees_for_loan(session, tid, None, loan_id)
+            assert released == 1
+
+        async with tenant_session(factory(), tid) as session:
+            released_again = await release_guarantees_for_loan(session, tid, None, loan_id)
+            assert released_again == 0
+
+    asyncio.run(run())
