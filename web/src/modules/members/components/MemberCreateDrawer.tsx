@@ -15,6 +15,7 @@ import {
     type Member,
     type MemberCreateInput,
 } from "../schemas";
+import { StepRail } from "./StepRail";
 import styles from "./Members.module.css";
 
 /**
@@ -89,7 +90,7 @@ export function MemberCreateDrawer({
 
     return (
         <Modal
-            title="Register member"
+            title="New member registration"
             onClose={onClose}
             closeDisabled={create.isPending}
             // W56-3: a stray overlay click must never discard a half-completed
@@ -97,6 +98,7 @@ export function MemberCreateDrawer({
             dismissOnOverlay={false}
         >
             <form onSubmit={submit} noValidate>
+<<<<<<< HEAD
                 <FormField id="member-type" label="Member type">
                     {(control) => (
                         <select
@@ -177,6 +179,60 @@ export function MemberCreateDrawer({
                         />
                     )}
                 </FormField>
+=======
+                <StepRail current={0} />
+                <Field label="Member type" htmlFor="member-type">
+                    <select
+                        id="member-type"
+                        className={styles.select}
+                        value={type}
+                        onChange={(event) => setType(event.target.value)}
+                    >
+                        {MEMBER_TYPES.map((memberType) => (
+                            <option key={memberType} value={memberType}>
+                                {TYPE_LABELS[memberType]}
+                            </option>
+                        ))}
+                    </select>
+                </Field>
+                <Field label="Full name" htmlFor="member-name">
+                    <input
+                        id="member-name"
+                        className={styles.input}
+                        maxLength={200}
+                        value={name}
+                        onChange={(event) => setName(event.target.value)}
+                    />
+                </Field>
+                <Field label="Phone (optional)" htmlFor="member-phone">
+                    <input
+                        id="member-phone"
+                        className={styles.input}
+                        type="tel"
+                        inputMode="tel"
+                        maxLength={32}
+                        value={phone}
+                        onChange={(event) => {
+                            setPhone(event.target.value);
+                            if (phoneBlurError !== null) validatePhoneBlur(event.target.value);
+                        }}
+                        onBlur={(event) => validatePhoneBlur(event.target.value)}
+                    />
+                </Field>
+                {phoneBlurError !== null && <div role="alert">{phoneBlurError}</div>}
+                <Field label="Email (optional)" htmlFor="member-email">
+                    <input
+                        id="member-email"
+                        className={styles.input}
+                        type="email"
+                        inputMode="email"
+                        maxLength={254}
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                    />
+                </Field>
+                {formError !== null && <div role="alert">{formError}</div>}
+>>>>>>> 257a9a74cc76b9dbea1f381967da14f3d87bfcf3
                 {create.isError && <ErrorBanner error={create.error} />}
                 <div className={styles.actions}>
                     <Button type="button" onClick={onClose} disabled={create.isPending}>

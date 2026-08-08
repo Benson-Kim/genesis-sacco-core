@@ -356,7 +356,7 @@ test("happy path (wizard): a profile-less member gets the full per-type wizard; 
   await expect(drawer.getByText(/No KYC profile on record/)).toBeVisible();
   await drawer.getByRole("button", { name: "Start KYC wizard" }).click();
 
-  const wizard = page.getByRole("dialog", { name: "KYC registration — Jane Wanjiku" });
+  const wizard = page.getByRole("dialog", { name: "New member registration — Jane Wanjiku" });
   await wizard.getByLabel("First name").fill("Jane");
   await wizard.getByLabel("Surname").fill("Wanjiku");
   await wizard.getByLabel("Gender").fill("Female");

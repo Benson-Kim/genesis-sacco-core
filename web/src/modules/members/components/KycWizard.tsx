@@ -38,9 +38,8 @@ import { buildProfilePayload, validateProfilePayload } from "../kycForm";
 import { TYPE_LABELS, type Member } from "../schemas";
 import { KycProfileFields } from "./KycProfileFields";
 import { KycDocumentsPanel } from "./KycDocumentsPanel";
+import { StepRail } from "./StepRail";
 import styles from "./Members.module.css";
-
-const STEPS = ["KYC details", "Membership & consent", "Documents & review"] as const;
 
 export function KycWizard({
   member,
@@ -109,25 +108,16 @@ export function KycWizard({
 
   return (
     <Modal
-      title={`KYC registration — ${member.name}`}
+      title={`New member registration — ${member.name}`}
       onClose={onClose}
       closeDisabled={create.isPending}
       // W56-3: never discard a half-completed registration on a stray
       // overlay click.
       dismissOnOverlay={false}
     >
-      <ol className={styles.stepRail} aria-label="Wizard steps">
-        {STEPS.map((label, index) => (
-          <li
-            key={label}
-            className={index === step ? styles.stepCurrent : styles.step}
-            aria-current={index === step ? "step" : undefined}
-          >
-            {index < step ? "✓ " : `${index + 1}. `}
-            {label}
-          </li>
-        ))}
-      </ol>
+      {/* The identity step is behind us: this surface renders the SAME
+          four-step rail as the core drawer, offset by one. */}
+      <StepRail current={step + 1} />
       <p className={styles.panelNote}>
         {TYPE_LABELS[member.type]} member {member.member_no}. The identity step is already
         complete — this wizard captures the KYC profile and the document checklist.
