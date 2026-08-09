@@ -204,6 +204,17 @@ def test_id_number_lookup_plan_is_index_served_no_sort() -> None:
             )
         async with tenant_session(factory(), tid) as session:
             await session.execute(text("ANALYZE members, member_profiles"))
+            # Tiny-CI-tables discipline, join-order leg: the per-tenant
+            # row estimate stays 1 in the shared harness database, so the
+            # members-driven join order ties the profile-driven one on
+            # cost and the tie-break may bypass the expression index.
+            # Forcing FROM-clause join order (the enable_seqscan=off
+            # posture applied to join ordering) makes member_profiles the
+            # driving relation, so the plan must pick its entry path:
+            # WITH 0045's index the probe is index-served; DROP the index
+            # and the entry seq-scans, failing the zero-seqscan assert —
+            # the falsifiability documented above, now deterministic.
+            await session.execute(text("SET LOCAL join_collapse_limit = 1"))
             await session.execute(text("SET LOCAL enable_seqscan = off"))
             rows = (
                 await session.execute(
