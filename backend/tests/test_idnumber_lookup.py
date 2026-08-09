@@ -106,9 +106,7 @@ def test_seeded_id_number_resolves_the_hand_computed_member() -> None:
             )
         assert res.status_code == 200, res.text
         body = res.json()
-        assert [(m["member_no"], m["name"]) for m in body["items"]] == [
-            ("GP-7301", "Idno Target")
-        ]
+        assert [(m["member_no"], m["name"]) for m in body["items"]] == [("GP-7301", "Idno Target")]
         assert body["next_cursor"] is None
 
     asyncio.run(run())
