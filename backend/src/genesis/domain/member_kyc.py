@@ -73,9 +73,7 @@ def _normalized_msisdn(value: str) -> str:
 #: maintainer-declared four spellings (07… / 01… / +2547… / +2541…);
 #: storage is ALWAYS E.164 (+254…). Migration 0046 backfills the
 #: profile rows that predate this write-path rule.
-KenyaMsisdn = Annotated[
-    str, Field(min_length=1, max_length=32), AfterValidator(_normalized_msisdn)
-]
+KenyaMsisdn = Annotated[str, Field(min_length=1, max_length=32), AfterValidator(_normalized_msisdn)]
 
 
 # ---------------------------------------------------------------------------
