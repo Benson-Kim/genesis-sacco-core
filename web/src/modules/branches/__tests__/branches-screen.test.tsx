@@ -248,14 +248,23 @@ test("empty state and error state render honestly — a rejected page can never 
   expect(screen.queryByText("Nairobi West")).toBeNull();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM (gate 1.3); no filter affordance exists (the contract declares none)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM (gate 1.3); no filter affordance exists (the contract declares none)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    branch({
+      id: `00000000-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`,
+      name: `Branch ${i}`,
+    }),
+  );
   mocked.fetchBranchesPage
-    .mockResolvedValueOnce({ items: [branch()], nextCursor: "opaque-cursor-§1" })
+    .mockResolvedValueOnce({ items: fullPage, nextCursor: "opaque-cursor-§1" })
     .mockResolvedValue({ items: [], nextCursor: null });
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
   await waitFor(() => expect(mocked.fetchBranchesPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchBranchesPage.mock.calls[0]?.[0]).toBeNull();
   expect(mocked.fetchBranchesPage.mock.calls[1]?.[0]).toBe("opaque-cursor-§1");

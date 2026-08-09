@@ -59,12 +59,15 @@ const userRosterPageSchema = keysetPageSchema(branchUserRosterSchema);
 const memberRosterPageSchema = keysetPageSchema(branchMemberRosterSchema);
 
 /** Keyset register read, newest first (server ordering). */
-export async function fetchBranchesPage(cursor: string | null): Promise<KeysetPage<BranchRecord>> {
+export async function fetchBranchesPage(
+  cursor: string | null,
+  limit: number = BRANCHES_PAGE_SIZE,
+): Promise<KeysetPage<BranchRecord>> {
   const { data, error, response } = await api.GET("/branches", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: BRANCHES_PAGE_SIZE,
+        limit,
       },
     },
   });
