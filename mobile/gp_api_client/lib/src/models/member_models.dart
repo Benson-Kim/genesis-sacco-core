@@ -1,6 +1,7 @@
 /// Member-domain models — generated from OpenAPI spec.
 /// Hand-written stub; regenerate with `scripts/regenerate_api_client.sh`
 /// once the backend OpenAPI spec is published.
+library;
 
 enum MemberType { person, company, group, vehicle }
 

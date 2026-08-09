@@ -1,5 +1,6 @@
 /// Authentication models — generated from OpenAPI spec.
 /// Hand-written stub until P3 backend is available and spec is published.
+library;
 
 class OtpChallengeRequest {
   const OtpChallengeRequest({required this.phone});
