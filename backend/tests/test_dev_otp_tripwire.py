@@ -89,9 +89,7 @@ def test_guard_refuses_the_flag_outside_development_both_ways() -> None:
     off+non-dev boot fine (the flag stays usable for dev testers)."""
     for environment in ("staging", "production", "test"):
         with pytest.raises(RuntimeError, match="development-only"):
-            assert_dev_otp_display_dev_only(
-                Settings(environment=environment, dev_otp_display=True)
-            )
+            assert_dev_otp_display_dev_only(Settings(environment=environment, dev_otp_display=True))
     # The permitted configurations raise nothing.
     assert_dev_otp_display_dev_only(Settings(environment="development", dev_otp_display=True))
     assert_dev_otp_display_dev_only(Settings(environment="staging", dev_otp_display=False))
