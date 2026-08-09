@@ -110,6 +110,8 @@ function worklistRow(overrides: Partial<WorklistRow> = {}): WorklistRow {
     opened_at: "2026-08-01T09:00:00+00:00",
     first_assigned_at: null,
     version: 2,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
     ...overrides,
   };
 }
