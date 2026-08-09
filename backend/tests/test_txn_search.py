@@ -35,9 +35,9 @@ from db_helpers import api_client, factory
 from export_helpers import seed_actor, seed_member_no
 from genesis.application import transactions as txn_service
 from genesis.application.transactions import (
+    _TXN_COLS,
     TXN_LABEL_JOIN,
     TXN_SEARCH_CLAUSE,
-    _TXN_COLS,
     _search_params,
 )
 from genesis.domain.ledger import Channel
