@@ -34,7 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db_helpers import api_client, factory
 from export_helpers import seed_actor, seed_member_no
 from genesis.application import transactions as txn_service
-from genesis.application.transactions import TXN_SEARCH_CLAUSE, _search_params
+from genesis.application.transactions import (
+    TXN_LABEL_JOIN,
+    TXN_SEARCH_CLAUSE,
+    _TXN_COLS,
+    _search_params,
+)
 from genesis.domain.ledger import Channel
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -174,16 +179,17 @@ def test_search_page_is_index_served_without_seq_scan_or_sort() -> None:
 
     async def run() -> None:
         tid, _, _, _ = await _seed_search_tenant()
-        clauses = ["tenant_id = CAST(:tid AS uuid)", TXN_SEARCH_CLAUSE]
+        clauses = ["transactions.tenant_id = CAST(:tid AS uuid)", TXN_SEARCH_CLAUSE]
         params: dict[str, object] = {"tid": str(tid), "limit": 21}
         params.update(_search_params("alice"))
         sql = (
-            # Static clause literals from production code; every value
-            # is a bound parameter (mirrors list_transactions).
-            "SELECT id, txn_ref, member_id, type, amount, channel, occurred_at, "  # noqa: S608
-            "reversal_of_id, created_by, external_ref FROM transactions "
+            # Static clause literals from production code (the module-
+            # level column list, label join and search clause); every
+            # value is a bound parameter (mirrors list_transactions).
+            f"SELECT {_TXN_COLS} FROM transactions "  # noqa: S608
+            f"{TXN_LABEL_JOIN}"
             f"WHERE {' AND '.join(clauses)} "
-            "ORDER BY occurred_at DESC, id DESC LIMIT :limit"
+            "ORDER BY occurred_at DESC, transactions.id DESC LIMIT :limit"
         )
         async with tenant_session(factory(), tid) as session:
             await session.execute(text("SET LOCAL enable_seqscan = off"))

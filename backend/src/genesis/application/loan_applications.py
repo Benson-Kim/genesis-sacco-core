@@ -44,9 +44,29 @@ API_TRANSITION_TARGETS = frozenset(
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 APPLICATIONS_LIST_SCOPE = "applications.list"
 
+#: Columns are table-qualified because the read statements join the
+#: members registry (alias mm) and the product catalogue (alias pp)
+#: for display labels; the three label columns ride PK-served joins.
 _COLS = (
-    "id, member_id, product_id, amount, term_months, rate_pct, purpose, stage, cover_pct, "
-    "created_by, recommended_by, version"
+    "loan_applications.id, loan_applications.member_id, "
+    "loan_applications.product_id, loan_applications.amount, "
+    "loan_applications.term_months, loan_applications.rate_pct, "
+    "loan_applications.purpose, loan_applications.stage, "
+    "loan_applications.cover_pct, loan_applications.created_by, "
+    "loan_applications.recommended_by, loan_applications.version, "
+    "mm.member_no, mm.name, pp.name"
+)
+
+#: Display-label joins for the read statements: each rides the joined
+#: table's PRIMARY KEY per page row plus the explicit tenant predicate
+#: (index-served, no new index). LEFT JOIN keeps the register honest
+#: if a label row is ever absent — a missing label must never drop an
+#: application from the register.
+_LABEL_JOINS = (
+    "LEFT JOIN members mm ON mm.tenant_id = loan_applications.tenant_id "
+    "AND mm.id = loan_applications.member_id "
+    "LEFT JOIN loan_products pp ON pp.tenant_id = loan_applications.tenant_id "
+    "AND pp.id = loan_applications.product_id "
 )
 
 #: cover_pct is stored as NUMERIC(6,2); values above this cap carry no
@@ -83,6 +103,14 @@ class ApplicationRecord:
     #: history was not unambiguous — attribution is never invented.
     recommended_by: uuid.UUID | None
     version: int
+    #: Human display labels — the applicant's member number and
+    #: registered name plus the product name — resolved server-side in
+    #: the SAME read statement (PK joins, no per-row lookups). None is
+    #: the honest state only if a label row is absent; labels are
+    #: never invented client-side.
+    member_no: str | None
+    member_name: str | None
+    product_name: str | None
 
 
 @dataclass(frozen=True)
@@ -107,6 +135,9 @@ def _row_to_application(row: Any) -> ApplicationRecord:
         created_by=uuid.UUID(str(row[9])) if row[9] is not None else None,
         recommended_by=uuid.UUID(str(row[10])) if row[10] is not None else None,
         version=int(row[11]),
+        member_no=str(row[12]) if row[12] is not None else None,
+        member_name=str(row[13]) if row[13] is not None else None,
+        product_name=str(row[14]) if row[14] is not None else None,
     )
 
 
@@ -244,7 +275,11 @@ async def create_application(
             # possible. Explicit tenant predicate on top of RLS
             # (defence in depth).
             text(
-                "SELECT status FROM members WHERE id = CAST(:m AS uuid) "
+                # member_no and name ride the same locked row so the
+                # create response carries the display labels without a
+                # second lookup.
+                "SELECT status, member_no, name FROM members "
+                "WHERE id = CAST(:m AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) FOR SHARE"
             ),
             {"m": str(member_id), "tid": str(tenant_id)},
@@ -343,6 +378,9 @@ async def create_application(
         # column is written only by the transition into committee.
         recommended_by=None,
         version=1,
+        member_no=str(member_row[1]),
+        member_name=str(member_row[2]),
+        product_name=product.name,
     )
 
 
@@ -355,7 +393,9 @@ async def get_application(
         await session.execute(
             text(
                 f"SELECT {_COLS} FROM loan_applications "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"{_LABEL_JOINS}"
+                "WHERE loan_applications.id = CAST(:id AS uuid) "
+                "AND loan_applications.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(application_id), "tid": str(tenant_id)},
         )
@@ -375,7 +415,10 @@ async def list_applications(
 ) -> tuple[list[ApplicationRecord], str | None]:
     """Keyset-paginated listing, newest first (scalability)."""
     limit = max(1, min(limit, 100))
-    clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
+    # Qualified because the label joins bring further tenant_id
+    # columns into scope; the predicate stays the leading column of
+    # the keyset index.
+    clauses: list[str] = ["loan_applications.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if stage is not None:
         clauses.append("stage = :stage")
@@ -387,15 +430,18 @@ async def list_applications(
             cursor, tenant_id=tenant_id, endpoint=APPLICATIONS_LIST_SCOPE, entity="application"
         )
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="application")
-        clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append("(created_at, loan_applications.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
-                f"SELECT created_at, {_COLS} FROM loan_applications "  # noqa: S608
+                f"SELECT loan_applications.created_at, {_COLS} "  # noqa: S608
+                "FROM loan_applications "
+                f"{_LABEL_JOINS}"
                 f"{where}"
-                "ORDER BY created_at DESC, id DESC LIMIT :limit"
+                "ORDER BY loan_applications.created_at DESC, "
+                "loan_applications.id DESC LIMIT :limit"
             ),
             params,
         )

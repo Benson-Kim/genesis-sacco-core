@@ -35,7 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db_helpers import factory, seed_user, unique_email
-from genesis.application.loan_applications import list_applications
+from genesis.application.loan_applications import _COLS, _LABEL_JOINS, list_applications
 from genesis.domain.lending import ApplicationStage
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -45,21 +45,21 @@ pytestmark = pytest.mark.skipif(
 
 OUT_PATH = Path(__file__).resolve().parents[1] / "perf" / "explain_codex_review.txt"
 
-_COLS = (
-    "id, member_id, product_id, amount, term_months, rate_pct, purpose, stage, cover_pct, version"
-)
-
-#: The exact statement shapes list_applications builds (values bound).
+#: The exact statement shapes list_applications builds (values bound):
+#: the module-level column list and display-label joins, so this gate
+#: keeps asserting the PRODUCTION statement as it evolves.
 STAGE_FILTERED_PAGE = f"""
-SELECT created_at, {_COLS} FROM loan_applications
-WHERE tenant_id = CAST(:tid AS uuid) AND stage = :stage
-ORDER BY created_at DESC, id DESC LIMIT :limit
+SELECT loan_applications.created_at, {_COLS} FROM loan_applications
+{_LABEL_JOINS}
+WHERE loan_applications.tenant_id = CAST(:tid AS uuid) AND stage = :stage
+ORDER BY loan_applications.created_at DESC, loan_applications.id DESC LIMIT :limit
 """  # noqa: S608 - static column list from code
 
 UNFILTERED_PAGE = f"""
-SELECT created_at, {_COLS} FROM loan_applications
-WHERE tenant_id = CAST(:tid AS uuid)
-ORDER BY created_at DESC, id DESC LIMIT :limit
+SELECT loan_applications.created_at, {_COLS} FROM loan_applications
+{_LABEL_JOINS}
+WHERE loan_applications.tenant_id = CAST(:tid AS uuid)
+ORDER BY loan_applications.created_at DESC, loan_applications.id DESC LIMIT :limit
 """  # noqa: S608 - static column list from code
 
 REPAYMENT_BY_TXN = """
@@ -157,11 +157,17 @@ def test_codex_review_queries_are_index_backed() -> None:
         assert "idx_applications_stage_keyset" in stage_plan
         assert "Sort" not in stage_plan
         assert "Seq Scan" not in stage_plan
+        # Display-label joins are PRIMARY-KEY probes per page row.
+        assert "members_pkey" in stage_plan
+        assert "loan_products_pkey" in stage_plan
         # 0006 must keep serving the unfiltered page (regression fence
         # against replacing it with the stage-shaped index).
         assert "idx_applications_created_keyset" in unfiltered_plan
         assert "Sort" not in unfiltered_plan
         assert "Seq Scan" not in unfiltered_plan
+        # Display-label joins are PRIMARY-KEY probes per page row.
+        assert "members_pkey" in unfiltered_plan
+        assert "loan_products_pkey" in unfiltered_plan
         # 0014: the reversal guard lookup is index-backed.
         assert "idx_repayments_transaction" in repayment_plan
         assert "Seq Scan" not in repayment_plan

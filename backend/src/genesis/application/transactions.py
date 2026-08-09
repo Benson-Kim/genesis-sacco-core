@@ -63,6 +63,16 @@ _TXN_COLS = (
     "mm.member_no, mm.name"
 )
 
+#: Display-label join for the list statement: rides the members
+#: PRIMARY KEY per page row (max 100) plus the explicit tenant
+#: predicate — index-served, no new index. LEFT JOIN keeps system
+#: postings (member_id IS NULL) on the page. Module-level so the
+#: EXPLAIN gate asserts the exact production fragment.
+TXN_LABEL_JOIN = (
+    "LEFT JOIN members mm ON mm.tenant_id = transactions.tenant_id "
+    "AND mm.id = transactions.member_id "
+)
+
 #: Cursor scope id: signed cursors are bound to this
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 TXN_LIST_SCOPE = "transactions.list"
@@ -509,12 +519,7 @@ async def list_transactions(
         await session.execute(
             text(
                 f"SELECT {_TXN_COLS} FROM transactions "  # noqa: S608
-                # Display-label join: rides the members PRIMARY KEY per
-                # page row (max 100) plus the tenant predicate; index-
-                # served, no new index needed. LEFT JOIN keeps system
-                # postings (member_id IS NULL) on the page.
-                "LEFT JOIN members mm ON mm.tenant_id = transactions.tenant_id "
-                "AND mm.id = transactions.member_id "
+                f"{TXN_LABEL_JOIN}"
                 f"{where}"
                 "ORDER BY occurred_at DESC, transactions.id DESC LIMIT :limit"
             ),
