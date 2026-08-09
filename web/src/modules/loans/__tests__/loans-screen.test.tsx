@@ -298,8 +298,14 @@ test("hostile product name renders as inert TEXT; register + summary money rende
 
 test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    baseLoan({ id: `cccccccc-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchLoansPage
-    .mockResolvedValueOnce(page([baseLoan()], "opaque-cursor-§1"))
+    .mockResolvedValueOnce(page(fullPage, "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([baseLoan({ id: "dddddddd-1111-2222-3333-444444444444" })]));
   // Keep the queue's own Load more out of the register assertion.
   mockedApps.fetchApplicationsPage.mockResolvedValue(page([]));

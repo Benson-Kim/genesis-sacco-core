@@ -315,8 +315,14 @@ test("register renders every settlement figure VERBATIM in its own labelled colu
 
 test("keyset paging: the paginator follows the server cursor VERBATIM (gate 1.3); the status filter drives the SERVER query", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    requestedExit({ id: `eeeeeeee-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchExitsPage
-    .mockResolvedValueOnce({ items: [requestedExit()], nextCursor: "opaque-cursor-§1" })
+    .mockResolvedValueOnce({ items: fullPage, nextCursor: "opaque-cursor-§1" })
     .mockResolvedValue({ items: [], nextCursor: null });
   mountScreen();
 
