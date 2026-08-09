@@ -25,6 +25,7 @@ from sqlalchemy import text
 
 from db_helpers import factory, seed_user, unique_email
 from export_helpers import seed_member_no
+from genesis.application.audit_log import list_audit_log
 from genesis.application.corrections import list_write_offs
 from genesis.application.dividends import list_share_transfers
 from genesis.application.loan_applications import list_applications
@@ -291,5 +292,35 @@ def test_workflow_registers_resolve_human_labels_server_side() -> None:
         woff = next(w for w in write_offs.items if w.id == write_off_id)
         assert woff.member_no == ORACLE_MEMBER_NO
         assert woff.member_name == ORACLE_MEMBER_NAME
+
+    asyncio.run(run())
+
+
+def test_audit_log_resolves_actor_name() -> None:
+    """The audit console (the access-control-gated staff-identity
+    resolution surface) labels the actor with the seeded user's full
+    name — 'Test User', the db_helpers seeding literal; a system row
+    (NULL actor) keeps the honest None."""
+
+    async def run() -> None:
+        tid, role_id = await seed_user(unique_email())
+        async with tenant_session(factory(), tid) as session:
+            actor = (await session.execute(text("SELECT id FROM users LIMIT 1"))).scalar_one()
+            await session.execute(
+                text(
+                    "INSERT INTO audit_log (tenant_id, actor_id, action, entity, entity_id) "
+                    "VALUES (CAST(:tid AS uuid), CAST(:actor AS uuid), 'label.oracle', "
+                    "'members', 'oracle-row'), "
+                    "(CAST(:tid AS uuid), NULL, 'label.oracle.system', 'members', 'oracle-row')"
+                ),
+                {"tid": str(tid), "actor": str(actor)},
+            )
+        async with tenant_session(factory(), tid) as session:
+            page = await list_audit_log(session, tid, role_id, limit=20)
+        acted = next(e for e in page.items if e.action == "label.oracle")
+        assert acted.actor_name == "Test User"
+        system = next(e for e in page.items if e.action == "label.oracle.system")
+        assert system.actor_id is None
+        assert system.actor_name is None
 
     asyncio.run(run())
