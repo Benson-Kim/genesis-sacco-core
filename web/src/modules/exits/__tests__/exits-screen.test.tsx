@@ -250,6 +250,14 @@ beforeEach(() => {
   clearVotedExits();
   grantPermissions(FULL_PERMS);
   mocked.fetchExitsPage.mockResolvedValue({ items: [requestedExit()], nextCursor: null });
+  // Advisory badge counts — decorative only; zeroed so filter names stay
+  // stable ("Approved", not "Approved 3") across the register suites.
+  mocked.fetchExitStatusCounts.mockResolvedValue({
+    requested: { count: 0, hasMore: false },
+    approved: { count: 0, hasMore: false },
+    settled: { count: 0, hasMore: false },
+    rejected: { count: 0, hasMore: false },
+  });
   mocked.fetchExit.mockResolvedValue(requestedExit());
   mocked.createExitRequest.mockResolvedValue(requestedExit());
   mocked.voteOnExit.mockResolvedValue(TALLY_OPEN);
@@ -316,7 +324,9 @@ test("keyset paging: Load more follows the server cursor VERBATIM (gate 1.3); th
   expect(mocked.fetchExitsPage.mock.calls[0]?.[1]).toBeNull();
   expect(mocked.fetchExitsPage.mock.calls[1]?.[1]).toBe("opaque-cursor-§1");
 
-  await user.selectOptions(screen.getByLabelText("Status"), "approved");
+  // Status filter is the shared segment control (4 declared statuses):
+  // an aria-pressed button group, not a select.
+  await user.click(screen.getByRole("button", { name: "Approved" }));
   await waitFor(() =>
     expect(mocked.fetchExitsPage).toHaveBeenCalledWith({ status: "approved" }, null),
   );

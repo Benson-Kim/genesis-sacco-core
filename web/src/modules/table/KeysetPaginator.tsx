@@ -148,7 +148,10 @@ export function KeysetPaginator<T>({
           Previous
         </button>
 
-        <span className={styles.pageIndicator}>
+        <span
+          className={styles.pageIndicator}
+          aria-label={`Showing ${rangeStart}\u2013${rangeEnd} of the loaded ${rowLabel}`}
+        >
           {isLoadingMore ? (
             <span className={styles.muted}>Loading…</span>
           ) : (

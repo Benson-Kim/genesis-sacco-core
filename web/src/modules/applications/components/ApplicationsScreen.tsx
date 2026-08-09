@@ -24,7 +24,7 @@ import { useKeysetList } from "@/modules/table/useKeysetList";
 import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { fmtAmount, fmtKes } from "@/lib/format";
+import { fmtAmount } from "@/lib/format";
 import { fetchApplicationsPage, type ApplicationListFilters } from "../api";
 import { useProducts } from "../useProducts";
 import {

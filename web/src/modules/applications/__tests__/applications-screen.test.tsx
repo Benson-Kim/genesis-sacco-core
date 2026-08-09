@@ -43,6 +43,13 @@ jest.mock("@/modules/members/api", () => ({
   fetchMember: jest.fn(),
 }));
 
+// The stage-filter count badges ride the dashboard pipeline slice —
+// advisory only. Stubbed with no data so the register suites stay
+// hermetic (no composite fetch) and filter names stay stable.
+jest.mock("@/modules/dashboard/components/DashboardScreen", () => ({
+  useDashboardSummary: jest.fn(() => ({ data: undefined })),
+}));
+
 jest.mock("@/modules/authz/usePermissions", () => ({
   usePermissions: jest.fn(),
 }));
@@ -207,14 +214,14 @@ test("hostile purpose renders as inert TEXT; money figures render VERBATIM throu
   expect(screen.getByText("120.00%")).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
   mocked.fetchApplicationsPage
     .mockResolvedValueOnce(page([baseApplication()], "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([baseApplication({ id: "bbbbbbbb-1111-2222-3333-444444444444" })]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchApplicationsPage).toHaveBeenCalledTimes(2));
   // First page: null cursor; second: the opaque server cursor untouched.
@@ -227,12 +234,14 @@ test("stage filter drives the SERVER query — the client never filters locally"
   mountScreen();
 
   await screen.findByText("KES 250,000.10");
-  await user.click(screen.getByRole("button", { name: "Committee" }));
+  // Six declared stages → the shared filter renders its select variant.
+  await user.selectOptions(screen.getByLabelText("Stage"), "committee");
 
   await waitFor(() =>
     expect(mocked.fetchApplicationsPage).toHaveBeenCalledWith(
       { stage: "committee" },
       null,
+      10,
     ),
   );
 });
