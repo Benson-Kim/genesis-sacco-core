@@ -229,6 +229,12 @@ class WorklistRow:
     opened_at: datetime
     first_assigned_at: datetime | None
     version: int
+    #: Human display labels — the delinquent member's number and
+    #: registered name — resolved server-side in the SAME worklist
+    #: statement (members PK join); the workflow row stays least-
+    #: disclosure otherwise (no balances).
+    member_no: str | None
+    member_name: str | None
 
 
 @dataclass(frozen=True)
@@ -923,11 +929,15 @@ def worklist_sql(
     return (
         "SELECT c.id, c.loan_id, l.member_id, l.days_past_due, l.classification, "  # noqa: S608
         "c.assignee_id, u.status AS assignee_status, c.opened_at, c.first_assigned_at, "
-        "c.version "
+        "c.version, mm.member_no, mm.name "
         "FROM loans l "
         "JOIN recovery_cases c ON c.tenant_id = l.tenant_id AND c.loan_id = l.id "
         f"{case_status}"
         "LEFT JOIN users u ON u.tenant_id = c.tenant_id AND u.id = c.assignee_id "
+        # Display-label join: rides the members PRIMARY KEY per page
+        # row plus the explicit tenant predicate (index-served, no new
+        # index).
+        "LEFT JOIN members mm ON mm.tenant_id = l.tenant_id AND mm.id = l.member_id "
         "WHERE l.tenant_id = CAST(:tid AS uuid) "
         f"{classification}"
         f"{cursor if with_cursor else ''}"
@@ -1010,6 +1020,8 @@ async def list_worklist(
                 opened_at=r[7],
                 first_assigned_at=r[8],
                 version=int(r[9]),
+                member_no=str(r[10]) if r[10] is not None else None,
+                member_name=str(r[11]) if r[11] is not None else None,
             )
         )
     next_cursor = None

@@ -338,6 +338,15 @@ class AdjustmentRecord:
     decided_at: datetime | None
     version: int
     created_at: datetime
+    #: Human display labels — the affected member's number and
+    #: registered name (via the loan row) and the ORIGINAL posting's
+    #: txn_ref — resolved server-side in the SAME read statement
+    #: (PK joins). Default None: the locked posting read deliberately
+    #: skips the joins (an outer join under FOR UPDATE is refused by
+    #: the database); labels are never invented.
+    member_no: str | None = None
+    member_name: str | None = None
+    original_txn_ref: str | None = None
 
 
 _ADJUSTMENT_COLS = (
@@ -346,6 +355,38 @@ _ADJUSTMENT_COLS = (
     "penalties, interest, principal, reopened_loan, status, "
     "loan_balance_at_request, loan_penalty_due_at_request, "
     "loan_status_at_request, decided_at, version, created_at"
+)
+
+#: Read-path column list: _ADJUSTMENT_COLS table-qualified plus the
+#: display labels. ONLY the un-locked reads use it — the posting's
+#: FOR UPDATE read keeps the join-free _ADJUSTMENT_COLS.
+_ADJUSTMENT_READ_COLS = (
+    "repayment_adjustments.id, repayment_adjustments.repayment_id, "
+    "repayment_adjustments.loan_id, "
+    "repayment_adjustments.original_transaction_id, "
+    "repayment_adjustments.reversal_transaction_id, "
+    "repayment_adjustments.maker_id, repayment_adjustments.checker_id, "
+    "repayment_adjustments.reason, repayment_adjustments.amount, "
+    "repayment_adjustments.penalties, repayment_adjustments.interest, "
+    "repayment_adjustments.principal, "
+    "repayment_adjustments.reopened_loan, repayment_adjustments.status, "
+    "repayment_adjustments.loan_balance_at_request, "
+    "repayment_adjustments.loan_penalty_due_at_request, "
+    "repayment_adjustments.loan_status_at_request, "
+    "repayment_adjustments.decided_at, repayment_adjustments.version, "
+    "repayment_adjustments.created_at, mm.member_no, mm.name, ot.txn_ref"
+)
+
+#: Display-label joins: the loan hop and the members/transactions
+#: probes each ride a PRIMARY KEY per page row plus the explicit
+#: tenant predicate (index-served, no new index).
+_ADJUSTMENT_LABEL_JOINS = (
+    "LEFT JOIN loans ll ON ll.tenant_id = repayment_adjustments.tenant_id "
+    "AND ll.id = repayment_adjustments.loan_id "
+    "LEFT JOIN members mm ON mm.tenant_id = repayment_adjustments.tenant_id "
+    "AND mm.id = ll.member_id "
+    "LEFT JOIN transactions ot ON ot.tenant_id = repayment_adjustments.tenant_id "
+    "AND ot.id = repayment_adjustments.original_transaction_id "
 )
 
 
@@ -371,6 +412,11 @@ def _row_to_adjustment(row: Any) -> AdjustmentRecord:
         decided_at=row[17],
         version=int(row[18]),
         created_at=row[19],
+        # Label columns ride only the read-path statements; the locked
+        # posting read serves the 20-column join-free shape.
+        member_no=str(row[20]) if len(row) > 20 and row[20] is not None else None,
+        member_name=str(row[21]) if len(row) > 21 and row[21] is not None else None,
+        original_txn_ref=str(row[22]) if len(row) > 22 and row[22] is not None else None,
     )
 
 
@@ -381,8 +427,10 @@ async def get_adjustment(
     row = (
         await session.execute(
             text(
-                f"SELECT {_ADJUSTMENT_COLS} FROM repayment_adjustments "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"SELECT {_ADJUSTMENT_READ_COLS} FROM repayment_adjustments "  # noqa: S608
+                f"{_ADJUSTMENT_LABEL_JOINS}"
+                "WHERE repayment_adjustments.id = CAST(:id AS uuid) "
+                "AND repayment_adjustments.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(adjustment_id), "tid": str(tenant_id)},
         )
@@ -413,14 +461,17 @@ def adjustments_register_sql(*, with_cursor: bool) -> str:
     forced RLS (rule 4).
     """
     cursor = (
-        "AND ((status = 'pending_approval'), created_at, id) "
+        "AND ((repayment_adjustments.status = 'pending_approval'), "
+        "repayment_adjustments.created_at, repayment_adjustments.id) "
         "< (CAST(:c_flag AS boolean), CAST(:c_ts AS timestamptz), CAST(:c_id AS uuid)) "
     )
     return (
-        f"SELECT {_ADJUSTMENT_COLS} FROM repayment_adjustments "  # noqa: S608
-        "WHERE tenant_id = CAST(:tid AS uuid) "
+        f"SELECT {_ADJUSTMENT_READ_COLS} FROM repayment_adjustments "  # noqa: S608
+        f"{_ADJUSTMENT_LABEL_JOINS}"
+        "WHERE repayment_adjustments.tenant_id = CAST(:tid AS uuid) "
         f"{cursor if with_cursor else ''}"
-        "ORDER BY (status = 'pending_approval') DESC, created_at DESC, id DESC "
+        "ORDER BY (repayment_adjustments.status = 'pending_approval') DESC, "
+        "repayment_adjustments.created_at DESC, repayment_adjustments.id DESC "
         "LIMIT :limit"
     )
 
@@ -1338,12 +1389,40 @@ class WriteOffRecord:
     transaction_id: uuid.UUID | None
     version: int
     created_at: datetime
+    #: Human display labels — the written-off member's number and
+    #: registered name — resolved server-side in the SAME read
+    #: statement (members PK join). Default None: the locked posting
+    #: read deliberately skips the join; labels are never invented.
+    member_no: str | None = None
+    member_name: str | None = None
 
 
 _WRITE_OFF_COLS = (
     "id, loan_id, member_id, balance, penalty_due, total_written_off, "
     "classification, provision_pct, reason, status, requested_by, "
     "decided_at, posted_at, transaction_id, version, created_at"
+)
+
+#: Read-path column list: _WRITE_OFF_COLS table-qualified plus the
+#: member display labels. ONLY the un-locked reads use it — the
+#: posting's FOR UPDATE read keeps the join-free _WRITE_OFF_COLS.
+_WRITE_OFF_READ_COLS = (
+    "loan_write_offs.id, loan_write_offs.loan_id, "
+    "loan_write_offs.member_id, loan_write_offs.balance, "
+    "loan_write_offs.penalty_due, loan_write_offs.total_written_off, "
+    "loan_write_offs.classification, loan_write_offs.provision_pct, "
+    "loan_write_offs.reason, loan_write_offs.status, "
+    "loan_write_offs.requested_by, loan_write_offs.decided_at, "
+    "loan_write_offs.posted_at, loan_write_offs.transaction_id, "
+    "loan_write_offs.version, loan_write_offs.created_at, "
+    "mm.member_no, mm.name"
+)
+
+#: Display-label join: rides the members PRIMARY KEY per page row
+#: plus the explicit tenant predicate (index-served, no new index).
+_WRITE_OFF_LABEL_JOIN = (
+    "LEFT JOIN members mm ON mm.tenant_id = loan_write_offs.tenant_id "
+    "AND mm.id = loan_write_offs.member_id "
 )
 
 
@@ -1365,6 +1444,10 @@ def _row_to_write_off(row: Any) -> WriteOffRecord:
         transaction_id=uuid.UUID(str(row[13])) if row[13] is not None else None,
         version=int(row[14]),
         created_at=row[15],
+        # Label columns ride only the read-path statements; the locked
+        # posting read serves the 16-column join-free shape.
+        member_no=str(row[16]) if len(row) > 16 and row[16] is not None else None,
+        member_name=str(row[17]) if len(row) > 17 and row[17] is not None else None,
     )
 
 
@@ -1374,8 +1457,10 @@ async def get_write_off(
     row = (
         await session.execute(
             text(
-                f"SELECT {_WRITE_OFF_COLS} FROM loan_write_offs "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"SELECT {_WRITE_OFF_READ_COLS} FROM loan_write_offs "  # noqa: S608
+                f"{_WRITE_OFF_LABEL_JOIN}"
+                "WHERE loan_write_offs.id = CAST(:id AS uuid) "
+                "AND loan_write_offs.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(write_off_id), "tid": str(tenant_id)},
         )
@@ -1407,14 +1492,17 @@ def write_offs_register_sql(*, with_cursor: bool) -> str:
     forced RLS (rule 4).
     """
     cursor = (
-        "AND ((status IN ('requested', 'approved')), created_at, id) "
+        "AND ((loan_write_offs.status IN ('requested', 'approved')), "
+        "loan_write_offs.created_at, loan_write_offs.id) "
         "< (CAST(:c_flag AS boolean), CAST(:c_ts AS timestamptz), CAST(:c_id AS uuid)) "
     )
     return (
-        f"SELECT {_WRITE_OFF_COLS} FROM loan_write_offs "  # noqa: S608
-        "WHERE tenant_id = CAST(:tid AS uuid) "
+        f"SELECT {_WRITE_OFF_READ_COLS} FROM loan_write_offs "  # noqa: S608
+        f"{_WRITE_OFF_LABEL_JOIN}"
+        "WHERE loan_write_offs.tenant_id = CAST(:tid AS uuid) "
         f"{cursor if with_cursor else ''}"
-        "ORDER BY (status IN ('requested', 'approved')) DESC, created_at DESC, id DESC "
+        "ORDER BY (loan_write_offs.status IN ('requested', 'approved')) DESC, "
+        "loan_write_offs.created_at DESC, loan_write_offs.id DESC "
         "LIMIT :limit"
     )
 
