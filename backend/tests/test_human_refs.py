@@ -131,7 +131,7 @@ def test_fm_r1_disbursements_mint_sequential_refs_from_one() -> None:
     persisted on the row AND returned on the disbursement result."""
 
     async def run() -> None:
-        tid, _, _ = seed = await seed_actor()
+        tid, _, _ = await seed_actor()
         mid = await _seed_borrower(tid, "GP-0301", "Ref Oracle Borrower")
         pid = await _seed_product(tid)
         app_1 = await _seed_approved_application(tid, mid, pid)
@@ -467,4 +467,3 @@ def test_fm_r7_backfill_exits_deterministic() -> None:
         assert by_id[ids[0]] == "EX-0002"
 
     asyncio.run(run())
-un(run())
