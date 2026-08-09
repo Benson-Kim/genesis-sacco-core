@@ -39,8 +39,7 @@ class MePermissions {
   const MePermissions({required this.permissions});
 
   factory MePermissions.fromJson(Map<String, dynamic> json) => MePermissions(
-        permissions: (json['permissions'] as List<dynamic>)
-            .cast<String>(),
+        permissions: (json['permissions'] as List<dynamic>).cast<String>(),
       );
 
   final List<String> permissions;

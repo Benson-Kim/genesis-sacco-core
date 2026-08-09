@@ -21,8 +21,7 @@ class GpHttpClient {
     required this.pinning,
     http.Client? httpClient,
     this.onTokensRefreshed,
-  }) : _http = httpClient ??
-            IOClient(pinning.buildHttpClient());
+  }) : _http = httpClient ?? IOClient(pinning.buildHttpClient());
 
   final String baseUrl;
   final TokenStorage tokenStorage;
@@ -31,8 +30,7 @@ class GpHttpClient {
 
   /// Called after a successful silent token refresh so callers can persist
   /// the new pair (e.g. Riverpod provider invalidation).
-  final Future<void> Function(String access, String refresh)?
-      onTokensRefreshed;
+  final Future<void> Function(String access, String refresh)? onTokensRefreshed;
 
   Future<Map<String, dynamic>> get(
     String path, {
