@@ -1524,7 +1524,7 @@ export interface paths {
          *     (tenant_id, member_no) key. An unknown number is an EMPTY page,
          *     never a 404 — no existence oracle beyond the members:view grant.
          *
-         *     id_number (#35 item 14 residual, expand-only): EXACT-match
+         *     id_number (expand-only): EXACT-match
          *     national-ID lookup through the person KYC profile, served by the
          *     0045 partial expression index (shipped with this query). An
          *     EXCLUSIVE identity probe: combining it with any other filter,

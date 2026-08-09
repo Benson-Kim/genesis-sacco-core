@@ -213,13 +213,23 @@ MEMBER_LIST_SQL = (
 #: Explicit tenant predicates on BOTH relations on top of forced RLS;
 #: every value a bound parameter.
 MEMBER_ID_NUMBER_LOOKUP_SQL = (
-    "SELECT m.id, m.member_no, m.type, m.name, m.phone, m.email, m.status, "
-    "m.version, m.branch_id, m.dividend_payout "
-    "FROM member_profiles p "
-    "JOIN members m ON m.tenant_id = CAST(:tid AS uuid) AND m.id = p.member_id "
+    # MATERIALIZED is the optimization fence that makes the KYC probe the
+    # driving relation BY CONSTRUCTION: without it the planner may invert
+    # the join and enumerate the whole tenant membership per lookup (the
+    # O(tenant-size) plan the EXPLAIN gate caught in CI). The redundant
+    # IS NOT NULL predicate restates 0045's partial-index predicate so the
+    # probe is served qual-free by the expression index.
+    "WITH hit AS MATERIALIZED ("
+    "SELECT p.member_id FROM member_profiles p "
     "WHERE p.tenant_id = CAST(:tid AS uuid) "
+    "AND (p.profile -> 'bio' ->> 'id_number') IS NOT NULL "
     "AND (p.profile -> 'bio' ->> 'id_number') = :id_number "
     "LIMIT :limit"
+    ") "
+    "SELECT m.id, m.member_no, m.type, m.name, m.phone, m.email, m.status, "
+    "m.version, m.branch_id, m.dividend_payout "
+    "FROM hit "
+    "JOIN members m ON m.tenant_id = CAST(:tid AS uuid) AND m.id = hit.member_id"
 )
 
 
