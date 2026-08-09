@@ -321,3 +321,19 @@ def transition(current: ApplicationStage, target: ApplicationStage) -> Applicati
     if target not in _ALLOWED[current]:
         raise InvalidTransitionError(f"{current.value} -> {target.value}")
     return target
+
+
+def override_refusal_transition(current: ApplicationStage) -> ApplicationStage:
+    """The SINGLE gatekeeper for the supervisor override (#35 item 8).
+
+    Deliberately OUTSIDE the normal _ALLOWED machine: REJECTED is (and
+    stays) terminal for every ordinary caller — only the separately
+    permissioned supervisor override may overturn a refusal, and only
+    to APPROVED. Any other current stage refuses loudly: an override
+    of a live (non-refused) application is a rejected design.
+    """
+    if current is not ApplicationStage.REJECTED:
+        raise InvalidTransitionError(
+            f"override applies to rejected applications, not {current.value}"
+        )
+    return ApplicationStage.APPROVED
