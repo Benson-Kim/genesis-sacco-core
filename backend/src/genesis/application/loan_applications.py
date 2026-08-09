@@ -431,8 +431,7 @@ async def list_applications(
         )
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="application")
         clauses.append(
-            "(loan_applications.created_at, loan_applications.id)"
-            " < (:c_ts, CAST(:c_id AS uuid))"
+            "(loan_applications.created_at, loan_applications.id) < (:c_ts, CAST(:c_id AS uuid))"
         )
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
