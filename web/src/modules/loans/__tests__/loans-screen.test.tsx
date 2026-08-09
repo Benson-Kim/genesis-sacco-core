@@ -282,6 +282,9 @@ afterEach(() => {
 
 test("hostile product name renders as inert TEXT; register + summary money renders VERBATIM through fmtKes (named XSS threat + blocker (a))", async () => {
   mockedApps.fetchProducts.mockResolvedValue([{ ...PRODUCT, name: HOSTILE_NAME }]);
+  mocked.fetchLoansPage.mockResolvedValue(
+    page([baseLoan({ product_name: HOSTILE_NAME })]),
+  );
   const { container } = mountScreen();
 
   // The payload is visible as literal text…

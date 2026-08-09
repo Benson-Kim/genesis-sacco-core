@@ -370,8 +370,16 @@ test("picker reads are keyset ONLY (cursor verbatim, no offset/page) and STRIP t
   expect(exitRow.id).toBe(EXIT_ID);
   expect(exitRow.status).toBe("requested");
   // The picker row carries NO figures — everything money-shaped from
-  // ExitOut was stripped (this module renders no figure at all).
-  expect(Object.keys(exitRow).sort()).toEqual(["created_at", "id", "member_id", "status"]);
+  // ExitOut was stripped (this module renders no figure at all); the
+  // member display labels are the declared expand-only exception.
+  expect(Object.keys(exitRow).sort()).toEqual([
+    "created_at",
+    "id",
+    "member_id",
+    "member_name",
+    "member_no",
+    "status",
+  ]);
 
   const declarations = await reportsApi.fetchDeclarationsPage(null);
   const third = new URL(calls[2]!.url);
