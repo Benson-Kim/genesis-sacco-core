@@ -25,8 +25,12 @@ from sqlalchemy import text
 
 from db_helpers import factory, seed_user, unique_email
 from export_helpers import seed_member_no
+from genesis.application.corrections import list_write_offs
+from genesis.application.dividends import list_share_transfers
 from genesis.application.loan_applications import list_applications
 from genesis.application.loans import list_loans
+from genesis.application.member_exits import list_exits
+from genesis.application.recovery import list_worklist
 from genesis.application.transactions import list_transactions
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -38,6 +42,9 @@ pytestmark = pytest.mark.skipif(
 ORACLE_MEMBER_NO = "GP-0101"
 ORACLE_MEMBER_NAME = "Label Oracle Member"
 ORACLE_PRODUCT_NAME = "Oracle Product"
+#: Second party for the share-transfer legs.
+ORACLE_PEER_NO = "GP-0102"
+ORACLE_PEER_NAME = "Label Oracle Peer"
 
 
 async def _seed_product(tid: uuid.UUID, name: str) -> uuid.UUID:
@@ -125,6 +132,84 @@ async def _seed_txn(tid: uuid.UUID, mid: uuid.UUID | None) -> uuid.UUID:
     return txn_id
 
 
+async def _seed_exit(tid: uuid.UUID, mid: uuid.UUID) -> uuid.UUID:
+    exit_id = uuid.uuid4()
+    async with tenant_session(factory(), tid) as session:
+        await session.execute(
+            text(
+                "INSERT INTO member_exits (id, tenant_id, member_id, status) VALUES "
+                "(CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:m AS uuid), 'requested')"
+            ),
+            {"id": str(exit_id), "tid": str(tid), "m": str(mid)},
+        )
+    return exit_id
+
+
+async def _seed_pending_transfer(
+    tid: uuid.UUID, from_mid: uuid.UUID, to_mid: uuid.UUID
+) -> uuid.UUID:
+    """Pending workflow row (maker recorded, snapshot present — the
+    pending-snapshot CHECK requires both)."""
+    transfer_id = uuid.uuid4()
+    async with tenant_session(factory(), tid) as session:
+        maker = (await session.execute(text("SELECT id FROM users LIMIT 1"))).scalar_one()
+        await session.execute(
+            text(
+                "INSERT INTO share_transfers "
+                "(id, tenant_id, from_member_id, to_member_id, amount, status, "
+                " created_by, from_balance_at_request) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:f AS uuid), "
+                "CAST(:t AS uuid), 10.00, 'pending', CAST(:u AS uuid), 10.00)"
+            ),
+            {
+                "id": str(transfer_id),
+                "tid": str(tid),
+                "f": str(from_mid),
+                "t": str(to_mid),
+                "u": str(maker),
+            },
+        )
+    return transfer_id
+
+
+async def _seed_recovery_case(tid: uuid.UUID, loan_id: uuid.UUID) -> None:
+    async with tenant_session(factory(), tid) as session:
+        opener = (await session.execute(text("SELECT id FROM users LIMIT 1"))).scalar_one()
+        await session.execute(
+            text(
+                "UPDATE loans SET days_past_due = 151, classification = 'substandard' "
+                "WHERE id = CAST(:lid AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+            ),
+            {"lid": str(loan_id), "tid": str(tid)},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO recovery_cases (id, tenant_id, loan_id, opened_by, "
+                "classification_at_open, days_past_due_at_open) "
+                "VALUES (gen_random_uuid(), CAST(:tid AS uuid), CAST(:lid AS uuid), "
+                "CAST(:actor AS uuid), 'substandard', 151)"
+            ),
+            {"tid": str(tid), "lid": str(loan_id), "actor": str(opener)},
+        )
+
+
+async def _seed_write_off(tid: uuid.UUID, loan_id: uuid.UUID, mid: uuid.UUID) -> uuid.UUID:
+    wid = uuid.uuid4()
+    async with tenant_session(factory(), tid) as session:
+        await session.execute(
+            text(
+                "INSERT INTO loan_write_offs "
+                "(id, tenant_id, loan_id, member_id, balance, penalty_due, "
+                " total_written_off, classification, provision_pct, reason, status) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:lid AS uuid), "
+                "CAST(:mid AS uuid), '100.00', '0', '100.00', 'loss', '100.00', "
+                "'label oracle fixture', 'requested')"
+            ),
+            {"id": str(wid), "tid": str(tid), "lid": str(loan_id), "mid": str(mid)},
+        )
+    return wid
+
+
 def test_list_rows_resolve_human_labels_server_side() -> None:
     async def run() -> None:
         tid, _ = await seed_user(unique_email())
@@ -162,5 +247,49 @@ def test_list_rows_resolve_human_labels_server_side() -> None:
         assert system.member_id is None
         assert system.member_no is None
         assert system.member_name is None
+
+    asyncio.run(run())
+
+
+def test_workflow_registers_resolve_human_labels_server_side() -> None:
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        mid = await seed_member_no(tid, ORACLE_MEMBER_NO, name=ORACLE_MEMBER_NAME)
+        peer = await seed_member_no(tid, ORACLE_PEER_NO, name=ORACLE_PEER_NAME)
+        pid = await _seed_product(tid, ORACLE_PRODUCT_NAME)
+        aid = await _seed_application(tid, mid, pid)
+        loan_id = await _seed_loan(tid, mid, pid, aid)
+        exit_id = await _seed_exit(tid, peer)
+        transfer_id = await _seed_pending_transfer(tid, mid, peer)
+        await _seed_recovery_case(tid, loan_id)
+        write_off_id = await _seed_write_off(tid, loan_id, mid)
+
+        async with tenant_session(factory(), tid) as session:
+            exits, _ = await list_exits(session, tid, limit=20)
+            transfers = await list_share_transfers(session, tid, cursor=None, limit=20)
+            worklist = await list_worklist(session, tid, cursor=None, limit=20)
+            write_offs = await list_write_offs(session, tid, cursor=None, limit=20)
+
+        # Exit register: the exiting peer's labels.
+        exit_row = next(e for e in exits if e.id == exit_id)
+        assert exit_row.member_no == ORACLE_PEER_NO
+        assert exit_row.member_name == ORACLE_PEER_NAME
+
+        # Share-transfer register: BOTH parties' labels.
+        xfer = next(t for t in transfers.items if t.id == transfer_id)
+        assert xfer.from_member_no == ORACLE_MEMBER_NO
+        assert xfer.from_member_name == ORACLE_MEMBER_NAME
+        assert xfer.to_member_no == ORACLE_PEER_NO
+        assert xfer.to_member_name == ORACLE_PEER_NAME
+
+        # Recovery worklist: the delinquent member's labels.
+        case = next(w for w in worklist.items if w.loan_id == loan_id)
+        assert case.member_no == ORACLE_MEMBER_NO
+        assert case.member_name == ORACLE_MEMBER_NAME
+
+        # Write-off committee register: the member's labels.
+        woff = next(w for w in write_offs.items if w.id == write_off_id)
+        assert woff.member_no == ORACLE_MEMBER_NO
+        assert woff.member_name == ORACLE_MEMBER_NAME
 
     asyncio.run(run())
