@@ -17,8 +17,7 @@ class DashboardScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Sign out',
-            onPressed: () =>
-                ref.read(authNotifierProvider.notifier).logout(),
+            onPressed: () => ref.read(authNotifierProvider.notifier).logout(),
           ),
         ],
       ),
@@ -122,8 +121,7 @@ class _ActionChip extends StatelessWidget {
             Icon(icon, size: 18, color: GpPalette.navy),
             const SizedBox(width: 8),
             Text(label,
-                style: GpTypography.bodyMedium
-                    .copyWith(color: GpPalette.navy)),
+                style: GpTypography.bodyMedium.copyWith(color: GpPalette.navy)),
           ],
         ),
       ),

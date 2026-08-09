@@ -46,14 +46,13 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 const Spacer(),
                 Text(
                   'Genesis Prestige',
-                  style: GpTypography.displayLarge
-                      .copyWith(color: Colors.white),
+                  style:
+                      GpTypography.displayLarge.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Member Portal',
-                  style: GpTypography.bodyLarge
-                      .copyWith(color: Colors.white70),
+                  style: GpTypography.bodyLarge.copyWith(color: Colors.white70),
                 ),
                 const SizedBox(height: 48),
                 TextFormField(

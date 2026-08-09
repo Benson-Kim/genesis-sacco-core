@@ -53,14 +53,13 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                 const Spacer(),
                 Text(
                   'Enter OTP',
-                  style: GpTypography.displayLarge
-                      .copyWith(color: Colors.white),
+                  style:
+                      GpTypography.displayLarge.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'A 6-digit code was sent to ${widget.phone}',
-                  style: GpTypography.bodyLarge
-                      .copyWith(color: Colors.white70),
+                  style: GpTypography.bodyLarge.copyWith(color: Colors.white70),
                 ),
                 const SizedBox(height: 48),
                 TextFormField(
