@@ -160,16 +160,20 @@ def test_codex_review_queries_are_index_backed() -> None:
         # Display-label joins ride an id-leading UNIQUE probe per page
         # row (the planner may pick members_pkey or 0018's
         # uq_members_id_type — both lead on id; either is the probe).
-        assert "members_pkey" in stage_plan or "uq_members_id_type" in stage_plan
-        assert "loan_products_pkey" in stage_plan
+        # The plan itself is the assertion message: the register's
+        # falsifiability evidence must never be elided on failure.
+        member_probe = "members_pkey" in stage_plan or "uq_members_id_type" in stage_plan
+        assert member_probe, stage_plan
+        assert "loan_products_pkey" in stage_plan, stage_plan
         # 0006 must keep serving the unfiltered page (regression fence
         # against replacing it with the stage-shaped index).
         assert "idx_applications_created_keyset" in unfiltered_plan
         assert "Sort" not in unfiltered_plan
         assert "Seq Scan" not in unfiltered_plan
         # Same id-leading UNIQUE probe posture as the stage plan.
-        assert "members_pkey" in unfiltered_plan or "uq_members_id_type" in unfiltered_plan
-        assert "loan_products_pkey" in unfiltered_plan
+        member_probe = "members_pkey" in unfiltered_plan or "uq_members_id_type" in unfiltered_plan
+        assert member_probe, unfiltered_plan
+        assert "loan_products_pkey" in unfiltered_plan, unfiltered_plan
         # 0014: the reversal guard lookup is index-backed.
         assert "idx_repayments_transaction" in repayment_plan
         assert "Seq Scan" not in repayment_plan
