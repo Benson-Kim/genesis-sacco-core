@@ -72,7 +72,7 @@ async def pledge_guarantee(
         raise InvalidInputError("a member cannot guarantee their own loan")
     guarantor_row = (
         await session.execute(
-            text("SELECT status FROM members WHERE id = CAST(:m AS uuid)"),
+            text("SELECT status FROM members WHERE id = CAST(:m AS uuid) FOR UPDATE"),
             {"m": str(guarantor_member_id)},
         )
     ).first()

@@ -12,17 +12,19 @@ import uuid
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
-from genesis.api.authz import RequirePermission
+from genesis.api.authz import RequirePermission, get_auth_context
 from genesis.application import guarantees as guarantees_service
 from genesis.application import loan_applications as applications_service
 from genesis.application import loan_products as products_service
+from genesis.application import rbac as rbac_service
 from genesis.application.auth import AuthContext
 from genesis.domain.committee import Vote
 from genesis.domain.lending import ApplicationStage
 from genesis.domain.rbac import Action, Module
+from genesis.errors import ForbiddenError
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.tenancy import tenant_session
 from genesis.settings import get_settings
@@ -35,7 +37,30 @@ _settings_edit = RequirePermission(Module.SETTINGS, Action.EDIT)
 _apps_view = RequirePermission(Module.APPLICATIONS, Action.VIEW)
 _apps_create = RequirePermission(Module.APPLICATIONS, Action.CREATE)
 _apps_edit = RequirePermission(Module.APPLICATIONS, Action.EDIT)
+
+
+class RequireProductListPermission(RequirePermission):
+    """Allow product discovery to settings viewers and application creators."""
+
+    def __init__(self) -> None:
+        super().__init__(Module.SETTINGS, Action.VIEW)
+
+    async def __call__(self, request: Request) -> AuthContext:
+        ctx = get_auth_context(request)
+        factory = get_sessionmaker(get_settings().database_url)
+        async with tenant_session(factory, ctx.tenant_id) as session:
+            settings_view = await rbac_service.has_permission(
+                session, ctx.role_id, Module.SETTINGS, Action.VIEW
+            )
+            applications_create = await rbac_service.has_permission(
+                session, ctx.role_id, Module.APPLICATIONS, Action.CREATE
+            )
+        if not (settings_view or applications_create):
+            raise ForbiddenError("settings:view or applications:create")
+        return ctx
+
 _apps_approve = RequirePermission(Module.APPLICATIONS, Action.APPROVE)
+_products_list = RequireProductListPermission()
 
 SettingsViewCtx = Annotated[AuthContext, Depends(_settings_view)]
 SettingsCreateCtx = Annotated[AuthContext, Depends(_settings_create)]
@@ -44,19 +69,20 @@ AppsViewCtx = Annotated[AuthContext, Depends(_apps_view)]
 AppsCreateCtx = Annotated[AuthContext, Depends(_apps_create)]
 AppsEditCtx = Annotated[AuthContext, Depends(_apps_edit)]
 AppsApproveCtx = Annotated[AuthContext, Depends(_apps_approve)]
+ProductListCtx = Annotated[AuthContext, Depends(_products_list)]
 
 
 class ProductCreateBody(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    rate_pct: Decimal = Field(gt=0, le=100)
-    deposit_multiplier: Decimal = Field(gt=0)
+    rate_pct: Decimal = Field(gt=0, le=100, max_digits=5, decimal_places=2)
+    deposit_multiplier: Decimal = Field(gt=0, max_digits=5, decimal_places=2)
     max_term_months: int = Field(ge=1, le=120)
 
 
 class ProductUpdateBody(BaseModel):
     version: int = Field(ge=1)
-    rate_pct: Decimal | None = Field(default=None, gt=0, le=100)
-    deposit_multiplier: Decimal | None = Field(default=None, gt=0)
+    rate_pct: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+    deposit_multiplier: Decimal | None = Field(default=None, gt=0, max_digits=5, decimal_places=2)
     max_term_months: int | None = Field(default=None, ge=1, le=120)
     active: bool | None = None
 
@@ -82,6 +108,8 @@ class ApplicationCreateBody(BaseModel):
 class ApplicationOut(BaseModel):
     id: str
     member_id: str
+    member_no: str
+    member_name: str
     product_id: str
     amount: str
     term_months: int
@@ -148,6 +176,8 @@ def _application_out(a: applications_service.ApplicationRecord) -> ApplicationOu
     return ApplicationOut(
         id=str(a.id),
         member_id=str(a.member_id),
+        member_no=a.member_no,
+        member_name=a.member_name,
         product_id=str(a.product_id),
         amount=str(a.amount),
         term_months=a.term_months,
@@ -188,7 +218,7 @@ async def create_product(body: ProductCreateBody, ctx: SettingsCreateCtx) -> Pro
 
 
 @router.get("/products")
-async def list_products(ctx: SettingsViewCtx) -> list[ProductOut]:
+async def list_products(ctx: ProductListCtx) -> list[ProductOut]:
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         products = await products_service.list_products(session)

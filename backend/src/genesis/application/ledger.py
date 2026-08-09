@@ -680,6 +680,18 @@ async def disburse_loan(
         },
     )
 
+    # Attach application pledges to the loan before downstream release hooks
+    # look up live guarantor exposure by loan_id.
+    await session.execute(
+        text(
+            "UPDATE guarantees SET loan_id = CAST(:lid AS uuid), "
+            "version = version + 1, updated_at = :ts "
+            "WHERE application_id = CAST(:aid AS uuid) "
+            "AND loan_id IS NULL AND status IN ('pledged', 'active')"
+        ),
+        {"lid": str(loan_id), "aid": str(application_id), "ts": ts},
+    )
+
     # Step 4: post the disbursement ledger entry.
     spec = build_disbursement_posting(principal, channel)
     result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=ts)

@@ -34,7 +34,8 @@ API_TRANSITION_TARGETS = frozenset(
 )
 
 _COLS = (
-    "id, member_id, product_id, amount, term_months, rate_pct, purpose, stage, cover_pct, version"
+    "a.id, a.member_id, m.member_no, m.name, a.product_id, a.amount, "
+    "a.term_months, a.rate_pct, a.purpose, a.stage, a.cover_pct, a.version"
 )
 
 #: cover_pct is stored as NUMERIC(6,2); values above this cap carry no
@@ -47,6 +48,8 @@ _COVER_PCT_CAP = Decimal("9999.99")
 class ApplicationRecord:
     id: uuid.UUID
     member_id: uuid.UUID
+    member_no: str
+    member_name: str
     product_id: uuid.UUID
     amount: Decimal
     term_months: int
@@ -69,14 +72,16 @@ def _row_to_application(row: Any) -> ApplicationRecord:
     return ApplicationRecord(
         id=uuid.UUID(str(row[0])),
         member_id=uuid.UUID(str(row[1])),
-        product_id=uuid.UUID(str(row[2])),
-        amount=Decimal(str(row[3])),
-        term_months=int(row[4]),
-        rate_pct=Decimal(str(row[5])),
-        purpose=str(row[6]) if row[6] is not None else None,
-        stage=ApplicationStage(str(row[7])),
-        cover_pct=Decimal(str(row[8])),
-        version=int(row[9]),
+        member_no=str(row[2]),
+        member_name=str(row[3]),
+        product_id=uuid.UUID(str(row[4])),
+        amount=Decimal(str(row[5])),
+        term_months=int(row[6]),
+        rate_pct=Decimal(str(row[7])),
+        purpose=str(row[8]) if row[8] is not None else None,
+        stage=ApplicationStage(str(row[9])),
+        cover_pct=Decimal(str(row[10])),
+        version=int(row[11]),
     )
 
 
@@ -183,7 +188,10 @@ async def create_application(
         )
     member_row = (
         await session.execute(
-            text("SELECT status FROM members WHERE id = CAST(:m AS uuid)"),
+            text(
+                "SELECT status, member_no, name FROM members "
+                "WHERE id = CAST(:m AS uuid) FOR UPDATE"
+            ),
             {"m": str(member_id)},
         )
     ).first()
@@ -194,6 +202,12 @@ async def create_application(
             f"member {member_id} is '{member_row[0]}': only active members may apply"
         )
     deposits = await _deposit_balance(session, member_id)
+    max_amount = to_cents(deposits * product.deposit_multiplier)
+    if amount > max_amount:
+        raise ConflictError(
+            f"requested amount {amount} exceeds borrowing limit {max_amount} "
+            f"for deposit balance {deposits} and multiplier {product.deposit_multiplier}"
+        )
     cover = _cover_pct(deposits, ZERO, amount)
     application_id = uuid.uuid4()
     await session.execute(
@@ -246,6 +260,8 @@ async def create_application(
     return ApplicationRecord(
         id=application_id,
         member_id=member_id,
+        member_no=str(member_row[1]),
+        member_name=str(member_row[2]),
         product_id=product_id,
         amount=amount,
         term_months=term_months,
@@ -260,7 +276,11 @@ async def create_application(
 async def get_application(session: AsyncSession, application_id: uuid.UUID) -> ApplicationRecord:
     row = (
         await session.execute(
-            text(f"SELECT {_COLS} FROM loan_applications WHERE id = CAST(:id AS uuid)"),  # noqa: S608
+            text(
+                f"SELECT {_COLS} FROM loan_applications a "  # noqa: S608
+                "JOIN members m ON m.id = a.member_id "
+                "WHERE a.id = CAST(:id AS uuid)"
+            ),
             {"id": str(application_id)},
         )
     ).first()
@@ -281,7 +301,7 @@ async def list_applications(
     clauses: list[str] = []
     params: dict[str, object] = {"limit": limit + 1}
     if stage is not None:
-        clauses.append("stage = :stage")
+        clauses.append("a.stage = :stage")
         params["stage"] = stage.value
     if cursor:
         ts_raw, _, id_raw = cursor.partition("|")
@@ -290,15 +310,16 @@ async def list_applications(
             params["c_id"] = str(uuid.UUID(id_raw))
         except ValueError as exc:
             raise InvalidInputError("invalid application cursor") from exc
-        clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append("(a.created_at, a.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
-                f"SELECT created_at, {_COLS} FROM loan_applications "  # noqa: S608
+                f"SELECT a.created_at, {_COLS} FROM loan_applications a "  # noqa: S608
+                "JOIN members m ON m.id = a.member_id "
                 f"{where}"
-                "ORDER BY created_at DESC, id DESC LIMIT :limit"
+                "ORDER BY a.created_at DESC, a.id DESC LIMIT :limit"
             ),
             params,
         )
