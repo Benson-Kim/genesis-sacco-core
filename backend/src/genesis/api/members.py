@@ -24,6 +24,7 @@ from genesis.application import members as members_service
 from genesis.application.auth import AuthContext
 from genesis.domain.members import MemberStatus, MemberType
 from genesis.domain.rbac import Action, Module
+from genesis.errors import InvalidInputError
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.tenancy import tenant_session
 from genesis.settings import get_settings
@@ -226,6 +227,7 @@ async def list_members(
     status: MemberStatus | None = None,
     member_type: Annotated[MemberType | None, Query(alias="type")] = None,
     member_no: Annotated[str | None, Query(min_length=1, max_length=32)] = None,
+    id_number: Annotated[str | None, Query(min_length=1, max_length=20)] = None,
     include: Annotated[Literal["aggregates"] | None, Query()] = None,
 ) -> MemberListDetailResponse | MemberListResponse:
     """Keyset member register page (members:view).
@@ -242,8 +244,28 @@ async def list_members(
     lookup): expand-only EXACT-match filter served by the 0001 UNIQUE
     (tenant_id, member_no) key. An unknown number is an EMPTY page,
     never a 404 — no existence oracle beyond the members:view grant.
+
+    id_number (#35 item 14 residual, expand-only): EXACT-match
+    national-ID lookup through the person KYC profile, served by the
+    0045 partial expression index (shipped with this query). An
+    EXCLUSIVE identity probe: combining it with any other filter,
+    cursor or the aggregates expand is a 422 (one declared meaning,
+    no ambiguous merged scopes). Unknown ID: EMPTY page, never 404.
     """
     factory = get_sessionmaker(get_settings().database_url)
+    if id_number is not None:
+        if any(v is not None for v in (cursor, status, member_type, member_no, include)):
+            raise InvalidInputError(
+                "id_number is an exclusive lookup and combines with no other parameter"
+            )
+        async with tenant_session(factory, ctx.tenant_id) as session:
+            lookup_page = await members_service.lookup_members_by_id_number(
+                session, ctx.tenant_id, id_number=id_number, limit=limit
+            )
+        return MemberListResponse(
+            items=[_out(r) for r in lookup_page.items],
+            next_cursor=lookup_page.next_cursor,
+        )
     if include == "aggregates":
         async with tenant_session(factory, ctx.tenant_id) as session:
             detail_page = await members_service.list_members_with_aggregates(
