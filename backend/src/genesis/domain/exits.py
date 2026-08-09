@@ -38,7 +38,6 @@ from decimal import Decimal
 
 from genesis.domain.money import ZERO, to_cents
 
-
 #: Human exit reference display prefix (the member-number format
 #: discipline); the allocator's sequence key stays distinct from every
 #: txn-ref prefix (EXIT_REF_SEQ).
