@@ -57,6 +57,13 @@
   expression IS NOT NULL, serving the posting-drawer national-ID
   member lookup — no table, column, constraint or RLS change);
   diagram 2.B and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0046 by the issue-#35 KYC-phone-E.164 MR, IN THE
+  SAME COMMIT as the migration: alembic head 0045 -> 0046
+  (0046_kyc_profile_phone_e164_backfill.py, down_revision = "0045";
+  DATA-ONLY backfill of the six code-owned profile phone paths to
+  E.164 with an exact inverse downgrade — the 0042 discipline; no
+  table, column, index, constraint or RLS change, so no diagram or
+  traceability row changes beyond this head note).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -67,10 +74,11 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0045**: **47 tables** (0035
+The entire schema at alembic head **0046**: **47 tables** (0035
 creates `member_credentials`; 0033/0034/0036/0037/0040/0043 alter
 existing tables and create none; 0038/0041/0044/0045 add indexes only;
-0042 is a data-only backfill touching no schema object), drawn as
+0042 and 0046 are data-only backfills touching no schema object),
+drawn as
 seven subject-area `erDiagram`s (one diagram would not render readably;
 the split follows the module boundaries in the §3 traceability table).
 An entity appearing in more than one diagram (e.g. `members`,

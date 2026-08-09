@@ -23,11 +23,11 @@ from __future__ import annotations
 import enum
 from collections.abc import Mapping
 from datetime import date
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 
-from genesis.domain.members import MemberType
+from genesis.domain.members import MemberType, normalize_kenya_msisdn
 
 #: Informational money amounts (KYC only): decimal grammar, never float.
 _AMOUNT_PATTERN = r"^\d{1,16}(\.\d{1,2})?$"
@@ -53,6 +53,31 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+def _normalized_msisdn(value: str) -> str:
+    """Write-path E.164 normalization for KYC profile phone fields.
+
+    The ONE existing normalizer (domain/members.normalize_kenya_msisdn
+    — the item-1 round, 0042 storage precedent) is reused verbatim,
+    never a second implementation. An invalid shape raises with a
+    VALUE-FREE message: validate_profile surfaces field locations and
+    error types only, so the submitted number can never leak through a
+    422 (least disclosure).
+    """
+    normalized = normalize_kenya_msisdn(value)
+    if normalized is None:
+        raise ValueError("not an accepted Kenya mobile number shape")
+    return normalized
+
+
+#: Kenya MSISDN profile field: accepted input is exactly the
+#: maintainer-declared four spellings (07… / 01… / +2547… / +2541…);
+#: storage is ALWAYS E.164 (+254…). Migration 0046 backfills the
+#: profile rows that predate this write-path rule.
+KenyaMsisdn = Annotated[
+    str, Field(min_length=1, max_length=32), AfterValidator(_normalized_msisdn)
+]
+
+
 # ---------------------------------------------------------------------------
 # Person — bio / contact / employment / next of kin
 # ---------------------------------------------------------------------------
@@ -68,7 +93,7 @@ class PersonBio(_Section):
 
 
 class PersonContact(_Section):
-    phone: str = Field(min_length=1, max_length=32)
+    phone: KenyaMsisdn
     email: str | None = Field(default=None, max_length=254)
     county: str = Field(min_length=1, max_length=60)
     physical_address: str = Field(min_length=1, max_length=200)
@@ -83,7 +108,7 @@ class PersonEmployment(_Section):
 class PersonNextOfKin(_Section):
     name: str = Field(min_length=1, max_length=200)
     relationship: str = Field(min_length=1, max_length=60)
-    phone: str = Field(min_length=1, max_length=32)
+    phone: KenyaMsisdn
 
 
 class PersonProfile(_Section):
@@ -116,7 +141,7 @@ class CompanyOffice(_Section):
 class CompanyContact(_Section):
     contact_name: str = Field(min_length=1, max_length=200)
     role: str = Field(min_length=1, max_length=60)
-    phone: str = Field(min_length=1, max_length=32)
+    phone: KenyaMsisdn
     email: str | None = Field(default=None, max_length=254)
 
 
@@ -150,7 +175,7 @@ class GroupRegistration(_Section):
 class GroupOfficial(_Section):
     name: str = Field(min_length=1, max_length=200)
     id_number: str = Field(min_length=1, max_length=20)
-    phone: str = Field(min_length=1, max_length=32)
+    phone: KenyaMsisdn
 
 
 class GroupOfficials(_Section):
