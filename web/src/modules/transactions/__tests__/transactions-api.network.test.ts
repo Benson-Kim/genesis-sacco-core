@@ -61,6 +61,8 @@ const txnOut = {
   is_reversal: false,
   created_by: TELLER_ID,
   external_ref: "SGH3KLM9QT",
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 function json(status: number, body: unknown): Response {

@@ -85,6 +85,8 @@ function debitTxn(overrides: Partial<Transaction> = {}): Transaction {
     is_reversal: false,
     created_by: null,
     external_ref: null,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
     ...overrides,
   };
 }
@@ -102,6 +104,8 @@ function creditTxn(overrides: Partial<Transaction> = {}): Transaction {
     is_reversal: false,
     created_by: null,
     external_ref: "SGH3KLM9QT",
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
     ...overrides,
   };
 }
@@ -342,30 +346,30 @@ test("UI affordances follow the matrix: a view-only role gets NO posting, NO int
   // Structural: the stripped role never even FETCHES the members list.
   expect(mockedMembers.fetchMembersPage).not.toHaveBeenCalled();
 
-  // Drill into the detail drawer: without members:view the member stays
-  // an opaque id and NO member fetch happens (deny-by-default).
+  // Drill into the detail drawer: the member label rides the ROW
+  // (server-resolved) — no directory fetch happens for any role.
   await user.click(screen.getByText("KES 8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
-  expect(within(drawer).getByText(MEMBER_ID)).toBeInTheDocument();
+  expect(within(drawer).getByText("M-0001 — Jane Wanjiku")).toBeInTheDocument();
   expect(mockedMembers.fetchMember).not.toHaveBeenCalled();
 });
 
-test("detail drawer resolves the member name (members:view), renders every field VERBATIM and flags reversals", async () => {
+test("detail drawer renders the row's member label (number — name), every field VERBATIM, and flags reversals", async () => {
   const user = userEvent.setup();
-  mockedMembers.fetchMember.mockResolvedValue({ ...MEMBER, name: HOSTILE_NAME });
   mocked.fetchTransactionsPage.mockResolvedValue(
-    page([debitTxn({ is_reversal: true, txn_ref: "RV-0001" })]),
+    page([debitTxn({ is_reversal: true, txn_ref: "RV-0001", member_name: HOSTILE_NAME })]),
   );
   const { container } = mountScreen();
 
   await user.click(await screen.findByText("KES 8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
 
-  // The member resolves via GET /members/{id} — hostile name inert.
+  // The label rides the row (server-resolved) — hostile name inert,
+  // and NO directory fetch happens to label it.
   expect(await within(drawer).findByText(new RegExp("onerror=window.__pwned"))).toBeInTheDocument();
   expect(container.querySelector("img")).toBeNull();
   expect((window as { __pwned?: unknown }).__pwned).toBeUndefined();
-  expect(mockedMembers.fetchMember).toHaveBeenCalledWith(MEMBER_ID);
+  expect(mockedMembers.fetchMember).not.toHaveBeenCalled();
 
   expect(within(drawer).getByText("RV-0001")).toBeInTheDocument();
   expect(within(drawer).getByText("KES 8,000.10")).toBeInTheDocument();
