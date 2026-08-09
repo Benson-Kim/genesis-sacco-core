@@ -139,7 +139,7 @@ def test_id_number_lookup_is_tenant_fenced() -> None:
     foreign identity is indistinguishable from a missing one."""
 
     async def run() -> None:
-        tid_a, _, token_a = await seed_actor()
+        _tid_a, _, token_a = await seed_actor()
         tid_b, _, _ = await seed_actor()
         await _seed_person_with_profile(
             tid_b, member_no="GP-8301", name="Foreign Person", id_number="52068877"
