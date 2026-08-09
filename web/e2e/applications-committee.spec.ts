@@ -224,8 +224,10 @@ test("happy path: OTP login → applications register renders verbatim money →
   await login(page);
 
   await page.getByRole("link", { name: "Applications" }).click();
-  // Decimal strings render byte-identically (blocker (a)).
-  await expect(page.getByText("KES 250,000.10")).toBeVisible();
+  // Decimal strings render byte-identically (blocker (a)); the KES unit
+  // now lives on the column header (dashboard-charts anatomy).
+  await expect(page.getByRole("columnheader", { name: "Amount (KES)" })).toBeVisible();
+  await expect(page.getByText("250,000.10")).toBeVisible();
 
   await page.getByRole("button", { name: "+ New application" }).click();
   const dialog = page.getByRole("dialog", { name: "New loan application" });
@@ -275,7 +277,7 @@ test("adversarial (separation of duties): the officer who recommends to committe
 
   // The signed-in operator recommends the application to committee…
   await page.getByRole("link", { name: "Applications" }).click();
-  await page.getByText("KES 250,000.10").click();
+  await page.getByText("250,000.10").click();
   await page.getByRole("button", { name: "Recommend to committee" }).click();
   await expect(page.getByText("Recommended to committee.")).toBeVisible();
   expect(state.transitionBodies).toHaveLength(1);
@@ -310,7 +312,7 @@ test("adversarial: stale stage move → 409 conflict banner, EXACTLY ONE write, 
   await login(page);
 
   await page.getByRole("link", { name: "Applications" }).click();
-  await page.getByText("KES 250,000.10").click();
+  await page.getByText("250,000.10").click();
   await page.getByRole("button", { name: "Move to appraisal" }).click();
 
   // The conflict banner offers the explicit reload flow; the move was
