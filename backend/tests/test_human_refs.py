@@ -454,8 +454,7 @@ def test_fm_r7_backfill_exits_deterministic() -> None:
             rows = (
                 await session.execute(
                     text(
-                        "SELECT id, exit_ref FROM member_exits "
-                        "WHERE tenant_id = CAST(:tid AS uuid)"
+                        "SELECT id, exit_ref FROM member_exits WHERE tenant_id = CAST(:tid AS uuid)"
                     ),
                     {"tid": str(tid)},
                 )
