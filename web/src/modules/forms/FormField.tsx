@@ -1,66 +1,18 @@
-"use client";
-
 /**
- * Shared form-field primitive (P15 Phase B — gate 1.1: the remaining
- * module screens must NOT re-implement label/error wiring).
- *
- * - PERSISTENT label (issue #8 — never placeholder-as-label).
- * - Inline field error (client Zod message or server 422 message from
- *   ApiError.fields via form-errors.ts) rendered as React TEXT and wired
- *   to the control with aria-describedby + aria-invalid.
- * - Optional hint line, also described-by wired.
- *
- * The control is supplied by a render function so ANY input/select/
- * textarea gets the wiring without prop-forwarding guesswork.
+ * Adapter shim — maps the legacy `id` prop to `htmlFor` on the design-system
+ * Field so all existing app imports keep working without callsite changes.
+ * Use `Field` from `@genesis/design-system` for new code.
  */
+import { Field, type FieldControlProps, type FieldProps } from "@genesis/design-system";
 import type { ReactNode } from "react";
-import styles from "./FormField.module.css";
 
-export interface FieldControlProps {
+export type { FieldControlProps };
+
+interface FormFieldProps extends Omit<FieldProps, "htmlFor"> {
   id: string;
-  "aria-invalid"?: boolean;
-  "aria-describedby"?: string;
+  children: ((control: FieldControlProps) => ReactNode) | ReactNode;
 }
 
-export function FormField({
-  id,
-  label,
-  error,
-  hint,
-  children,
-}: Readonly<{
-  id: string;
-  label: string;
-  /** Field-level message; empty/undefined = no error state. */
-  error?: string;
-  hint?: string;
-  children: (control: FieldControlProps) => ReactNode;
-}>) {
-  const hasError = error !== undefined && error !== "";
-  const hintId = hint !== undefined ? `${id}-hint` : undefined;
-  const errorId = hasError ? `${id}-error` : undefined;
-  const describedBy = [hintId, errorId].filter((part) => part !== undefined).join(" ");
-
-  const control: FieldControlProps = { id };
-  if (hasError) control["aria-invalid"] = true;
-  if (describedBy !== "") control["aria-describedby"] = describedBy;
-
-  return (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={id}>
-        {label}
-      </label>
-      {children(control)}
-      {hint !== undefined && (
-        <div id={hintId} className={styles.hint}>
-          {hint}
-        </div>
-      )}
-      {hasError && (
-        <div id={errorId} className={styles.error} role="alert">
-          {error}
-        </div>
-      )}
-    </div>
-  );
+export function FormField({ id, ...rest }: FormFieldProps) {
+  return <Field htmlFor={id} {...rest} />;
 }

@@ -63,24 +63,6 @@
   margin-bottom: 18px;
 }
 
-.input {
-  width: 100%;
-  min-height: var(--touch-target-min);
-  padding: 9px 12px;
-  border-radius: 9px;
-  border: 1.5px solid var(--line);
-  font-size: 13px;
-  font-family: inherit;
-  background: #fff;
-}
-
-/* Focus ring replaced, never removed (issue #8). */
-.input:focus-visible {
-  outline: none;
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px var(--navySoft);
-}
-
 .otpRow {
   display: flex;
   gap: 8px;

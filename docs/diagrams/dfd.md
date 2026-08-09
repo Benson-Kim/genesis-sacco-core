@@ -269,33 +269,59 @@ the recovery receipt (F13), so cash against a dead loan can never be
 mistaken for a normal repayment.
 
 ```mermaid
-flowchart LR
-    %% P-DIAG.3 F3 — reconciled to main @ 8f46aa54250ff1a066af423924f3eb54a9c72fb7
-    RPY_E1["Teller / loan officer"]
-    subgraph TB1["TB1 — signed-in staff only"]
-        RPY_P1(["receive a loan repayment"])
-        RPY_P2(["allocate: penalties first,<br/>then interest, then principal;<br/>written-off loans refuse repayments"])
-        RPY_P3(["loan fully paid?<br/>close it and release the guarantors"])
+---
+title: Deposit-interest
+config:
+  theme: 'base'
+  themeVariables:
+    primaryColor: '#BB2528'
+    primaryTextColor: '#fff'
+    primaryBorderColor: '#7C0000'
+    lineColor: '#0F2C6B'
+    secondaryColor: '#0F2C6B'
+    tertiaryColor: '#fff'
+---
+%%{init: {
+  "flowchart": {"nodeSpacing": 40, "rankSpacing": 65, "htmlLabels": true },
+  "themeVariables": { "fontFamily": "-apple-system, Segoe UI, Roboto, sans-serif", "fontSize": "14px" }
+}}%%
+flowchart TD
+    %% P-DIAG.3 F6 — reconciled to main @ 8f46aa54250ff1a066af423924f3eb54a9c72fb7
+    INT_E1["Accountant"]
+    subgraph TB1["Signed-in staff only"]
+        INT_P1(["run the quarterly interest batch"])
+        INT_P2(["rate + quarter from settings,<br/>strict quarter order"])
+        INT_P3(["per account: average balance<br/>rebuilt from the ledger, interest posted once"])
     end
-    subgraph TB2["TB2 — this SACCO's records only"]
-        RPY_S1[("loans<br/>(balance, penalties owed)")]
-        RPY_S2[("repayment history")]
-        RPY_S3[("guarantee pledges<br/>(released on closure)")]
-        RPY_S4[("the ledger")]
-        RPY_S5[("audit trail")]
-        RPY_S6[("notification outbox")]
+    subgraph TB2["This SACCO's records only"]
+        INT_S1[("settings (rate, read-only)")]
+        INT_S2[("interest receipts<br/>(one per account per quarter)")]
+        INT_S3[("savings accounts (scan)")]
+        INT_S4[("the ledger (read:<br/>average daily balance basis)")]
+        INT_S5[("the ledger (write:<br/>interest postings)")]
+        INT_S6[("audit trail")]
     end
 
-    RPY_E1 -->|"records the repayment"| RPY_P1
-    RPY_P1 -->|"permission checked"| RPY_P2
-    RPY_P2 -->|"loan held while it counts;<br/>fixed allocation order"| RPY_S1
-    RPY_P2 -->|"one history row"| RPY_S2
-    RPY_P2 -->|"posted to the book"| RPY_S4
-    RPY_P2 --> RPY_P3
-    RPY_P3 -->|"sureties discharged"| RPY_S3
-    RPY_P3 -->|"loan closed"| RPY_S1
-    RPY_P2 -->|"exact figures"| RPY_S5
-    RPY_P3 -->|"closure notified"| RPY_S6
+    INT_E1 -->|"triggers the run"| INT_P1
+    INT_P1 -->|"permission checked"| INT_P2
+    INT_P2 -->|"rate never from the caller"| INT_S1
+    INT_P2 -->|"next unpaid quarter"| INT_S2
+    INT_P2 --> INT_P3
+    INT_P3 -->|"accounts not yet paid"| INT_S3
+    INT_P3 -->|"one receipt per account-quarter"| INT_S2
+    INT_P3 -->|"average balance, not a snapshot"| INT_S4
+    INT_P3 -->|"posted at quarter end"| INT_S5
+    INT_P3 -->|"exact figures"| INT_S6
+
+    classDef actor fill:#0F2C6B,stroke:#0A1E4D,stroke-width:2px,color:#ffffff,font-weight:600;
+    classDef process fill:#DCEBFF,stroke:#1E4FB0,stroke-width:1.5px,color:#131A2B;
+    classDef decision fill:#F7E7D4,stroke:#C2691C,stroke-width:1.5px,color:#131A2B,font-weight:600;
+    classDef store fill:#EBEEF3,stroke:#5C6579,stroke-width:1.5px,color:#131A2B;
+
+    class INT_E1 actor;
+    class INT_P1,INT_P2,INT_P3 process;
+    class INT_S1,INT_S2,INT_S3,INT_S4,INT_S5,INT_S6 store;
+
 ```
 
 #### Source of truth (F3)

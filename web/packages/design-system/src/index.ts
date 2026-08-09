@@ -24,9 +24,15 @@ export { Banner } from "./components/Banner";
 export { Button } from "./components/Button";
 export { Card } from "./components/Card";
 export { ConfirmDangerModal } from "./components/ConfirmDangerModal";
-export { Field } from "./components/Field";
+export { Field, type FieldControlProps, type FieldProps } from "./components/Field";
+export { Input } from "./components/Input";
+export type { InputProps } from "./components/Input";
 export { Kv } from "./components/Kv";
 export { Modal } from "./components/Modal";
 export { Pill } from "./components/Pill";
+export { Select } from "./components/Select";
+export type { SelectProps } from "./components/Select";
 export { Stat } from "./components/Stat";
+export { Textarea } from "./components/Textarea";
+export type { TextareaProps } from "./components/Textarea";
 

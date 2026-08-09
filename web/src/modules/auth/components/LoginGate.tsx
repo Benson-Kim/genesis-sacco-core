@@ -9,7 +9,7 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, newIdempotencyKey } from "@genesis/api-client";
-import { Button, Field } from "@genesis/design-system";
+import { Button, Field, Input } from "@genesis/design-system";
 import { requestOtp, verifyOtp } from "../api";
 import { OTP_LENGTH, emailSchema, otpCodeSchema } from "../schemas";
 import styles from "./LoginGate.module.css";
@@ -120,9 +120,8 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
             <div className={styles.notice}>{notice}</div>
           )}
           <Field label="Email" htmlFor="login-email">
-            <input
+            <Input
               id="login-email"
-              className={styles.input}
               type="email"
               autoComplete="email"
               value={email}

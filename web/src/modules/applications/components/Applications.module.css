@@ -11,6 +11,7 @@
     gap: 16px;
     flex-wrap: wrap;
     margin-bottom: 16px;
+    background: var(--bg);
 }
 
 .filters {
@@ -46,10 +47,12 @@
 .segmentButton {
     border: none;
     background: transparent;
-    padding: 0 14px;
-    min-height: 44px;
-    font-size: 12.5px;
-    font-weight: 600;
+    padding: 0 12px;
+    min-height: 32px;
+    min-width: 32px;
+    font-size: 14px;
+    line-height: 16px;
+    font-weight: 400;
     color: var(--sub);
     cursor: pointer;
 }
@@ -61,7 +64,12 @@
 .segmentButton[aria-pressed="true"] {
     background: var(--navySoft);
     color: var(--navy);
-    font-weight: 800;
+    font-weight: 500;
+}
+
+.segmentButton:hover {
+    background: var(--navySoft);
+    transition: all 0.2s ease-in-out;
 }
 
 .segmentButton:focus-visible {

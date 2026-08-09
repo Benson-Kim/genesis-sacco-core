@@ -38,6 +38,15 @@ describe("Content-Security-Policy", () => {
     expect(scriptSrc).not.toContain("unsafe-eval");
   });
 
+  it("script-src includes unsafe-eval in dev (Next.js Fast Refresh) but not in prod", () => {
+    const devCsp = buildContentSecurityPolicy(nonce, true);
+    const devPolicy = directives(devCsp);
+    expect(devPolicy.get("script-src")).toContain("'unsafe-eval'");
+
+    // Production path (isDev=false / default) must never carry unsafe-eval.
+    expect(policy.get("script-src")).not.toContain("unsafe-eval");
+  });
+
   it("denies framing (clickjacking): frame-ancestors 'none'", () => {
     expect(policy.get("frame-ancestors")).toBe("'none'");
     expect(policy.get("frame-src")).toBe("'none'");

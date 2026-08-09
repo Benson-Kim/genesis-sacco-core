@@ -127,7 +127,7 @@ export function MemberCreateDrawer({
                         Cancel
                     </Button>
                     <Button type="submit" variant="primary" disabled={create.isPending}>
-                        {create.isPending ? "Registering…" : "Register member"}
+                        {create.isPending ? "Registering\u2026" : "Register member"}
                     </Button>
                 </div>
             </form>
