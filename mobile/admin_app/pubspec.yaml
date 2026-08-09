@@ -11,38 +11,40 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Shared packages
-  gp_ui:
-    path: ../gp_ui
-  gp_api_client:
-    path: ../gp_api_client
-
   # State management
   flutter_riverpod: ^2.5.0
-  riverpod_annotation: ^2.3.0
 
   # Secure storage (via gp_api_client)
   flutter_secure_storage: ^9.0.0
 
-  # Biometric authentication (step-up for committee votes etc.)
-  local_auth: ^2.2.0
+  # Navigation
+  go_router: ^13.0.0
+
+  # Shared packages
+  gp_api_client:
+    path: ../gp_api_client
+  gp_ui:
+    path: ../gp_ui
 
   # Offline cache
   hive_flutter: ^1.1.0
 
-  # Navigation
-  go_router: ^13.0.0
+  # Biometric authentication (step-up for committee votes etc.)
+  local_auth: ^2.2.0
+
+  # State management (codegen annotations)
+  riverpod_annotation: ^2.3.0
 
   # Utilities
   uuid: ^4.4.0
 
 dev_dependencies:
+  build_runner: ^2.4.0
+  flutter_lints: ^3.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
-  build_runner: ^2.4.0
-  riverpod_generator: ^2.4.0
   mockito: ^5.4.0
+  riverpod_generator: ^2.4.0
 
 flutter:
   uses-material-design: true

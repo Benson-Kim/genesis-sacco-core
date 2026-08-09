@@ -5,19 +5,19 @@ import 'package:gp_ui/gp_ui.dart';
 void main() {
   group('GpPalette', () {
     test('navy matches prototype hex #0F2C6B', () {
-      expect(GpPalette.navy.value, equals(const Color(0xFF0F2C6B).value));
+      expect(GpPalette.navy.toARGB32(), equals(0xFF0F2C6B));
     });
 
     test('gold matches prototype hex #2E90FA', () {
-      expect(GpPalette.gold.value, equals(const Color(0xFF2E90FA).value));
+      expect(GpPalette.gold.toARGB32(), equals(0xFF2E90FA));
     });
 
     test('emerald matches prototype hex #1B7A54', () {
-      expect(GpPalette.emerald.value, equals(const Color(0xFF1B7A54).value));
+      expect(GpPalette.emerald.toARGB32(), equals(0xFF1B7A54));
     });
 
     test('brick matches prototype hex #B23A2E', () {
-      expect(GpPalette.brick.value, equals(const Color(0xFFB23A2E).value));
+      expect(GpPalette.brick.toARGB32(), equals(0xFFB23A2E));
     });
 
     test('all palette colours are fully opaque', () {
@@ -43,7 +43,7 @@ void main() {
         GpPalette.loss,
       ];
       for (final c in colours) {
-        expect(c.alpha, equals(255), reason: 'Expected $c to be fully opaque');
+        expect(c.a, equals(1.0), reason: 'Expected $c to be fully opaque');
       }
     });
   });
