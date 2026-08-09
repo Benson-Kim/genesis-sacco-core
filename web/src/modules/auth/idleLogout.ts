@@ -14,7 +14,7 @@
  *   15 minutes is far inside that bound and matches the house
  *   access-token custody posture (JWT <= 15 min).
  * - Multi-tab coherence rides the EXISTING custody model: the refresh
- *   token lives in per-tab sessionStorage (session.ts), so every tab
+ *   token lives in per-tab session storage (session.ts), so every tab
  *   owns — and revokes — its OWN token family independently; within a
  *   tab the session store's subscribe/notify flips `useSession()` and
  *   RequireAuth lands on the login gate. No cross-tab channel exists

@@ -51,7 +51,6 @@ beforeEach(() => {
 afterEach(() => {
   clearSession();
   window.sessionStorage.clear();
-  window.localStorage.clear();
   jest.useRealTimers();
   jest.clearAllMocks();
 });
