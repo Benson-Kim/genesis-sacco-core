@@ -2,8 +2,11 @@
 
 import type { KeyboardEvent, ReactNode } from "react";
 import { ApiError } from "@genesis/api-client";
-import { Button } from "@genesis/design-system";
 import type { KeysetListResult } from "./useKeysetList";
+import {
+  KeysetPaginator,
+  type KeysetPaginatorProps,
+} from "./KeysetPaginator";
 import styles from "./KeysetTable.module.css";
 
 export interface Column<T> {
@@ -20,6 +23,9 @@ export interface KeysetTableProps<T> {
   emptyMessage?: string;
   /** Row drill-down; rows become keyboard-activatable (Enter/Space). */
   onRowClick?: (row: T) => void;
+  /** Pagination props — when provided the table slices rows to the current
+   *  page and renders the paginator footer. Omit for legacy "load more" tables. */
+  pagination?: Omit<KeysetPaginatorProps<T>, "query" | "totalLoaded">;
 }
 
 /**
@@ -33,6 +39,7 @@ export function KeysetTable<T>({
   rowKey,
   emptyMessage = "Nothing to show yet.",
   onRowClick,
+  pagination,
 }: Readonly<KeysetTableProps<T>>) {
   if (query.isPending) {
     return <div className={styles.note}>Loading…</div>;
@@ -50,9 +57,17 @@ export function KeysetTable<T>({
     );
   }
 
-  const rows = query.data.pages.flatMap((page) => page.items);
+  const allRows = query.data.pages.flatMap((page) => page.items);
 
-  if (rows.length === 0) {
+  // Slice to current page when pagination is active; otherwise show all.
+  const rows = pagination
+    ? allRows.slice(
+        pagination.pageIndex * pagination.pageSize,
+        (pagination.pageIndex + 1) * pagination.pageSize,
+      )
+    : allRows;
+
+  if (allRows.length === 0) {
     return <div className={styles.note}>{emptyMessage}</div>;
   }
 
@@ -105,15 +120,12 @@ export function KeysetTable<T>({
         </tbody>
         </table>
       </div>
-      {query.hasNextPage && (
-        <div className={styles.more}>
-          <Button
-            onClick={() => query.fetchNextPage()}
-            disabled={query.isFetchingNextPage}
-          >
-            {query.isFetchingNextPage ? "Loading…" : "Load more"}
-          </Button>
-        </div>
+      {pagination && (
+        <KeysetPaginator
+          {...pagination}
+          query={query}
+          totalLoaded={allRows.length}
+        />
       )}
     </div>
   );

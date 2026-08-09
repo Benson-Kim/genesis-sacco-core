@@ -25,16 +25,16 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
+import { useQuery } from "@tanstack/react-query";
+import { Button, Card, FilterControl } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
-import { EMPTY_EXIT_FILTERS, fetchExitsPage, type ExitListFilters } from "../api";
+import { EMPTY_EXIT_FILTERS, fetchExitsPage, fetchExitStatusCounts, type ExitListFilters } from "../api";
 import { EXIT_STATUSES, EXIT_STATUS_LABELS, type ExitRecord } from "../schemas";
 import { exitStatusPill } from "./pills";
-import { FormField } from "@/modules/forms/FormField";
 import styles from "./Exits.module.css";
 
 // Drawer-level code splitting (speed): drawer chunks load
@@ -67,6 +67,21 @@ export function ExitsScreen() {
   const permissions = usePermissions();
   const [filters, setFilters] = useState<ExitListFilters>(EMPTY_EXIT_FILTERS);
   const [drawer, setDrawer] = useState<DrawerState>(null);
+
+  // Advisory per-status counts — decorative badges only; null while loading.
+  const { data: statusCounts } = useQuery({
+    queryKey: ["exits", "status-counts"],
+    queryFn: fetchExitStatusCounts,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  // Total across all statuses — sum of per-status counts; null until loaded.
+  const allStatusCount = statusCounts
+    ? EXIT_STATUSES.reduce((sum, s) => sum + (statusCounts[s]?.count ?? 0), 0)
+    : null;
+  const allStatusCountMore = statusCounts
+    ? EXIT_STATUSES.some((s) => statusCounts[s]?.hasMore)
+    : false;
 
   const list = useKeysetList<ExitRecord>({
     queryKey: ["exits", "list", filters],
@@ -136,25 +151,24 @@ export function ExitsScreen() {
     <div>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <FormField id="exit-filter-status" label="Status">
-            {(control) => (
-              <select
-                {...control}
-                className={`${styles.select} ${styles.filterControl}`}
-                value={filters.status}
-                onChange={(event) =>
-                  setFilters({ status: event.target.value as ExitListFilters["status"] })
-                }
-              >
-                <option value="">All statuses</option>
-                {EXIT_STATUSES.map((option) => (
-                  <option key={option} value={option}>
-                    {EXIT_STATUS_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
+          <FilterControl
+            id="exit-status-filter"
+            label="Status"
+            value={filters.status}
+            onChange={(next) => setFilters({ status: next as ExitListFilters["status"] })}
+            options={EXIT_STATUSES.map((s) => {
+              const entry = statusCounts?.[s];
+              return {
+                value: s,
+                label: EXIT_STATUS_LABELS[s],
+                count: entry?.count ?? null,
+                countMore: entry?.hasMore ?? false,
+              };
+            })}
+            allLabel="All statuses"
+            allCount={allStatusCount}
+            allCountMore={allStatusCountMore}
+          />
         </div>
         <div className={styles.toolbarActions}>
           {mayRequest && (

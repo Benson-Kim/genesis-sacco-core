@@ -82,7 +82,7 @@
   margin-bottom: 2px;
   border-radius: 10px;
   color: rgba(255, 255, 255, 0.72);
-  font-weight: 600;
+  font-weight: 400;
   font-size: 13px;
   text-decoration: none;
 }
@@ -90,7 +90,7 @@
 .navItemOn {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .main {

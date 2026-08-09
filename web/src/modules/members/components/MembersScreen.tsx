@@ -114,10 +114,6 @@ const COLUMNS: Column<MemberDetail>[] = [
             </div>
         ),
     },
-    // Advisory aggregates (review): SERVER decimal strings
-    // rendered VERBATIM — never summed, never derived, never
-    // re-formatted (the money rule; the same figures the KYC drawer
-    // shows on the detail read).
     {
         key: "deposits",
         header: "Deposits",
@@ -210,7 +206,7 @@ export function MembersScreen() {
     const mayCreate = can(permissions.data, "members", "create");
 
     return (
-        <div>
+        <Card>
             <div className={styles.toolbar}>
                 <div className={styles.filters}>
                     <SegmentedFilter
@@ -272,7 +268,7 @@ export function MembersScreen() {
             {wizardMember !== null && (
                 <KycWizard member={wizardMember} onClose={() => setWizardMember(null)} />
             )}
-        </div>
+        </Card>
     );
 }
 
