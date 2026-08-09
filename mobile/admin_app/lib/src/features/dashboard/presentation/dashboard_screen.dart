@@ -47,7 +47,7 @@ class _DashboardBody extends StatelessWidget {
         const SizedBox(height: 12),
         const GpStatCard(label: 'Portfolio at Risk (PAR-30)', value: '—%'),
         const SizedBox(height: 32),
-        Text('Modules', style: GpTypography.titleMedium),
+        const Text('Modules', style: GpTypography.titleMedium),
         const SizedBox(height: 12),
         _ModuleGrid(permissions: permissions),
       ],

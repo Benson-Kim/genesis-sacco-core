@@ -64,7 +64,7 @@ class _QuickActions extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Quick Actions', style: GpTypography.titleMedium),
+        const Text('Quick Actions', style: GpTypography.titleMedium),
         const SizedBox(height: 12),
         Wrap(
           spacing: 12,
