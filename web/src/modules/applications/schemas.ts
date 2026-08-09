@@ -86,6 +86,12 @@ export const applicationSchema = z.object({
    * key is a contract violation, never a silent pass. */
   max_eligible: moneySchema.nullable(),
   version: z.number().int(),
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
+  product_name: z.string().nullable(),
 });
 
 export type Application = z.infer<typeof applicationSchema>;

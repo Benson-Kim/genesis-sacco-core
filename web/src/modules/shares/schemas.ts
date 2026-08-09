@@ -67,6 +67,13 @@ export const shareTransferRecordSchema = z.object({
   decided_at: z.string().nullable(),
   version: z.number().int().min(1),
   created_at: z.string(),
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  from_member_no: z.string().nullable(),
+  from_member_name: z.string().nullable(),
+  to_member_no: z.string().nullable(),
+  to_member_name: z.string().nullable(),
 });
 
 export type ShareTransferRecord = z.infer<typeof shareTransferRecordSchema>;

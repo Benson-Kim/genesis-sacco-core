@@ -61,6 +61,9 @@ function applicationOut(overrides: Record<string, unknown> = {}) {
     recommended_by: null,
     max_eligible: "300000.00",
     version: 3,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
+    product_name: "Development Loan",
     ...overrides,
   };
 }
