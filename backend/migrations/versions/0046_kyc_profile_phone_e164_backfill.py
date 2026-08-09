@@ -71,8 +71,8 @@ def _rewrite(member_type: str, path: str, *, up: bool) -> str:
     else:
         expr = f"to_jsonb('0' || substr(profile #>> '{{{path}}}', 5))"
         predicate = f"profile #>> '{{{path}}}' ~ '^\\+254[71][0-9]{{8}}$'"
-    return (  # noqa: S608
-        "UPDATE member_profiles\n"
+    return (
+        "UPDATE member_profiles\n"  # noqa: S608
         f"   SET profile = jsonb_set(profile, '{{{path}}}', {expr})\n"
         f" WHERE member_type = '{member_type}'\n"
         f"   AND {predicate};"
