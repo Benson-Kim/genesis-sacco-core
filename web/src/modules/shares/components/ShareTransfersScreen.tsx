@@ -148,20 +148,32 @@ export function ShareTransfersScreen() {
     {
       key: "from",
       header: "From member",
-      render: (row) => (
-        <span className={styles.mono} title={row.from_member_id}>
-          {row.from_member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        row.from_member_no !== null ? (
+          <span title={row.from_member_id}>
+            {row.from_member_no} — {row.from_member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.from_member_id}>
+            {row.from_member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "to",
       header: "To member",
-      render: (row) => (
-        <span className={styles.mono} title={row.to_member_id}>
-          {row.to_member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        row.to_member_no !== null ? (
+          <span title={row.to_member_id}>
+            {row.to_member_no} — {row.to_member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.to_member_id}>
+            {row.to_member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "amount",

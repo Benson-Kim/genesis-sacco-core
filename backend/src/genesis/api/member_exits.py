@@ -119,6 +119,13 @@ class ExitOut(BaseModel):
     settlement_txn_id: str | None
     version: int
     created_at: str
+    #: Human display labels: the exiting member's number and
+    #: registered name, resolved server-side in the same read
+    #: statement. null on the settlement-response shape (its locked
+    #: read deliberately skips the label join) — labels are never
+    #: invented.
+    member_no: str | None
+    member_name: str | None
 
 
 class ExitListResponse(BaseModel):
@@ -209,6 +216,8 @@ def _out(record: exits_service.ExitRecord) -> ExitOut:
         ),
         version=record.version,
         created_at=record.created_at.isoformat(),
+        member_no=record.member_no,
+        member_name=record.member_name,
     )
 
 
