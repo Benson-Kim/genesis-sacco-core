@@ -121,6 +121,7 @@ export const AUTHORITY_ROLE_NAMES = [
   "Credit Committee",
   "Accountant",
   "Auditor",
+  "Senior Credit Officer",
 ] as const;
 
 /** Month labels for financial_year_end_month (1–12). */

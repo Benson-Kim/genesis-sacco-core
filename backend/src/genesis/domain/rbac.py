@@ -1,8 +1,12 @@
-"""RBAC matrix mirrored verbatim from the prototype `seedPerms()` (P4).
+"""RBAC matrix mirrored from the prototype `seedPerms()` (P4).
 
-7 roles x 7 prototype modules x view/create/edit/approve, deny-by-
-default, plus the `corrections` module (dedicated permission
-strings for the fraud channel — see _CORRECTIONS_GRANTS). Pure data:
+The prototype's 7 roles x 7 modules x view/create/edit/approve,
+deny-by-default, plus the `corrections` module (dedicated permission
+strings for the fraud channel — see _CORRECTIONS_GRANTS) and the
+seeded SENIOR tier (see SENIOR_TIERS): the matrix stays FLAT — no
+inheritance, no chain walk — a senior role is a distinct seeded role
+whose explicit grants form a superset of the grants of its junior
+roles (auditability: every grant is visible in one row). Pure data:
 enforcement lives in the API authz dependency and the permissions table.
 """
 
@@ -47,7 +51,12 @@ TELLER = "Teller"
 CREDIT_COMMITTEE = "Credit Committee"
 ACCOUNTANT = "Accountant"
 AUDITOR = "Auditor"
+SENIOR_CREDIT_OFFICER = "Senior Credit Officer"
 
+#: The prototype's 7 roles first (seedPerms() order preserved), then
+#: the seeded senior-tier extensions. Appending here widens the
+#: approval-bands vocabulary and the web authority picker mirror in
+#: the same change (the W57-5 drift tripwire pins order AND content).
 ROLE_NAMES: tuple[str, ...] = (
     SYSTEM_ADMIN,
     BRANCH_MANAGER,
@@ -56,7 +65,26 @@ ROLE_NAMES: tuple[str, ...] = (
     CREDIT_COMMITTEE,
     ACCOUNTANT,
     AUDITOR,
+    SENIOR_CREDIT_OFFICER,
 )
+
+#: Seeded supervisory tiers (SACCO practice), senior -> junior roles.
+#: The matrix stays FLAT: nothing resolves grants through this map at
+#: enforcement time — it documents the supervisory relationship and is
+#: the anchor for the falsifiable superset invariant (a senior role
+#: holds EVERY grant each junior holds, plus a strictly wider explicit
+#: set; tests/test_rbac_matrix.py walks this map). Amount authority
+#: stays in the tenant-configurable approval-bands matrix: a senior
+#: tier is a role name plus a HIGHER configured band ceiling, never a
+#: new enforcement mechanism. The Credit Committee is deliberately NOT
+#: a junior here: it is a PEER approval body whose corrections-checker
+#: grant belongs to the fraud channel (_CORRECTIONS_GRANTS), which the
+#: senior tier must not widen. SoD is preserved unchanged: the senior
+#: tier gains NOTHING on the narrow channels (corrections,
+#: member_identity) or the admin modules, and is not an assurance role.
+SENIOR_TIERS: dict[str, tuple[str, ...]] = {
+    SENIOR_CREDIT_OFFICER: (LOAN_OFFICER,),
+}
 
 #: Assurance functions (the B2 segregation-of-duties principle,
 #: three lines of defense): roles whose FUNCTION is reviewing the
@@ -128,6 +156,19 @@ def _grants(role: str, module: Module) -> dict[Action, bool]:
         create = module is Module.TRANSACTIONS
     elif role == CREDIT_COMMITTEE:
         view = module in {Module.APPLICATIONS, Module.LOAN_BOOK, Module.REPORTS}
+        approve = module is Module.APPLICATIONS
+    elif role == SENIOR_CREDIT_OFFICER:
+        # Supervisory tier above the Loan Officer (SENIOR_TIERS) and a
+        # peer of the Credit Committee: every Loan Officer grant plus
+        # the widened set — applications:approve (committee-grade
+        # ratification, so tenants can band it ABOVE both) and
+        # loan_book create/edit (recovery-case and servicing
+        # supervision the junior holds view-only). The narrow channels
+        # (corrections, member_identity) are handled above and stay
+        # ungranted; admin modules stay denied.
+        view = module not in _ADMIN_MODULES
+        create = module in {Module.MEMBERS, Module.APPLICATIONS, Module.LOAN_BOOK}
+        edit = module in {Module.APPLICATIONS, Module.LOAN_BOOK}
         approve = module is Module.APPLICATIONS
     elif role == ACCOUNTANT:
         view = module in {Module.MEMBERS, Module.LOAN_BOOK, Module.TRANSACTIONS, Module.REPORTS}

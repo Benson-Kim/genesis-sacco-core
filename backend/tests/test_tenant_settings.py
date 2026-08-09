@@ -604,6 +604,57 @@ def test_officer_ratifying_above_band_gets_403_and_stage_unchanged() -> None:
     asyncio.run(run())
 
 
+def test_senior_officer_ratifies_above_junior_ceiling_junior_refused() -> None:
+    """#35 item 8 (senior tiers): a band-capped ratification ABOVE the
+    junior's ceiling and WITHIN the senior's is refused for the junior
+    and accepted for the senior — the seeded Senior Credit Officer is
+    a role name plus a higher configured band, no new mechanism.
+    Hand-computed: bands Loan Officer (0, 100 000], Senior Credit
+    Officer (100 000, 500 000], System Admin open tail; the 250 000.00
+    application resolves to band 1 — above the officer's ceiling,
+    within the senior's. Both roles hold applications:edit (the senior
+    superset), so the junior's 403 is the BAND refusing, not RBAC —
+    proven by the stage staying 'submitted'. Falsifiable: removing the
+    enforce_authority_band call from transition_stage lets the junior
+    leg advance the stage."""
+
+    async def run() -> None:
+        tid, admin_id, token = await seed_actor()
+        await _configure(
+            tid,
+            admin_id,
+            approval_bands=[
+                {"authority": "Loan Officer", "max_amount": "100000.00"},
+                {"authority": "Senior Credit Officer", "max_amount": "500000.00"},
+                {"authority": "System Admin", "max_amount": None},
+            ],
+        )
+        app_id = await _make_application(
+            tid, _headers(token), amount="250000.00", name="Senior Band Borrower"
+        )
+        _, officer_token = await add_user(tid, "Loan Officer")
+        _, senior_token = await add_user(tid, "Senior Credit Officer")
+        async with api_client() as client:
+            res = await client.post(
+                f"/applications/{app_id}/transition",
+                json={"version": 1, "target": "appraisal"},
+                headers=_headers(officer_token),
+            )
+            assert res.status_code == 403, res.text
+        # The junior's refusal provably moved nothing.
+        assert await _stage_of(tid, app_id) == "submitted"
+        async with api_client() as client:
+            res = await client.post(
+                f"/applications/{app_id}/transition",
+                json={"version": 1, "target": "appraisal"},
+                headers=_headers(senior_token),
+            )
+            assert res.status_code == 200, res.text
+        assert await _stage_of(tid, app_id) == "appraisal"
+
+    asyncio.run(run())
+
+
 def test_officer_may_reject_above_band_and_unconfigured_matrix_is_uncapped() -> None:
     async def run() -> None:
         tid, admin_id, token = await seed_actor()
