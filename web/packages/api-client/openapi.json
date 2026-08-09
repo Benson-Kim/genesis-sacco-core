@@ -3866,7 +3866,8 @@
           "settings",
           "access_control",
           "corrections",
-          "member_identity"
+          "member_identity",
+          "application_overrides"
         ],
         "title": "Module",
         "type": "string"
@@ -4155,6 +4156,29 @@
           "code"
         ],
         "title": "OtpVerifyBody",
+        "type": "object"
+      },
+      "OverrideBody": {
+        "additionalProperties": false,
+        "description": "extra=\"forbid\"; the reason is MANDATORY (an unexplained override\nis a rejected design) and bounded (it lands verbatim on the audit\nrow). The version binds the override to the persisted decision\nsnapshot the supervisor actually reviewed (409 on drift).",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "OverrideBody",
         "type": "object"
       },
       "Par30TrendPointOut": {
@@ -7633,6 +7657,60 @@
           }
         },
         "summary": "Pledge Guarantee",
+        "tags": [
+          "loans"
+        ]
+      }
+    },
+    "/applications/{application_id}/override": {
+      "post": {
+        "description": "Supervisor override: overturn a refusal (application_overrides:approve).",
+        "operationId": "override_application_refusal_applications__application_id__override_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Override Application Refusal",
         "tags": [
           "loans"
         ]

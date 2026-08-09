@@ -98,9 +98,7 @@ async def _override(
     tid: uuid.UUID, actor: uuid.UUID, app_id: uuid.UUID, *, version: int, reason: str = "override"
 ):
     async with tenant_session(factory(), tid) as session:
-        return await override_refusal(
-            session, tid, actor, app_id, version=version, reason=reason
-        )
+        return await override_refusal(session, tid, actor, app_id, version=version, reason=reason)
 
 
 async def _app_state(tid: uuid.UUID, app_id: uuid.UUID) -> tuple[str, int]:

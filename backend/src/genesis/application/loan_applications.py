@@ -769,8 +769,7 @@ async def override_refusal(
     recommender = uuid.UUID(str(row[4])) if row[4] is not None else None
     if recommender is not None and actor_id == recommender:
         raise ConflictError(
-            "the recommender of an application cannot override its refusal "
-            "(segregation of duties)"
+            "the recommender of an application cannot override its refusal (segregation of duties)"
         )
     # Maker separation + assurance exclusion + fail-closed role
     # resolution — the ONE shared SoD guard (reuse-first). A None
@@ -801,7 +800,8 @@ async def override_refusal(
         )
     ).first()
     overridden_actor = (
-        uuid.UUID(str(overridden[0])) if overridden is not None and overridden[0] is not None
+        uuid.UUID(str(overridden[0]))
+        if overridden is not None and overridden[0] is not None
         else None
     )
     if overridden_actor is not None and overridden_actor == actor_id:
