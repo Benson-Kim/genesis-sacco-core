@@ -187,7 +187,34 @@ def test_id_number_lookup_plan_is_index_served_no_sort() -> None:
         await _seed_person_with_profile(
             tid, member_no="GP-7321", name="Plan Member", id_number="63179988"
         )
+        # Cardinality that discriminates (the tiny-CI-tables discipline):
+        # with a single member row the members-driven join order ties on
+        # cost and the planner may bypass the expression index. Decoy
+        # members with distinct id_numbers make the tenant-wide members
+        # entry point strictly more expensive, and ANALYZE hands the
+        # planner the real row counts, so the winning plan must enter
+        # through idx_member_profiles_id_number — while dropping the
+        # index still fails the asserts below (no plan can name it).
+        for i in range(8):
+            await _seed_person_with_profile(
+                tid,
+                member_no=f"GP-74{i:02d}",
+                name=f"Plan Decoy {i}",
+                id_number=f"771002{i:02d}",
+            )
         async with tenant_session(factory(), tid) as session:
+            await session.execute(text("ANALYZE members, member_profiles"))
+            # Tiny-CI-tables discipline, join-order leg: the per-tenant
+            # row estimate stays 1 in the shared harness database, so the
+            # members-driven join order ties the profile-driven one on
+            # cost and the tie-break may bypass the expression index.
+            # Forcing FROM-clause join order (the enable_seqscan=off
+            # posture applied to join ordering) makes member_profiles the
+            # driving relation, so the plan must pick its entry path:
+            # WITH 0045's index the probe is index-served; DROP the index
+            # and the entry seq-scans, failing the zero-seqscan assert —
+            # the falsifiability documented above, now deterministic.
+            await session.execute(text("SET LOCAL join_collapse_limit = 1"))
             await session.execute(text("SET LOCAL enable_seqscan = off"))
             rows = (
                 await session.execute(
