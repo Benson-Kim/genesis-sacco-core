@@ -296,7 +296,7 @@ test("hostile product name renders as inert TEXT; register + summary money rende
   expect(screen.getByText("20.25% of book")).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
   mocked.fetchLoansPage
     .mockResolvedValueOnce(page([baseLoan()], "opaque-cursor-§1"))
@@ -305,7 +305,7 @@ test("keyset paging: Load more follows the server cursor VERBATIM — no offset 
   mockedApps.fetchApplicationsPage.mockResolvedValue(page([]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchLoansPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchLoansPage.mock.calls[0]?.[1]).toBeNull();
@@ -322,14 +322,17 @@ test("status + classification filters drive the SERVER query — the client neve
     expect(mocked.fetchLoansPage).toHaveBeenCalledWith(
       { status: "written_off", classification: "" },
       null,
+      10,
     ),
   );
 
-  await user.click(screen.getByRole("button", { name: "Doubtful" }));
+  // Five declared classifications → the shared filter renders its select variant.
+  await user.selectOptions(screen.getByLabelText("Classification"), "doubtful");
   await waitFor(() =>
     expect(mocked.fetchLoansPage).toHaveBeenCalledWith(
       { status: "written_off", classification: "doubtful" },
       null,
+      10,
     ),
   );
 });
