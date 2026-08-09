@@ -45,9 +45,8 @@ class GpStatCard extends StatelessWidget {
                         ? Icons.arrow_upward_rounded
                         : Icons.arrow_downward_rounded,
                     size: 14,
-                    color: trendUp == true
-                        ? GpPalette.emerald
-                        : GpPalette.orange,
+                    color:
+                        trendUp == true ? GpPalette.emerald : GpPalette.orange,
                   ),
                   const SizedBox(width: 2),
                   Text(

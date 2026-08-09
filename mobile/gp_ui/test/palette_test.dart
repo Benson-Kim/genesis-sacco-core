@@ -43,8 +43,7 @@ void main() {
         GpPalette.loss,
       ];
       for (final c in colours) {
-        expect(c.alpha, equals(255),
-            reason: 'Expected $c to be fully opaque');
+        expect(c.alpha, equals(255), reason: 'Expected $c to be fully opaque');
       }
     });
   });
