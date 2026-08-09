@@ -446,8 +446,10 @@ def _direction_clause(direction: Side, params: dict[str, object]) -> str:
         params[key] = value
         flipped_keys.append(f":{key}")
     return (
-        f"((type IN ({', '.join(same_keys)}) AND reversal_of_id IS NULL) "
-        f"OR (type IN ({', '.join(flipped_keys)}) AND reversal_of_id IS NOT NULL))"
+        f"((transactions.type IN ({', '.join(same_keys)}) "
+        "AND reversal_of_id IS NULL) "
+        f"OR (transactions.type IN ({', '.join(flipped_keys)}) "
+        "AND reversal_of_id IS NOT NULL))"
     )
 
 
@@ -482,7 +484,7 @@ async def list_transactions(
         clauses.append("member_id = CAST(:mid AS uuid)")
         params["mid"] = str(member_id)
     if txn_type is not None:
-        clauses.append("type = :type")
+        clauses.append("transactions.type = :type")
         params["type"] = txn_type.value
     if channel is not None:
         clauses.append("channel = :channel")

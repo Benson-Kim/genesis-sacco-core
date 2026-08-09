@@ -157,16 +157,18 @@ def test_codex_review_queries_are_index_backed() -> None:
         assert "idx_applications_stage_keyset" in stage_plan
         assert "Sort" not in stage_plan
         assert "Seq Scan" not in stage_plan
-        # Display-label joins are PRIMARY-KEY probes per page row.
-        assert "members_pkey" in stage_plan
+        # Display-label joins ride an id-leading UNIQUE probe per page
+        # row (the planner may pick members_pkey or 0018's
+        # uq_members_id_type — both lead on id; either is the probe).
+        assert "members_pkey" in stage_plan or "uq_members_id_type" in stage_plan
         assert "loan_products_pkey" in stage_plan
         # 0006 must keep serving the unfiltered page (regression fence
         # against replacing it with the stage-shaped index).
         assert "idx_applications_created_keyset" in unfiltered_plan
         assert "Sort" not in unfiltered_plan
         assert "Seq Scan" not in unfiltered_plan
-        # Display-label joins are PRIMARY-KEY probes per page row.
-        assert "members_pkey" in unfiltered_plan
+        # Same id-leading UNIQUE probe posture as the stage plan.
+        assert "members_pkey" in unfiltered_plan or "uq_members_id_type" in unfiltered_plan
         assert "loan_products_pkey" in unfiltered_plan
         # 0014: the reversal guard lookup is index-backed.
         assert "idx_repayments_transaction" in repayment_plan

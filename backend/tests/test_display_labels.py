@@ -88,7 +88,13 @@ async def _seed_loan(tid: uuid.UUID, mid: uuid.UUID, pid: uuid.UUID, aid: uuid.U
                 "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:aid AS uuid), "
                 "CAST(:mid AS uuid), CAST(:pid AS uuid), 1000.00, 1000.00, '12.00', 12)"
             ),
-            {"id": str(loan_id), "tid": str(tid), "aid": str(aid), "mid": str(mid)},
+            {
+                "id": str(loan_id),
+                "tid": str(tid),
+                "aid": str(aid),
+                "mid": str(mid),
+                "pid": str(pid),
+            },
         )
     return loan_id
 
