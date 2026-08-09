@@ -34,6 +34,7 @@ function entry(overrides: Partial<AuditEntry> = {}): AuditEntry {
     before: { full_name: HOSTILE, branch: "HQ" },
     after: { full_name: "Renamed", branch: "HQ" },
     redacted: false,
+    actor_name: "Test User",
     ...overrides,
   };
 }

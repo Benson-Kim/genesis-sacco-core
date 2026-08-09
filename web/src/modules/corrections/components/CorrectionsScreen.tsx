@@ -115,13 +115,32 @@ export function CorrectionsScreen() {
       ),
     },
     {
-      key: "loan",
-      header: "Loan",
-      render: (row) => (
-        <span className={styles.mono} title={row.loan_id}>
-          {row.loan_id.slice(0, 8)}
-        </span>
-      ),
+      key: "member",
+      header: "Member",
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row (via the loan); the loan uuid stays on the title.
+        row.member_no !== null ? (
+          <span title={row.loan_id}>
+            {row.member_no} — {row.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.loan_id}>
+            {row.loan_id.slice(0, 8)}
+          </span>
+        ),
+    },
+    {
+      key: "original",
+      header: "Original posting",
+      render: (row) =>
+        row.original_txn_ref !== null ? (
+          <span className={styles.mono}>{row.original_txn_ref}</span>
+        ) : (
+          <span className={styles.mono} title={row.original_transaction_id}>
+            {row.original_transaction_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "amount",
@@ -176,11 +195,18 @@ export function CorrectionsScreen() {
     {
       key: "member",
       header: "Member",
-      render: (row) => (
-        <span className={styles.mono} title={row.member_id}>
-          {row.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        row.member_no !== null ? (
+          <span title={row.member_id}>
+            {row.member_no} — {row.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.member_id}>
+            {row.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "total",
