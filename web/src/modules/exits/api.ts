@@ -58,12 +58,13 @@ export const EMPTY_EXIT_FILTERS: ExitListFilters = { status: "" };
 export async function fetchExitsPage(
   filters: ExitListFilters,
   cursor: string | null,
+  limit: number = EXITS_PAGE_SIZE,
 ): Promise<KeysetPage<ExitRecord>> {
   const { data, error, response } = await api.GET("/member-exits", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: EXITS_PAGE_SIZE,
+        limit,
         status: filters.status === "" ? undefined : filters.status,
       },
     },

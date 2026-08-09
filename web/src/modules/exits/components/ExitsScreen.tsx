@@ -29,6 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Card, FilterControl } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -65,8 +66,15 @@ type DrawerState =
 
 export function ExitsScreen() {
   const permissions = usePermissions();
-  const [filters, setFilters] = useState<ExitListFilters>(EMPTY_EXIT_FILTERS);
+  const [filters, setFiltersRaw] = useState<ExitListFilters>(EMPTY_EXIT_FILTERS);
   const [drawer, setDrawer] = useState<DrawerState>(null);
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  function setFilters(next: ExitListFilters) {
+    setFiltersRaw(next);
+    pagination.setPageIndex(0);
+  }
 
   // Advisory per-status counts — decorative badges only; null while loading.
   const { data: statusCounts } = useQuery({
@@ -84,8 +92,8 @@ export function ExitsScreen() {
     : false;
 
   const list = useKeysetList<ExitRecord>({
-    queryKey: ["exits", "list", filters],
-    fetchPage: (cursor) => fetchExitsPage(filters, cursor),
+    queryKey: ["exits", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchExitsPage(filters, cursor, pagination.pageSize),
   });
 
   // Creating an exit request is a member lifecycle change
@@ -148,7 +156,7 @@ export function ExitsScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
           <FilterControl
@@ -197,6 +205,13 @@ export function ExitsScreen() {
           rowKey={(exit) => exit.id}
           emptyMessage="No exit requests match this filter."
           onRowClick={(exit) => setDrawer({ mode: "detail", exitId: exit.id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "exit requests",
+          }}
         />
       </Card>
 
@@ -217,6 +232,6 @@ export function ExitsScreen() {
       {drawer !== null && drawer.mode === "statement" && (
         <ExitStatementDrawer exitId={drawer.exitId} onClose={() => setDrawer(null)} />
       )}
-    </div>
+    </Card>
   );
 }

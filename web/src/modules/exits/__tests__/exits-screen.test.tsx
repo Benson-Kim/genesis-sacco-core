@@ -312,14 +312,14 @@ test("register renders every settlement figure VERBATIM in its own labelled colu
   expect(screen.getByText(/totals are not computed in this screen/)).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM (gate 1.3); the status filter drives the SERVER query", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM (gate 1.3); the status filter drives the SERVER query", async () => {
   const user = userEvent.setup();
   mocked.fetchExitsPage
     .mockResolvedValueOnce({ items: [requestedExit()], nextCursor: "opaque-cursor-§1" })
     .mockResolvedValue({ items: [], nextCursor: null });
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
   await waitFor(() => expect(mocked.fetchExitsPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchExitsPage.mock.calls[0]?.[1]).toBeNull();
   expect(mocked.fetchExitsPage.mock.calls[1]?.[1]).toBe("opaque-cursor-§1");
@@ -328,7 +328,7 @@ test("keyset paging: Load more follows the server cursor VERBATIM (gate 1.3); th
   // an aria-pressed button group, not a select.
   await user.click(screen.getByRole("button", { name: "Approved" }));
   await waitFor(() =>
-    expect(mocked.fetchExitsPage).toHaveBeenCalledWith({ status: "approved" }, null),
+    expect(mocked.fetchExitsPage).toHaveBeenCalledWith({ status: "approved" }, null, 10),
   );
 });
 
