@@ -4,7 +4,14 @@ from fastapi.routing import APIRoute
 
 from genesis.api.app import create_app
 from genesis.api.authz import RequireMemberPrincipal, RequirePermission
-from genesis.domain.rbac import ROLE_NAMES, Action, Module, seed_matrix
+from genesis.domain.rbac import (
+    ASSURANCE_ROLES,
+    ROLE_NAMES,
+    SENIOR_TIERS,
+    Action,
+    Module,
+    seed_matrix,
+)
 
 UNPROTECTED_ALLOWLIST = {
     "/healthz",
@@ -25,7 +32,9 @@ UNPROTECTED_ALLOWLIST = {
 
 def test_matrix_shape() -> None:
     matrix = seed_matrix()
-    assert len(matrix) == 7
+    # 8 roles: the 7 prototype roles + the seeded senior tier
+    # (Senior Credit Officer, SENIOR_TIERS).
+    assert len(matrix) == 8
     for role in ROLE_NAMES:
         # 9 modules: the 7 prototype modules + the dedicated P13.15
         # corrections module (A3 maker-checker) + the dedicated P14.5
@@ -106,6 +115,59 @@ def test_member_identity_module_grants_are_narrow() -> None:
     assert not any((auditor[Action.CREATE], auditor[Action.EDIT], auditor[Action.APPROVE]))
     for denied_role in ("Loan Officer", "Teller", "Credit Committee", "Accountant"):
         assert not any(matrix[denied_role][module].values())
+
+
+def test_senior_tier_superset_and_widened_grants() -> None:
+    """Falsifiable senior-tier invariant (#35 item 8, flat matrix):
+    every senior role in SENIOR_TIERS holds EVERY grant each of its
+    junior roles holds (superset assertion against the seeded matrix)
+    PLUS exactly the hand-computed widened set — for the Senior Credit
+    Officer: applications:approve (committee-grade ratification) and
+    loan_book create/edit (recovery-case + servicing supervision the
+    Loan Officer holds view-only). SoD preserved UNCHANGED: the senior
+    tier holds NOTHING on the narrow channels (corrections is the
+    fraud channel, member_identity the identity-of-record channel) or
+    the admin modules, and is not an assurance role. Falsifiable:
+    dropping any junior grant from the senior row fails the superset
+    walk; granting the senior row corrections/member_identity/admin
+    access fails the narrow-channel legs; adding an undocumented grant
+    fails the exact widened-set comparison."""
+    matrix = seed_matrix()
+    for senior, juniors in SENIOR_TIERS.items():
+        assert senior not in ASSURANCE_ROLES
+        for junior in juniors:
+            for module in Module:
+                for action in Action:
+                    if matrix[junior][module][action]:
+                        assert matrix[senior][module][action], (senior, junior, module, action)
+        widened = {
+            (module, action)
+            for module in Module
+            for action in Action
+            if matrix[senior][module][action]
+            and not any(matrix[junior][module][action] for junior in juniors)
+        }
+        assert widened, f"{senior} must be strictly wider than its juniors"
+    senior_credit = matrix["Senior Credit Officer"]
+    # Hand-computed widened set for the Senior Credit Officer.
+    assert {
+        (module, action)
+        for module in Module
+        for action in Action
+        if senior_credit[module][action] and not matrix["Loan Officer"][module][action]
+    } == {
+        (Module.APPLICATIONS, Action.APPROVE),
+        (Module.LOAN_BOOK, Action.CREATE),
+        (Module.LOAN_BOOK, Action.EDIT),
+    }
+    # Narrow channels and admin modules stay fully denied.
+    for module in (
+        Module.CORRECTIONS,
+        Module.MEMBER_IDENTITY,
+        Module.SETTINGS,
+        Module.ACCESS_CONTROL,
+    ):
+        assert not any(senior_credit[module].values()), module
 
 
 def test_every_operation_carries_the_authz_dependency() -> None:
