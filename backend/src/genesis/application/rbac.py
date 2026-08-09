@@ -121,7 +121,7 @@ async def actor_access(
 
 
 async def seed_permissions(session: AsyncSession, tenant_id: uuid.UUID) -> dict[str, uuid.UUID]:
-    """Create the 7 system roles and their prototype matrix; idempotent."""
+    """Create the seeded system roles and their matrix; idempotent."""
     role_ids: dict[str, uuid.UUID] = {}
     for role_name, modules in seed_matrix().items():
         existing = (
