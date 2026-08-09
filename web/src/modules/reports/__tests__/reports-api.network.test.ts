@@ -145,6 +145,8 @@ async function fetchStub(input: Request | string | URL, init?: RequestInit): Pro
           member_id: MEMBER_ID,
           status: "requested",
           created_at: "2026-07-01T09:00:00+00:00",
+          member_no: "M-0001",
+          member_name: "Jane Wanjiku",
           // Money fields of ExitOut — never consumed by this module.
           net_payable: "120000.10",
           shares_amount: "20000.00",

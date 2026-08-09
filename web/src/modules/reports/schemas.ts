@@ -281,6 +281,10 @@ export const exitPickerSchema = z.object({
   member_id: z.string(),
   status: z.string(),
   created_at: z.string(),
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * on the row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
 });
 
 export type ExitPickerRow = z.infer<typeof exitPickerSchema>;
