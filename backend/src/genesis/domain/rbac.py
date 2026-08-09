@@ -152,7 +152,10 @@ _MEMBER_IDENTITY_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
 #: reviews the trail (view only; ASSURANCE_ROLES also excludes acting
 #: server-side). Roles absent here hold NOTHING (deny by default).
 _APPLICATION_OVERRIDE_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
-    SYSTEM_ADMIN: (True, False, False, True),
+    # System Admin keeps the root convention (all four actions true on
+    # every module — the matrix-shape invariant); only :approve is
+    # consumed by the override endpoint.
+    SYSTEM_ADMIN: (True, True, True, True),
     SENIOR_CREDIT_OFFICER: (True, False, False, True),
     AUDITOR: (True, False, False, False),
 }
