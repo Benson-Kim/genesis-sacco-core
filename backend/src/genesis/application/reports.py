@@ -48,12 +48,12 @@ from genesis.application.portfolio_reconstruction import (
     reconstruct_month,
 )
 from genesis.application.portfolio_snapshots import SNAPSHOT_LOOKUP_SQL
-from genesis.domain.documents import Cell
 from genesis.application.transactions import (
     TXN_SEARCH_CLAUSE,
     _direction_clause,
     _search_params,
 )
+from genesis.domain.documents import Cell
 from genesis.domain.ledger import (
     DEBIT_NORMAL_CLASSES,
     Account,

@@ -2557,8 +2557,18 @@
       },
       "ExportFiltersBody": {
         "additionalProperties": false,
-        "description": "The only caller-suppliable scope (blocker a): ids and dates.",
+        "description": "The only caller-suppliable scope (blocker a): ids, dates, and \u2014\nfor the transactions-ledger register (#35 item 5, expand-only) \u2014\nthe register page's own declared filters, pinned to the code-owned\nvocabularies (TxnType/Channel/Side) and bounded operator text.",
         "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "date_from": {
             "anyOf": [
               {
@@ -2595,6 +2605,16 @@
             ],
             "title": "Declaration Id"
           },
+          "direction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Side"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exit_id": {
             "anyOf": [
               {
@@ -2618,6 +2638,42 @@
               }
             ],
             "title": "Member Id"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          },
+          "txn_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TxnType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "ExportFiltersBody",
@@ -5055,6 +5111,7 @@
           "dividend_rebate_schedule",
           "portfolio_at_risk_aging",
           "membership_register",
+          "transactions_ledger",
           "income_statement",
           "sasra_return"
         ],
