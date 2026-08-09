@@ -52,8 +52,8 @@ from sqlalchemy import text
 from db_helpers import factory, seed_user, unique_email
 from export_helpers import seed_member_no
 from genesis.application.corrections import (
-    AdjustmentStatus,
     _ADJUSTMENT_COLS,
+    AdjustmentStatus,
     _row_to_adjustment,
     approve_repayment_adjustment,
     list_adjustments,
