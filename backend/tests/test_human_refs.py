@@ -69,13 +69,22 @@ def _migration_0048() -> ModuleType:
 
 
 async def _seed_borrower(tid: uuid.UUID, member_no: str, name: str) -> uuid.UUID:
-    """Member + deposit account satisfying the multiplier gate."""
+    """Member + deposit account satisfying the multiplier gate, plus the
+    share account `request_exit` row-locks (the test_member_exits.py
+    seeding precedent: both accounts always exist for a real member)."""
     mid = await seed_member_no(tid, member_no, name=name)
     async with tenant_session(factory(), tid) as session:
         await session.execute(
             text(
                 "INSERT INTO deposit_accounts (id, tenant_id, member_id, balance) "
                 "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:m AS uuid), '100000.00')"
+            ),
+            {"id": str(uuid.uuid4()), "tid": str(tid), "m": str(mid)},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO share_accounts (id, tenant_id, member_id, balance) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:m AS uuid), '0.00')"
             ),
             {"id": str(uuid.uuid4()), "tid": str(tid), "m": str(mid)},
         )
