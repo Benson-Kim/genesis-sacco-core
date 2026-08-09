@@ -28,9 +28,10 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card, Pill } from "@genesis/design-system";
+import { Button, Card, FilterControl, Pill } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
@@ -46,7 +47,6 @@ import {
   type WorklistRow,
   type WorklistStatusFilter,
 } from "../schemas";
-import { FormField } from "@/modules/forms/FormField";
 import styles from "./Recovery.module.css";
 
 // Drawer-level code splitting (speed).
@@ -67,46 +67,22 @@ type DrawerState = null | { mode: "open" } | { mode: "detail"; caseId: string };
  * is exercised by the network suite). ≤5 options per. */
 const STATUS_SEGMENTS = WORKLIST_STATUS_FILTERS.filter((option) => option !== "open");
 
-function StatusFilter({
-  value,
-  onChange,
-}: Readonly<{
-  value: WorklistStatusFilter | "";
-  onChange: (next: WorklistStatusFilter | "") => void;
-}>) {
-  return (
-    <div className={styles.filterGroup}>
-      <span className={styles.filterLabel}>Status</span>
-      <div className={styles.segment} role="group" aria-label="Status">
-        <button
-          type="button"
-          className={styles.segmentButton}
-          aria-pressed={value === ""}
-          onClick={() => onChange("")}
-        >
-          {CASE_STATUS_LABELS.open} (default)
-        </button>
-        {STATUS_SEGMENTS.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={styles.segmentButton}
-            aria-pressed={value === option}
-            onClick={() => onChange(option)}
-          >
-            {CASE_STATUS_LABELS[option]}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function RecoveryScreen() {
   const permissions = usePermissions();
   const [drawer, setDrawer] = useState<DrawerState>(null);
-  const [status, setStatus] = useState<WorklistStatusFilter | "">("");
-  const [classification, setClassification] = useState<WorklistClass | "">("");
+  const [status, setStatusRaw] = useState<WorklistStatusFilter | "">("");
+  const [classification, setClassificationRaw] = useState<WorklistClass | "">("");
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  function setStatus(next: WorklistStatusFilter | "") {
+    setStatusRaw(next);
+    pagination.setPageIndex(0);
+  }
+  function setClassification(next: WorklistClass | "") {
+    setClassificationRaw(next);
+    pagination.setPageIndex(0);
+  }
   const ownId = getOwnUserId();
 
   // The two DECLARED contract filters ONLY:
@@ -115,8 +91,8 @@ export function RecoveryScreen() {
   // (never a locally filtered view of another one).
   const filters: WorklistFilters = { status, classification };
   const list = useKeysetList<WorklistRow>({
-    queryKey: ["recovery", "worklist", filters],
-    fetchPage: (cursor) => fetchWorklistPage(filters, cursor),
+    queryKey: ["recovery", "worklist", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchWorklistPage(filters, cursor, pagination.pageSize),
   });
 
   const mayOpen = can(permissions.data, "loan_book", "create");
@@ -187,30 +163,37 @@ export function RecoveryScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <StatusFilter value={status} onChange={setStatus} />
-          {/* Labelled select (5 stored labels + All — over the ≤5
-              segment budget): values are the code-owned LoanClass
-              vocabulary verbatim; "" sends NO parameter at all. */}
-          <FormField id="worklist-classification" label="Classification">
-            {(control) => (
-              <select
-                {...control}
-                className={styles.select}
-                value={classification}
-                onChange={(event) => setClassification(event.target.value as WorklistClass | "")}
-              >
-                <option value="">All classifications</option>
-                {WORKLIST_CLASSES.map((option) => (
-                  <option key={option} value={option}>
-                    {LOAN_CLASS_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
+          {/* The "" sentinel is the server's as-built DEFAULT view (open
+              cases) — labelled honestly, never re-sent as an explicit
+              status=open. */}
+          <FilterControl
+            id="worklist-status-filter"
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={STATUS_SEGMENTS.map((option) => ({
+              value: option,
+              label: CASE_STATUS_LABELS[option],
+            }))}
+            allLabel={`${CASE_STATUS_LABELS.open} (default)`}
+          />
+          {/* Five stored labels + All → the shared select variant:
+              values are the code-owned LoanClass vocabulary verbatim;
+              "" sends NO parameter at all. */}
+          <FilterControl
+            id="worklist-classification"
+            label="Classification"
+            value={classification}
+            onChange={setClassification}
+            options={WORKLIST_CLASSES.map((option) => ({
+              value: option,
+              label: LOAN_CLASS_LABELS[option],
+            }))}
+            allLabel="All classifications"
+          />
         </div>
         {mayOpen && (
           <Button type="button" variant="primary" onClick={() => setDrawer({ mode: "open" })}>
@@ -233,6 +216,13 @@ export function RecoveryScreen() {
           rowKey={(row) => row.case_id}
           emptyMessage="No recovery cases in this view — no case matches the selected posture/classification (the default view lists OPEN cases, most overdue first)."
           onRowClick={(row) => setDrawer({ mode: "detail", caseId: row.case_id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "cases",
+          }}
         />
       </Card>
 
@@ -245,6 +235,6 @@ export function RecoveryScreen() {
       {drawer !== null && drawer.mode === "detail" && (
         <CaseDetailDrawer caseId={drawer.caseId} onClose={() => setDrawer(null)} />
       )}
-    </div>
+    </Card>
   );
 }
