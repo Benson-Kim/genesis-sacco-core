@@ -84,7 +84,7 @@ queries it adds. Numbering, staging and downgrade requirements:
   same MR.
 - **Narrative hygiene**: repository documentation is provenance-free —
   prose describes the system, not the process that built it (no issue/MR
-  numbers, review-finding codes or batch labels in docs; migration
+  numbers, review-finding codes or work-tracking labels in docs; migration
   filenames appear only in the migration catalog table).
 
 ## 7. Anti-corruption editing discipline
