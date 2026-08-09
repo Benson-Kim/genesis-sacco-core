@@ -43,6 +43,8 @@ import {
 } from "./schemas";
 
 export const EXITS_PAGE_SIZE = 20;
+/** Limit used for per-status advisory count fetches. */
+const COUNT_LIMIT = 20;
 
 const exitPageSchema = keysetPageSchema(exitSchema);
 
@@ -68,6 +70,44 @@ export async function fetchExitsPage(
   });
   if (error !== undefined || data === undefined) throw toApiError(error, response);
   return exitPageSchema.parse(data);
+}
+
+/**
+ * Advisory per-status counts for the filter badges.
+ *
+ * Fires one `limit=COUNT_LIMIT` request per status in parallel. Returns
+ * a map of `status → count` where count is `n` (exact) when items < COUNT_LIMIT,
+ * or `COUNT_LIMIT` when the page is full (indicating `COUNT_LIMIT+` items exist;
+ * the `hasMore` flag lets the UI show "20+" if needed).
+ *
+ * These are decorative — the server enforces access; this just avoids
+ * showing empty filter options the user then has to discover are empty.
+ */
+export async function fetchExitStatusCounts(): Promise<
+  Record<ExitStatus, { count: number; hasMore: boolean }>
+> {
+  const statuses: ExitStatus[] = ["requested", "approved", "settled", "rejected"];
+  const results = await Promise.allSettled(
+    statuses.map((status) =>
+      api.GET("/member-exits", {
+        params: { query: { status, limit: COUNT_LIMIT } },
+      }),
+    ),
+  );
+  return Object.fromEntries(
+    statuses.map((status, i) => {
+      const result = results[i];
+      if (result === undefined || result.status === "rejected") {
+        return [status, { count: 0, hasMore: false }];
+      }
+      const data = result.value.data;
+      if (data === undefined) {
+        return [status, { count: 0, hasMore: false }];
+      }
+      const items = data.items ?? [];
+      return [status, { count: items.length, hasMore: data.next_cursor !== null }];
+    }),
+  ) as Record<ExitStatus, { count: number; hasMore: boolean }>;
 }
 
 /** Single exit record — the FRESH read (record class, staleTime 0)

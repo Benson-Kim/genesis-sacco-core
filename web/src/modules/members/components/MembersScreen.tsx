@@ -114,10 +114,6 @@ const COLUMNS: Column<MemberDetail>[] = [
             </div>
         ),
     },
-    // Advisory aggregates (review): SERVER decimal strings
-    // rendered VERBATIM — never summed, never derived, never
-    // re-formatted (the money rule; the same figures the KYC drawer
-    // shows on the detail read).
     {
         key: "deposits",
         header: "Deposits",
@@ -194,7 +190,7 @@ export function MembersScreen() {
     // Row drill-down (KYC drawer) and the wizard continuation.
     const [kycMember, setKycMember] = useState<Member | null>(null);
     const [wizardMember, setWizardMember] = useState<Member | null>(null);
-
+    
     const filters: MemberListFilters = { status, type };
     const list = useKeysetList<MemberDetail>({
         queryKey: ["members", "list", filters],
@@ -204,7 +200,7 @@ export function MembersScreen() {
     const mayCreate = can(permissions.data, "members", "create");
 
     return (
-        <div>
+        <Card>
             <div className={styles.toolbar}>
                 <div className={styles.filters}>
                     <SegmentedFilter
@@ -222,6 +218,7 @@ export function MembersScreen() {
                         onChange={setType}
                     />
                 </div>
+               
                 {mayCreate && (
                     <Button variant="primary" onClick={() => setDrawerOpen(true)}>
                         Register member
@@ -266,7 +263,7 @@ export function MembersScreen() {
             {wizardMember !== null && (
                 <KycWizard member={wizardMember} onClose={() => setWizardMember(null)} />
             )}
-        </div>
+        </Card>
     );
 }
 

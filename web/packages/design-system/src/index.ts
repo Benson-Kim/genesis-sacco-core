@@ -23,6 +23,8 @@ export type { FontSizeToken, RadiusToken, SpacingToken } from "./scale";
 export { Banner } from "./components/Banner";
 export { Button } from "./components/Button";
 export { Card } from "./components/Card";
+export { FilterControl } from "./components/FilterControl";
+export type { FilterControlProps, FilterOption } from "./components/FilterControl";
 export { ConfirmDangerModal } from "./components/ConfirmDangerModal";
 export { Field } from "./components/Field";
 export {
@@ -35,6 +37,7 @@ export {
   FormStatus,
   FormTextarea,
   Hint,
+  Required,
   SelectWrap,
 } from "./components/FormElements.module";
 export type {
@@ -49,8 +52,14 @@ export type {
   HintProps,
   SelectWrapProps,
 } from "./components/FormElements.module";
+export { Input } from "./components/Input";
+export type { InputProps } from "./components/Input";
 export { Kv } from "./components/Kv";
 export { Modal } from "./components/Modal";
 export { Pill } from "./components/Pill";
+export { Select } from "./components/Select";
+export type { SelectProps } from "./components/Select";
 export { Stat } from "./components/Stat";
+export { Textarea } from "./components/Textarea";
+export type { TextareaProps } from "./components/Textarea";
 

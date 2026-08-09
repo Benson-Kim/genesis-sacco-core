@@ -5,16 +5,25 @@
  * password, then verify the 6-digit code. Server enforces attempts/TTL/
  * rate limits (P3); this component only shapes the flow.
  */
-import { useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, newIdempotencyKey } from "@genesis/api-client";
-import { Button } from "@genesis/design-system";
+import { Button, Input } from "@genesis/design-system";
 import { FormField } from "@/modules/forms/FormField";
 import { KENYA_PHONE_MESSAGE, normalizeKenyaMsisdn } from "@/lib/phone";
 import { requestOtp, verifyOtp } from "../api";
 import { OTP_LENGTH, classifyIdentifier, otpCodeSchema, signInEmailSchema } from "../schemas";
 import styles from "./LoginGate.module.css";
+
+/** OTP validity window — must match OTP_TTL_SECONDS in domain/otp.py (300 s). */
+const OTP_TTL_SECONDS = 300;
+
+function formatCountdown(seconds: number): string {
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
 
 const EMAIL_BLUR_MESSAGE = "Enter your registered email address.";
 
@@ -49,6 +58,26 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
   // DEV-ONLY (REMOVE BEFORE STAGING): the server sends
   // dev_otp only behind its fail-closed flag; null renders NOTHING.
   const [devOtp, setDevOtp] = useState<string | null>(null);
+  // Countdown: seconds remaining until the OTP expires. Null = not started.
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCountdown = useCallback(() => {
+    if (timerRef.current !== null) clearInterval(timerRef.current);
+    setCountdown(OTP_TTL_SECONDS);
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timerRef.current!);
+          timerRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => { if (timerRef.current !== null) clearInterval(timerRef.current); }, []);
 
   const identifierKind = classifyIdentifier(identifier);
 
@@ -76,6 +105,7 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
       setStage("verify");
       setFormError(null);
       setDevOtp(result.devOtp);
+      startCountdown();
     },
     onError: (error) => setFormError(errorMessage(error)),
   });
@@ -174,18 +204,14 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
             error={identifierError ?? undefined}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 type="text"
                 inputMode={identifierKind === "phone" ? "tel" : "email"}
                 autoComplete="username"
                 value={identifier}
                 onChange={(event) => {
                   setIdentifier(event.target.value);
-                  // Live re-classification happens every keystroke; a
-                  // showing message clears the moment the value is
-                  // corrected under its matching rule.
                   if (identifierError !== null) validateIdentifierBlur(event.target.value);
                 }}
                 onBlur={(event) => validateIdentifierBlur(event.target.value)}
@@ -203,7 +229,8 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
           {brand}
           <div className={styles.title}>Verify OTP</div>
           <div className={styles.subtitle}>
-            Enter the 6-digit code sent to <b>{identifier.trim()}</b>
+            Enter the 6-digit code sent to{" "}
+            <b>{identifier.trim()}</b>
           </div>
           {/* DEV-ONLY (item 11): renders ONLY when the server's
               fail-closed dev flag returned a code. REMOVE BEFORE STAGING. */}
@@ -214,9 +241,10 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
           )}
           <div className={styles.otpRow}>
             {digits.map((digit, index) => (
-              <input
+              <Input
                 key={index}
                 id={`otp-${index}`}
+                unstyled
                 className={styles.otpInput}
                 inputMode="numeric"
                 maxLength={1}
@@ -229,26 +257,39 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
             ))}
           </div>
           {formError !== null && <div className={styles.error}>{formError}</div>}
-          <Button variant="primary" type="submit" className={styles.wide} disabled={verify.isPending}>
-            {verify.isPending ? "Verifying…" : "Verify & sign in"}
-          </Button>
-          <div className={styles.foot}>
-            Didn&apos;t get it?{" "}
-            <button
+          <div className={styles.actions}>
+            <Button
               type="button"
-              className={styles.linkStrong}
-              onClick={() => {
-                if (!request.isPending) {
-                  request.mutate(wireIdentifier());
-                }
-              }}
+              onClick={() => setStage("request")}
+              disabled={verify.isPending}
             >
-              Resend
-            </button>{" "}
-            ·{" "}
-            <button type="button" className={styles.link} onClick={() => setStage("request")}>
-              Change email or phone
-            </button>
+              Back
+            </Button>
+            <Button variant="primary" type="submit" disabled={verify.isPending}>
+              {verify.isPending ? "Verifying…" : "Verify & sign in"}
+            </Button>
+          </div>
+          <div className={styles.foot}>
+            {countdown !== null && countdown > 0 ? (
+              <>Code expires in <b>{formatCountdown(countdown)}</b></>
+            ) : (
+              <>
+                Didn&apos;t get it?{" "}
+                <button
+                  type="button"
+                  className={styles.linkStrong}
+                  disabled={request.isPending}
+                  onClick={() => {
+                    if (!request.isPending) {
+                      request.mutate(wireIdentifier());
+                      startCountdown();
+                    }
+                  }}
+                >
+                  {request.isPending ? "Sending…" : "Resend"}
+                </button>
+              </>
+            )}
           </div>
         </form>
       )}

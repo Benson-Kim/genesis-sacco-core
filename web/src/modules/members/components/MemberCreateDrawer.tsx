@@ -3,9 +3,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Modal } from "@genesis/design-system";
+import { Button, Field, Input, Modal, Select } from "@genesis/design-system";
 import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { FormField } from "@/modules/forms/FormField";
 import { KENYA_PHONE_MESSAGE, normalizeKenyaMsisdn } from "@/lib/phone";
 import { createMember } from "../api";
 import {
@@ -38,11 +37,11 @@ export function MemberCreateDrawer({
     const [name, setName] = useState("");
     const [phone, setPhone] = useState("");
     const [email, setEmail] = useState("");
-    const [nameError, setNameError] = useState<string | null>(null);
-    const [emailError, setEmailError] = useState<string | null>(null);
-    // blur-time Kenya-phone validation (courtesy mirror of the server rule,
-    // which normalizes to E.164 on write and refuses invalid input with a
-    // sanitized 422). Shows on blur, clears on correction.
+    const [formError, setFormError] = useState<string | null>(null);
+    //  item 1 — blur-time Kenya-phone validation (courtesy mirror of
+    // the server rule, which normalizes to E.164 on write and refuses
+    // invalid input with a sanitized 422). Shows on blur, clears on
+    // correction.
     const [phoneBlurError, setPhoneBlurError] = useState<string | null>(null);
     const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
@@ -74,17 +73,14 @@ export function MemberCreateDrawer({
             email: email.trim() === "" ? null : email.trim(),
         });
         if (!parsed.success) {
-            const fieldErrors = parsed.error.flatten().fieldErrors;
-            setNameError(fieldErrors.name?.[0] ?? null);
-            setEmailError(fieldErrors.email?.[0] ?? null);
+            setFormError("Enter a member name (and a valid email if provided).");
             return;
         }
         if (parsed.data.phone !== null && normalizeKenyaMsisdn(parsed.data.phone) === null) {
             setPhoneBlurError(KENYA_PHONE_MESSAGE);
             return;
         }
-        setNameError(null);
-        setEmailError(null);
+        setFormError(null);
         create.mutate(parsed.data);
     }
 
@@ -98,91 +94,9 @@ export function MemberCreateDrawer({
             dismissOnOverlay={false}
         >
             <form onSubmit={submit} noValidate>
-<<<<<<< HEAD
-                <FormField id="member-type" label="Member type">
-                    {(control) => (
-                        <select
-                            {...control}
-                            className={styles.select}
-                            value={type}
-                            onChange={(event) => setType(event.target.value)}
-                        >
-                            {MEMBER_TYPES.map((memberType) => (
-                                <option key={memberType} value={memberType}>
-                                    {TYPE_LABELS[memberType]}
-                                </option>
-                            ))}
-                        </select>
-                    )}
-                </FormField>
-                <FormField
-                    id="member-name"
-                    label="Full name"
-                    error={nameError ?? undefined}
-                >
-                    {(control) => (
-                        <input
-                            {...control}
-                            className={styles.input}
-                            maxLength={200}
-                            value={name}
-                            onChange={(event) => {
-                                setName(event.target.value);
-                                if (nameError !== null) setNameError(null);
-                            }}
-                        />
-                    )}
-                </FormField>
-                <FormField
-                    id="member-phone"
-                    label="Phone (optional)"
-                    error={phoneBlurError ?? undefined}
-                    hint={phoneBlurError === null ? "+254 or 07… format accepted." : undefined}
-                >
-                    {(control) => (
-                        <input
-                            {...control}
-                            className={styles.input}
-                            type="tel"
-                            inputMode="tel"
-                            autoComplete="tel"
-                            maxLength={32}
-                            value={phone}
-                            onChange={(event) => {
-                                setPhone(event.target.value);
-                                if (phoneBlurError !== null) validatePhoneBlur(event.target.value);
-                            }}
-                            onBlur={(event) => validatePhoneBlur(event.target.value)}
-                        />
-                    )}
-                </FormField>
-                <FormField
-                    id="member-email"
-                    label="Email (optional)"
-                    error={emailError ?? undefined}
-                >
-                    {(control) => (
-                        <input
-                            {...control}
-                            className={styles.input}
-                            type="email"
-                            inputMode="email"
-                            autoComplete="email"
-                            autoCapitalize="none"
-                            spellCheck={false}
-                            maxLength={254}
-                            value={email}
-                            onChange={(event) => {
-                                setEmail(event.target.value);
-                                if (emailError !== null) setEmailError(null);
-                            }}
-                        />
-                    )}
-                </FormField>
-=======
                 <StepRail current={0} />
-                <Field label="Member type" htmlFor="member-type">
-                    <select
+                <Field label="Member type" htmlFor="member-type" required>
+                    <Select
                         id="member-type"
                         className={styles.select}
                         value={type}
@@ -193,10 +107,10 @@ export function MemberCreateDrawer({
                                 {TYPE_LABELS[memberType]}
                             </option>
                         ))}
-                    </select>
+                    </Select>
                 </Field>
-                <Field label="Full name" htmlFor="member-name">
-                    <input
+                <Field label="Full name" htmlFor="member-name" required>
+                    <Input
                         id="member-name"
                         className={styles.input}
                         maxLength={200}
@@ -205,7 +119,7 @@ export function MemberCreateDrawer({
                     />
                 </Field>
                 <Field label="Phone (optional)" htmlFor="member-phone">
-                    <input
+                    <Input
                         id="member-phone"
                         className={styles.input}
                         type="tel"
@@ -221,7 +135,7 @@ export function MemberCreateDrawer({
                 </Field>
                 {phoneBlurError !== null && <div role="alert">{phoneBlurError}</div>}
                 <Field label="Email (optional)" htmlFor="member-email">
-                    <input
+                    <Input
                         id="member-email"
                         className={styles.input}
                         type="email"
@@ -232,14 +146,13 @@ export function MemberCreateDrawer({
                     />
                 </Field>
                 {formError !== null && <div role="alert">{formError}</div>}
->>>>>>> 257a9a74cc76b9dbea1f381967da14f3d87bfcf3
                 {create.isError && <ErrorBanner error={create.error} />}
                 <div className={styles.actions}>
                     <Button type="button" onClick={onClose} disabled={create.isPending}>
                         Cancel
                     </Button>
                     <Button type="submit" variant="primary" disabled={create.isPending}>
-                        {create.isPending ? "Registering\u2026" : "Register member"}
+                        {create.isPending ? "Registering…" : "Register member"}
                     </Button>
                 </div>
             </form>

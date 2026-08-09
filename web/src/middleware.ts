@@ -12,7 +12,7 @@ import {
 
 export function middleware(request: NextRequest): NextResponse {
   const nonce = crypto.randomUUID();
-  const csp = buildContentSecurityPolicy(nonce, process.env.NODE_ENV === "development");
+  const csp = buildContentSecurityPolicy(nonce);
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
