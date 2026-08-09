@@ -39,6 +39,20 @@ from decimal import Decimal
 from genesis.domain.money import ZERO, to_cents
 
 
+#: Human exit reference display prefix (the member-number format
+#: discipline); the allocator's sequence key stays distinct from every
+#: txn-ref prefix (EXIT_REF_SEQ).
+EXIT_REF_PREFIX = "EX-"
+EXIT_REF_SEQ = "exit_ref"
+
+
+def format_exit_ref(seq: int) -> str:
+    """EX-XXXX human exit reference; grows past four digits without collision."""
+    if seq <= 0:
+        raise ValueError("exit reference sequence must be positive")
+    return f"{EXIT_REF_PREFIX}{seq:04d}"
+
+
 class ExitStatus(enum.StrEnum):
     REQUESTED = "requested"
     APPROVED = "approved"
