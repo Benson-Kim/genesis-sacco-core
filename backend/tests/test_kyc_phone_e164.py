@@ -10,7 +10,7 @@ is the data-only backfill for rows that predate it. Legs:
 * write path — every accepted spelling of the same number stores the
   SAME E.164 string in the persisted profile jsonb, on create AND
   update, for every phone-bearing path (person contact + next of kin,
-  company contact, group officials ×3). Falsifiable: drop the
+  company contact, group officials x3). Falsifiable: drop the
   KenyaMsisdn annotation from a field and its leg reads back the raw
   local form.
 * sanitized 422 — an invalid shape refuses with field location + error
