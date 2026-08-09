@@ -459,7 +459,18 @@ mobile:lint:
       set -e
       for pkg in mobile/gp_ui mobile/gp_api_client mobile/member_app mobile/admin_app; do
         echo "==> Linting $pkg"
-        (cd "$pkg" && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze --fatal-infos)
+        (cd "$pkg" && flutter pub get)
+        if ! (cd "$pkg" && dart format --output=none --set-exit-if-changed .); then
+          # Print the formatter's own diff so a stale tree can be
+          # refreshed exactly from this trace (the spec-drift /
+          # client-drift precedent: the tool's output, never a hand
+          # guess, is the update path).
+          (cd "$pkg" && dart format . >/dev/null)
+          git --no-pager diff -- "$pkg"
+          git checkout -- "$pkg"
+          exit 1
+        fi
+        (cd "$pkg" && flutter analyze --fatal-infos)
       done
 
 mobile:test:
