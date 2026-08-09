@@ -3253,19 +3253,29 @@ export interface components {
         };
         /**
          * ExportFiltersBody
-         * @description The only caller-suppliable scope (blocker a): ids and dates.
+         * @description The only caller-suppliable scope (blocker a): ids, dates, and —
+         *     for the transactions-ledger register (#35 item 5, expand-only) —
+         *     the register page's own declared filters, pinned to the code-owned
+         *     vocabularies (TxnType/Channel/Side) and bounded operator text.
          */
         ExportFiltersBody: {
+            channel?: components["schemas"]["Channel"] | null;
             /** Date From */
             date_from?: string | null;
             /** Date To */
             date_to?: string | null;
             /** Declaration Id */
             declaration_id?: string | null;
+            direction?: components["schemas"]["Side"] | null;
             /** Exit Id */
             exit_id?: string | null;
             /** Member Id */
             member_id?: string | null;
+            /** Ref */
+            ref?: string | null;
+            /** Search */
+            search?: string | null;
+            txn_type?: components["schemas"]["TxnType"] | null;
         };
         /** ExportOut */
         ExportOut: {
@@ -4194,7 +4204,7 @@ export interface components {
          * ReportName
          * @enum {string}
          */
-        ReportName: "member_statement" | "trial_balance" | "loan_book" | "disbursement_collections" | "npl_trend" | "member_exit_statement" | "dividend_rebate_schedule" | "portfolio_at_risk_aging" | "membership_register" | "income_statement" | "sasra_return";
+        ReportName: "member_statement" | "trial_balance" | "loan_book" | "disbursement_collections" | "npl_trend" | "member_exit_statement" | "dividend_rebate_schedule" | "portfolio_at_risk_aging" | "membership_register" | "transactions_ledger" | "income_statement" | "sasra_return";
         /** RoleOut */
         RoleOut: {
             /** Id */

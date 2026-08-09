@@ -52,7 +52,7 @@ ViewCtx = Annotated[AuthContext, Depends(_view)]
 
 class ExportFiltersBody(BaseModel):
     """The only caller-suppliable scope (blocker a): ids, dates, and —
-    for the transactions-ledger register (#35 item 5, expand-only) —
+    for the transactions-ledger register (expand-only) —
     the register page's own declared filters, pinned to the code-owned
     vocabularies (TxnType/Channel/Side) and bounded operator text."""
 

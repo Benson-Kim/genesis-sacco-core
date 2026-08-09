@@ -207,11 +207,24 @@ class ReportDefinition:
         return tuple(column.key for column in self.columns)
 
 
+#: The register's expand-only filter keys. On reports that do not declare
+#: them they are refused as 422 — mirroring the extra="forbid" structural
+#: refusal these keys produced before they became typed body fields — so
+#: the expansion never widens any other report's accepted scope.
+_REGISTER_ONLY_KEYS = frozenset({"txn_type", "channel", "direction", "ref", "search"})
+
+
 def validate_filters(definition: ReportDefinition, filters: ExportFilters) -> None:
     """Reject scopes the report does not define (least surprise, least disclosure)."""
     provided = filters.provided_keys()
     unknown = provided - definition.allowed_filters
     if unknown:
+        register_only = unknown & _REGISTER_ONLY_KEYS
+        if register_only:
+            raise UnprocessableError(
+                f"filters not declared by {definition.name.value}: "
+                f"{', '.join(sorted(register_only))}"
+            )
         raise InvalidInputError(
             f"filters not supported by {definition.name.value}: {', '.join(sorted(unknown))}"
         )
