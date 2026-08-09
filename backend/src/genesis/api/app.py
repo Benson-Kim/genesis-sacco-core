@@ -32,7 +32,7 @@ from genesis.api.tenant_settings import router as tenant_settings_router
 from genesis.api.transactions import router as transactions_router
 from genesis.api.users import router as users_router
 from genesis.application.pagination import assert_cursor_signing_key_configured
-from genesis.errors import AppError, ErrorCategory
+from genesis.errors import AppError, ErrorCategory, UnprocessableError
 from genesis.logging import configure_logging, correlation_id_var
 
 logger = logging.getLogger("genesis.api")
@@ -91,7 +91,16 @@ def create_app() -> FastAPI:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         logger.warning("handled error: %s", exc.category.value)
-        return JSONResponse(status_code=exc.status_code, content=_envelope(exc.category))
+        content: dict[str, str] = _envelope(exc.category)
+        if isinstance(exc, UnprocessableError):
+            # Schema-refusal detail travels (mirroring FastAPI's structural
+            # 422 detail): every UnprocessableError message is code-owned
+            # prose naming field LOCATIONS and error TYPES only — never a
+            # submitted value or figure (the least-disclosure discipline
+            # each raise site documents). All other categories stay
+            # category-only envelopes.
+            content["detail"] = str(exc)
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
