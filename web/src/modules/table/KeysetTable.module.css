@@ -119,6 +119,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Legacy load-more footer (screens not yet on the shared paginator). */
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+
 .note {
   color: var(--sub);
   font-size: 13px;

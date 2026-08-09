@@ -47,6 +47,7 @@ jest.mock("../api", () => {
   return {
     ...actual,
     fetchExitsPage: jest.fn(),
+    fetchExitStatusCounts: jest.fn(),
     fetchExit: jest.fn(),
     fetchExitEligibility: jest.fn(),
     createExitRequest: jest.fn(),
