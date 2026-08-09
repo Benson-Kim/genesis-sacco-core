@@ -1026,6 +1026,7 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ date_from: "2026-06-01", date_to: "2026-06-30" }),
       null,
+      10,
     ),
   );
   expect(screen.getByRole("button", { name: "Custom range" })).toHaveAttribute(
@@ -1040,7 +1041,7 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
   const callsBeforeRefetch = mocked.fetchTransactionsPage.mock.calls.length;
 
   // Force a REAL wire fetch on the restored default key: paginate.
-  await user.click(screen.getByRole("button", { name: "Load more" }));
+  await user.click(screen.getByRole("button", { name: "Next page" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage.mock.calls.length).toBe(callsBeforeRefetch + 1),
   );
