@@ -685,9 +685,7 @@ async def list_exits(
         # the plaintext parse stays as defense-in-depth.
         inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=EXITS_LIST_SCOPE, entity="exit")
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="exit")
-        clauses.append(
-            "(member_exits.created_at, member_exits.id) < (:c_ts, CAST(:c_id AS uuid))"
-        )
+        clauses.append("(member_exits.created_at, member_exits.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
