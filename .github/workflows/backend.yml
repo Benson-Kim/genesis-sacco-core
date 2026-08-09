@@ -1,0 +1,222 @@
+# =============================================================================
+# Genesis Prestige — GitHub Actions mirror of the backend jobs in
+# .gitlab-ci.yml (the single source of truth — see README "CI parity").
+# Job-for-job: backend:lint -> backend:test -> backend:migrate-check, same
+# images, same Postgres 16 service (real RLS via a non-superuser app role),
+# same commands, same coverage gate (--cov-fail-under=85).
+#
+# GitLab `workflow:rules` (merge_request_event | default branch | tag)
+# translates to: pull_request + push to main + tag push.
+# GitLab `rules:exists` on backend/pyproject.toml / backend/alembic.ini is
+# satisfied at every commit of this repo, so no paths: filter here — the
+# backend jobs run on every pipeline, exactly as on GitLab.
+# =============================================================================
+name: backend
+
+on:
+  push:
+    branches: [main]
+    tags: ['**']
+  pull_request:
+
+# Mirrors GitLab `default: interruptible: true` (redundant-pipeline
+# auto-cancel): superseded runs of the same PR ref are cancelled.
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `backend:lint` (extends .backend).
+  # ---------------------------------------------------------------------------
+  backend-lint:
+    name: "backend:lint"
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    env:
+      # Mirrors GitLab global `PIP_CACHE_DIR: $CI_PROJECT_DIR/.cache/pip`.
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+    steps:
+      - uses: actions/checkout@v4
+      # Mirrors GitLab `.backend` cache (key: files: backend/pyproject.toml).
+      - uses: actions/cache@v4
+        with:
+          path: .cache/pip
+          key: pip-${{ hashFiles('backend/pyproject.toml') }}
+      # Mirrors GitLab `.backend` before_script.
+      - name: Install backend (editable, dev extras)
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+      # Mirrors GitLab `backend:lint` script verbatim.
+      - name: Lint gates (ruff, ruff format, mypy --strict, import-linter)
+        working-directory: backend
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy --strict src
+          lint-imports
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `backend:test` (needs: backend:lint): pytest against a real
+  # migrated Postgres 16 with RLS actually ENFORCED — migrations run as the
+  # privileged bootstrap user, the suite runs as a non-superuser, non-BYPASSRLS
+  # app role (ADR-0002), coverage gate >= 85%.
+  # ---------------------------------------------------------------------------
+  backend-test:
+    name: "backend:test"
+    needs: backend-lint
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: genesis_test
+          POSTGRES_USER: genesis
+          POSTGRES_HOST_AUTH_METHOD: trust
+        # GitLab waits for services implicitly; GitHub needs an explicit
+        # health check before the job container starts using it.
+        options: >-
+          --health-cmd "pg_isready -U genesis -d genesis_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 24
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+      # Privileged owner URL — used for migrations and role provisioning,
+      # exactly as in GitLab `backend:test` variables.
+      DATABASE_URL: "postgresql+psycopg://genesis@postgres:5432/genesis_test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/pip
+          key: pip-${{ hashFiles('backend/pyproject.toml') }}
+      - name: Install backend (editable, dev extras)
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Migrate to head (as privileged owner)
+        working-directory: backend
+        run: alembic upgrade head
+      # RLS must actually be enforced during tests: the postgres-image
+      # bootstrap user is a SUPERUSER, which always bypasses RLS. Create a
+      # non-superuser app role (no BYPASSRLS) per ADR-0002 and run the test
+      # suite through it. Migrations above still run as the privileged owner.
+      # (Verbatim from .gitlab-ci.yml backend:test.)
+      - name: Provision non-superuser app role (RLS enforced)
+        working-directory: backend
+        run: |
+          python - <<'PYEOF'
+          import psycopg
+          conn = psycopg.connect("postgresql://genesis@postgres:5432/genesis_test")
+          conn.autocommit = True
+          cur = conn.cursor()
+          cur.execute(
+              "CREATE ROLE genesis_app LOGIN NOSUPERUSER NOBYPASSRLS "
+              "NOCREATEDB NOCREATEROLE"
+          )
+          cur.execute("GRANT USAGE ON SCHEMA public TO genesis_app")
+          cur.execute(
+              "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
+              "IN SCHEMA public TO genesis_app"
+          )
+          cur.execute(
+              "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES "
+              "IN SCHEMA public TO genesis_app"
+          )
+          # R7 (!44): migration 0024 revokes the PostgreSQL-default PUBLIC
+          # EXECUTE on the three SECURITY DEFINER registries, so the app
+          # role needs an explicit grant. 0024's own conditional grant
+          # cannot fire here because this role is created AFTER `alembic
+          # upgrade head` (role provisioning is environment-owned per
+          # ADR-0002) — grant alongside the table/sequence grants above.
+          cur.execute("GRANT EXECUTE ON FUNCTION active_tenant_ids() TO genesis_app")
+          cur.execute("GRANT EXECUTE ON FUNCTION outbox_due_tenant_ids() TO genesis_app")
+          cur.execute(
+              "GRANT EXECUTE ON FUNCTION outbox_purgeable_tenant_ids(timestamptz) "
+              "TO genesis_app"
+          )
+          PYEOF
+      - name: pytest (coverage gate >= 85%)
+        working-directory: backend
+        env:
+          # The suite runs as the RLS-constrained app role — mirrors the
+          # `export DATABASE_URL=...` line in GitLab backend:test.
+          DATABASE_URL: "postgresql+psycopg://genesis_app@postgres:5432/genesis_test"
+        run: pytest --cov=src --cov-fail-under=85 --junitxml=report.xml
+      # Surface captured EXPLAIN plans in the job log so MR/PR authors can
+      # copy them into the description (mirrors GitLab after_script).
+      - name: Surface EXPLAIN plans
+        if: always()
+        run: |
+          cat backend/perf/explain_p10.txt || true
+          cat backend/perf/explain_p13.txt || true
+          cat backend/perf/explain_p135.txt || true
+          cat backend/perf/explain_p136.txt || true
+          cat backend/perf/explain_p137.txt || true
+          cat backend/perf/explain_p138.txt || true
+          cat backend/perf/explain_p1310.txt || true
+          cat backend/perf/explain_p1311.txt || true
+          cat backend/perf/explain_p1312.txt || true
+          cat backend/perf/explain_p1316.txt || true
+          cat backend/perf/explain_codex_review.txt || true
+      # Mirrors GitLab artifacts (when: always): junit report + perf/ EXPLAIN
+      # captures. GitHub has no MR junit widget — see README "CI parity".
+      - name: Upload junit report + perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/report.xml
+            backend/perf/
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `backend:migrate-check` (needs: backend:test):
+  # up -> down -> up smoke test on a fresh database.
+  # ---------------------------------------------------------------------------
+  backend-migrate-check:
+    name: "backend:migrate-check"
+    needs: backend-test
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: genesis_migrate
+          POSTGRES_USER: genesis
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd "pg_isready -U genesis -d genesis_migrate"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 24
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+      DATABASE_URL: "postgresql+psycopg://genesis@postgres:5432/genesis_migrate"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/pip
+          key: pip-${{ hashFiles('backend/pyproject.toml') }}
+      - name: Install backend (editable, dev extras)
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Migration up -> down -> up smoke test
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          alembic downgrade -1
+          alembic upgrade head

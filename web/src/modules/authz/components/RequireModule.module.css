@@ -1,0 +1,22 @@
+.note {
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 20px;
+}
+
+.denied {
+  max-width: 480px;
+}
+
+.deniedTitle {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--brick);
+  margin-bottom: 8px;
+}
+
+.deniedBody {
+  font-size: 13px;
+  color: var(--sub);
+}

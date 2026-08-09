@@ -1,0 +1,14 @@
+.placeholder {
+  max-width: 560px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.body {
+  font-size: 13px;
+  color: var(--sub);
+}

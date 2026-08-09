@@ -1,0 +1,280 @@
+/*
+ * Applications + committee module styles (module 3). Tokens only
+ * (reuse-first); page-level GRIDS come from the shared
+ * modules/layout/grid.module.css — no private page grid lives here.
+ */
+
+.toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.filters {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.filterGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Persistent label (never placeholder-as-label). */
+.filterLabel {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sub);
+    font-weight: 700;
+}
+
+.segment {
+    display: inline-flex;
+    flex-wrap: wrap;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--card);
+}
+
+.segmentButton {
+    border: none;
+    background: transparent;
+    padding: 0 14px;
+    min-height: 44px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--sub);
+    cursor: pointer;
+}
+
+.segmentButton+.segmentButton {
+    border-left: 1px solid var(--line);
+}
+
+.segmentButton[aria-pressed="true"] {
+    background: var(--navySoft);
+    color: var(--navy);
+    font-weight: 800;
+}
+
+.segmentButton:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: -2px;
+}
+
+.cellStrong {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.cellSub {
+    font-size: 12px;
+    color: var(--sub);
+}
+
+.muted {
+    color: var(--sub);
+}
+
+/* Opaque record ids (member/product fallbacks) — tabular, subdued. */
+.mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--sub);
+}
+
+.input,
+.select,
+.textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 12px;
+    min-height: 44px;
+    font-size: 13.5px;
+    background: var(--card);
+    color: var(--ink);
+}
+
+.textarea {
+    padding: 10px 12px;
+    min-height: 72px;
+    resize: vertical;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 1px;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.wide {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.formNote {
+    font-size: 12px;
+    color: var(--sub);
+    margin: 10px 0;
+}
+
+.subhead {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    margin: 18px 0 8px;
+}
+
+.detailGrid {
+    margin: 14px 0;
+}
+
+/* Stage workflow indicator (prototype vAppDetail) — text+shape, never
+ * color alone. */
+.stages {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0;
+    margin: 12px 0;
+}
+
+.stageStep {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sub);
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--panel);
+}
+
+.stageStepDone {
+    background: var(--emeraldSoft);
+    color: var(--emerald);
+}
+
+.stageStepCurrent {
+    background: var(--navy);
+    color: var(--card);
+    font-weight: 800;
+}
+
+/* Committee agenda (shared grid.sideMain provides the page columns). */
+.agendaHead {
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.agendaList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.agendaButton {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 12px 14px;
+    min-height: 48px;
+    border: none;
+    border-bottom: 1px solid var(--panel);
+    background: var(--card);
+    text-align: left;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.agendaButton[aria-pressed="true"] {
+    background: var(--navySoft);
+}
+
+.agendaButton:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: -2px;
+}
+
+.agendaMore {
+    padding: 10px 14px;
+}
+
+.reviewHead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.reviewTitle {
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.statRow {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.statBlock {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 12px;
+    min-width: 120px;
+    flex: 1;
+}
+
+.statLabel {
+    font-size: 11px;
+    color: var(--sub);
+    font-weight: 700;
+}
+
+.statValue {
+    font-size: 14px;
+    font-weight: 800;
+    margin-top: 3px;
+    overflow-wrap: anywhere;
+}
+
+.tally {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.voteActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}

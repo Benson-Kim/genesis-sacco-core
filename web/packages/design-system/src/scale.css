@@ -1,0 +1,41 @@
+/*
+ * Structural scale tokens as CSS custom properties — kept in sync with
+ * scale.ts by the design-system test suite (rules; see scale.ts for the governing math). Color custom properties live in tokens.css and
+ * stay verbatim-prototype.
+ */
+:root {
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+
+  --radius-micro: 3px;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  --leading-heading: 1.15;
+  --leading-body: 1.5;
+
+  --fs-meta: clamp(0.6875rem, 0.65rem + 0.125vw, 0.75rem);
+  --fs-body: clamp(0.8125rem, 0.775rem + 0.125vw, 0.875rem);
+  --fs-title: clamp(1rem, 0.925rem + 0.25vw, 1.125rem);
+  --fs-heading: clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem);
+
+  --measure-body: 65ch;
+  --measure-max: 75ch;
+
+  --duration-instant: 80ms;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+
+  --touch-target-min: 44px;
+  --touch-target-comfortable: 48px;
+}

@@ -20,7 +20,9 @@ def api_client() -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test")
 
 
-async def seed_user(email: str, role_name: str = "System Admin") -> tuple[uuid.UUID, uuid.UUID]:
+async def seed_user(
+    email: str, role_name: str = "System Admin", *, phone: str | None = None
+) -> tuple[uuid.UUID, uuid.UUID]:
     """Create a tenant with one role and one active user; returns (tenant, role)."""
     tid = uuid.uuid4()
     role_id = uuid.uuid4()
@@ -42,11 +44,17 @@ async def seed_user(email: str, role_name: str = "System Admin") -> tuple[uuid.U
         )
         await session.execute(
             text(
-                "INSERT INTO users (id, tenant_id, role_id, full_name, email) "
+                "INSERT INTO users (id, tenant_id, role_id, full_name, email, phone) "
                 "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), "
-                "CAST(:rid AS uuid), 'Test User', :email)"
+                "CAST(:rid AS uuid), 'Test User', :email, :phone)"
             ),
-            {"id": str(user_id), "tid": str(tid), "rid": str(role_id), "email": email},
+            {
+                "id": str(user_id),
+                "tid": str(tid),
+                "rid": str(role_id),
+                "email": email,
+                "phone": phone,
+            },
         )
     return tid, role_id
 

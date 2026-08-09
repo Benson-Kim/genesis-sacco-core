@@ -20,14 +20,109 @@ workflow:
 default:
   interruptible: true
 
+# `latest` template variants: the stable templates rule on
+# $CI_COMMIT_BRANCH only, so their jobs never spawned on
+# merge_request_event pipelines (the !26/!28/!29 security-stage gap —
+# review R6). The latest variants add merge-request rules and skip the
+# duplicate branch pipeline when an MR is open.
 include:
-  - template: Jobs/SAST.gitlab-ci.yml
-  - template: Jobs/Secret-Detection.gitlab-ci.yml
-  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+  - template: Jobs/SAST.latest.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.latest.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.latest.gitlab-ci.yml
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+  PUB_CACHE: "$CI_PROJECT_DIR/mobile/.pub-cache"
+
+# -----------------------------------------------------------------------------
+# Docs — architecture diagrams (P-DIAG series, docs/diagrams/ only)
+# Minimal, isolated job (P-DIAG.0): renders every standalone .mmd file
+# AND every ```mermaid fenced block inside docs/diagrams/*.md with
+# mermaid-cli, so an unrenderable diagram is a red pipeline. Scoped by
+# `rules:changes` to docs/diagrams/** exclusively — it can never
+# collide with the backend jobs of parallel tracks (P13.9/P13.13).
+# -----------------------------------------------------------------------------
+docs:diagrams:
+  stage: lint
+  needs: []
+  image:
+    # Official mermaid-cli image (bundles headless Chromium); pinned.
+    name: minlag/mermaid-cli:11.4.2
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - docs/diagrams/**/*
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - docs/diagrams/**/*
+  script:
+    - mkdir -p /tmp/mmd /tmp/rendered
+    # Standalone diagram sources.
+    - |
+      for f in docs/diagrams/*.mmd; do
+        [ -e "$f" ] || continue
+        cp "$f" "/tmp/mmd/$(basename "$f")"
+      done
+    # ```mermaid fenced blocks inside the markdown diagram documents.
+    - |
+      for f in docs/diagrams/*.md; do
+        [ -e "$f" ] || continue
+        awk -v base="/tmp/mmd/$(basename "${f%.md}")" '
+          /^```mermaid[[:space:]]*$/ { in_block = 1; n++; out = base "-block" n ".mmd"; next }
+          /^```[[:space:]]*$/ && in_block { in_block = 0; next }
+          in_block { print > out }
+        ' "$f"
+      done
+    - |
+      found=0
+      for m in /tmp/mmd/*.mmd; do
+        [ -e "$m" ] || continue
+        found=1
+        echo "rendering $m"
+        /home/mermaidcli/node_modules/.bin/mmdc -p /puppeteer-config.json \
+          -i "$m" -o "/tmp/rendered/$(basename "${m%.mmd}").svg"
+      done
+      if [ "$found" -ne 1 ]; then
+        echo "docs/diagrams changed but no mermaid sources found" >&2
+        exit 1
+      fi
+    - ls -l /tmp/rendered
+
+# -----------------------------------------------------------------------------
+# Docs — semantic spot-check (!38 review R1). The render job above is a
+# SYNTAX gate only; this job runs the checked-in SEMANTIC gate
+# `docs/diagrams/c4-spot-check.py` (stdlib only, no dependencies) from
+# the repo root, so a diagram citing an invented module path, an
+# undocumented router, or a function claim without a matching def is a
+# red pipeline — the drift gate can no longer rot silently as
+# manual-only. MR pipelines are scoped to the exact inputs the check
+# reads (the diagram files AND the router wiring in
+# backend/src/genesis/api/app.py AND the migration chain). On the
+# default branch the job ALWAYS runs, unconditionally: squash-merges
+# land file combinations no MR pipeline ever tested together, and a
+# rules:changes skip at HEAD painted main green while the check was
+# red two merges earlier (post-!65/!66 pipelines 2733179092/2733179118
+# failed; HEAD pipeline 2733179131 skipped the job because !67's
+# web-only diff missed the patterns). A cheap stdlib script is the
+# wrong thing to save minutes on — the default-branch verdict must be
+# computed, never inferred from an unrelated diff.
+# -----------------------------------------------------------------------------
+docs:spot-check:
+  stage: lint
+  needs: []
+  image: python:3.12-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - docs/diagrams/**/*
+        - backend/src/genesis/api/app.py
+        - backend/migrations/versions/**/*
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python3 docs/diagrams/c4-spot-check.py
+    - python3 docs/diagrams/erd-spot-check.py
 
 # -----------------------------------------------------------------------------
 # Backend — Python 3.12 / FastAPI
@@ -72,12 +167,75 @@ backend:test:
     DATABASE_URL: "postgresql+psycopg://genesis@postgres:5432/genesis_test"
   script:
     - alembic upgrade head
+    # RLS must actually be enforced during tests: the postgres-image
+    # bootstrap user is a SUPERUSER, which always bypasses RLS. Create a
+    # non-superuser app role (no BYPASSRLS) per ADR-0002 and run the test
+    # suite through it. Migrations above still run as the privileged owner.
+    - |
+      python - <<'PYEOF'
+      import psycopg
+      conn = psycopg.connect("postgresql://genesis@postgres:5432/genesis_test")
+      conn.autocommit = True
+      cur = conn.cursor()
+      cur.execute(
+          "CREATE ROLE genesis_app LOGIN NOSUPERUSER NOBYPASSRLS "
+          "NOCREATEDB NOCREATEROLE"
+      )
+      cur.execute("GRANT USAGE ON SCHEMA public TO genesis_app")
+      cur.execute(
+          "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
+          "IN SCHEMA public TO genesis_app"
+      )
+      cur.execute(
+          "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES "
+          "IN SCHEMA public TO genesis_app"
+      )
+      # R7 (!44): migration 0024 revokes the PostgreSQL-default PUBLIC
+      # EXECUTE on the three SECURITY DEFINER registries, so the app
+      # role needs an explicit grant. 0024's own conditional grant
+      # cannot fire here because this role is created AFTER `alembic
+      # upgrade head` (role provisioning is environment-owned per
+      # ADR-0002) — grant alongside the table/sequence grants above.
+      cur.execute("GRANT EXECUTE ON FUNCTION active_tenant_ids() TO genesis_app")
+      cur.execute("GRANT EXECUTE ON FUNCTION outbox_due_tenant_ids() TO genesis_app")
+      cur.execute(
+          "GRANT EXECUTE ON FUNCTION outbox_purgeable_tenant_ids(timestamptz) "
+          "TO genesis_app"
+      )
+      PYEOF
+    - export DATABASE_URL="postgresql+psycopg://genesis_app@postgres:5432/genesis_test"
     - pytest --cov=src --cov-fail-under=85 --junitxml=report.xml
+  # Surface captured EXPLAIN plans in the job log so MR authors can copy
+  # them into the description (artifact download needs an api-scope token).
+  after_script:
+    - cat backend/perf/explain_p10.txt || true
+    - cat backend/perf/explain_p13.txt || true
+    - cat backend/perf/explain_p135.txt || true
+    - cat backend/perf/explain_p136.txt || true
+    - cat backend/perf/explain_p137.txt || true
+    - cat backend/perf/explain_p138.txt || true
+    - cat backend/perf/explain_p1310.txt || true
+    - cat backend/perf/explain_p1311.txt || true
+    - cat backend/perf/explain_p1312.txt || true
+    - cat backend/perf/explain_p1316.txt || true
+    - cat backend/perf/explain_p1316_filters.txt || true
+    - cat backend/perf/explain_p1315_registers.txt || true
+    - cat backend/perf/explain_codex_review.txt || true
+    - cat backend/perf/explain_member_aggregates.txt || true
+    - cat backend/perf/explain_member_list_aggregates.txt || true
+    - cat backend/perf/explain_exit_eligibility.txt || true
+    - cat backend/perf/explain_batch7.txt || true
+    - cat backend/perf/explain_remediation_n1.txt || true
+    - cat backend/perf/explain_batch8.txt || true
+    - cat backend/perf/explain_batch10.txt || true
+    - cat backend/perf/explain_signin_phone.txt || true
   coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
     reports:
       junit: backend/report.xml
+    paths:
+      - backend/perf/
 
 backend:migrate-check:
   extends: .backend
@@ -159,6 +317,121 @@ web:build:
       - web/.next
     expire_in: 1 week
 
+# Dependency-change utility (P15): the npm registry is proxy-blocked in
+# the agent sandbox, so lockfile updates are produced IN CI and committed
+# from the job artifact (the P14 "lockfile is produced by CI" convention).
+# Manual + allow_failure: it never gates a pipeline.
+web:lockfile:
+  image: node:22-alpine
+  stage: lint
+  needs: []
+  cache: []
+  rules:
+    # Auto-runs when web/package.json changes on an MR (the agent token
+    # cannot play manual jobs); allow_failure keeps it non-gating.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - web/package.json
+      allow_failure: true
+  script:
+    - cd web
+    - npm install --package-lock-only --ignore-scripts
+    # The agent token cannot download artifacts (read-only job scope), so
+    # the lockfile also travels via the trace as gzip+base64 between
+    # markers — decoded and committed by the session driving the MR.
+    - echo "-----BEGIN PACKAGE-LOCK-----"
+    - gzip -c package-lock.json | base64 -w0
+    - echo ""
+    - echo "-----END PACKAGE-LOCK-----"
+  artifacts:
+    paths:
+      - web/package-lock.json
+    expire_in: 1 week
+
+# Playwright E2E (P15 exit criterion, blocker (e): evidence is in-project
+# pipeline runs). Runs the REAL production build (next start — middleware/
+# CSP live) in real browsers; the API is mocked at the BROWSER network
+# boundary inside the specs (page.route) — request counts/bodies are the
+# assertion surface for double-submit/409 single-attempt proofs.
+web:e2e:
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
+  stage: test
+  needs: []
+  rules:
+    - exists: ["web/playwright.config.ts"]
+  cache:
+    key:
+      files:
+        - web/package-lock.json
+    paths:
+      - .cache/npm
+  variables:
+    # NEXT_PUBLIC_* are inlined at build time; the tenant id is public
+    # by definition (gate 1.6) and only needs a stable value here.
+    NEXT_PUBLIC_TENANT_ID: "22222222-2222-2222-2222-222222222222"
+    CI: "true"
+  script:
+    - cd web
+    - npm ci
+    - npm run build
+    - npx playwright test
+  artifacts:
+    when: on_failure
+    paths:
+      - web/playwright-report
+      - web/test-results
+    expire_in: 1 week
+
+# Contract drift-checks (P14): the web client is GENERATED from the backend
+# OpenAPI contract and may never silently drift from it.
+#   spec-drift   — backend code vs committed openapi.json snapshot
+#   client-drift — committed openapi.json vs committed generated client
+web:spec-drift:
+  image: python:3.12-slim
+  stage: test
+  needs: []
+  rules:
+    - exists: ["web/packages/api-client/openapi.json"]
+  cache:
+    key:
+      files:
+        - backend/pyproject.toml
+    paths:
+      - .cache/pip
+  script:
+    - pip install --upgrade pip
+    - pip install ./backend
+    - python backend/scripts/export_openapi.py /tmp/openapi.json
+    - |
+      if ! diff -u web/packages/api-client/openapi.json /tmp/openapi.json; then
+        echo "ERROR: web/packages/api-client/openapi.json is STALE relative to the backend."
+        echo "Regenerate: (cd backend && python scripts/export_openapi.py ../web/packages/api-client/openapi.json)"
+        echo "then (cd web && npm run generate:api) and commit both."
+        exit 1
+      fi
+    - echo "OK - committed OpenAPI snapshot matches the backend contract."
+
+web:client-drift:
+  extends: .web
+  stage: test
+  needs: []
+  rules:
+    - exists: ["web/packages/api-client/openapi.json"]
+  script:
+    - npm run check:client-drift
+    # Falsifiability self-test (P14 EXIT): a deliberately staled generated
+    # client must make the same check FAIL — proven on EVERY pipeline, not
+    # once at bootstrap. Runs on a workspace copy; nothing is committed.
+    - |
+      cp packages/api-client/src/generated/schema.d.ts /tmp/schema.orig.d.ts
+      echo "// deliberately staled for the drift-check negative proof" >> packages/api-client/src/generated/schema.d.ts
+      if npm run check:client-drift; then
+        echo "ERROR: drift check passed against a staled client" >&2
+        exit 1
+      fi
+      cp /tmp/schema.orig.d.ts packages/api-client/src/generated/schema.d.ts
+      echo "OK - drift check fails on a stale client"
+
 # -----------------------------------------------------------------------------
 # Mobile — Flutter (member_app, admin_app, gp_ui, gp_api_client)
 # Packages are processed in dependency order:
@@ -175,9 +448,6 @@ web:build:
         - mobile/gp_ui/pubspec.yaml
     paths:
       - mobile/.pub-cache
-
-variables:
-  PUB_CACHE: "$CI_PROJECT_DIR/mobile/.pub-cache"
 
 mobile:lint:
   extends: .mobile

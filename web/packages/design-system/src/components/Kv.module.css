@@ -1,0 +1,38 @@
+/* Labelled key/value detail row — promoted verbatim from the module-local
+   copies. Default variant = the drawer/dialog
+   convention (12 modules); `.quiet` = the users/audit convention. */
+.kvRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--panel);
+  font-size: 13px;
+}
+
+.kvKey {
+  color: var(--sub);
+  font-weight: 600;
+}
+
+.kvVal {
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Quiet variant: tighter row, heavier key, value inherits weight/color
+   (byte-for-byte the users-module rules). */
+.quiet {
+  padding: 6px 0;
+}
+
+.quiet .kvKey {
+  font-weight: 700;
+}
+
+.quiet .kvVal {
+  font-weight: inherit;
+  color: inherit;
+}

@@ -1,0 +1,155 @@
+/* Mirrors prototype #gate /.gatecard /.otpbox */
+.gate {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(140deg, var(--navy), var(--navyMid));
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.card {
+  width: 404px;
+  max-width: 100%;
+  background: #fff;
+  border-radius: 20px;
+  padding: 30px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 20px;
+}
+
+.mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--gold);
+  color: var(--navy);
+  display: grid;
+  place-items: center;
+  font-family: Georgia, serif;
+  font-weight: 800;
+  font-size: 20px;
+}
+
+.brandName {
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--navy);
+}
+
+.brandTag {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--sub);
+  margin-bottom: 18px;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1.5px solid var(--line);
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+}
+
+/* Focus ring replaced, never removed. */
+.input:focus-visible {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px var(--navySoft);
+}
+
+.otpRow {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 6px 0 16px;
+}
+
+.otpInput {
+  width: 44px;
+  height: 52px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+}
+
+/* Focus ring replaced, never removed. */
+.otpInput:focus-visible {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px var(--navySoft);
+}
+
+.wide {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.error {
+  background: var(--brickSoft);
+  color: var(--brick);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+/* Operator notice after a code-owned teardown flag (e.g. session expiry). */
+.notice {
+  background: var(--navySoft);
+  color: var(--navy);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.foot {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 11.5px;
+  color: var(--sub);
+}
+
+.link,
+.linkStrong {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--sub);
+}
+
+.linkStrong {
+  color: var(--navy);
+  font-weight: 700;
+}

@@ -1,0 +1,53 @@
+# =============================================================================
+# Genesis Prestige — GitHub Actions mirror of the `docs:spot-check` job in
+# .gitlab-ci.yml (the single source of truth — see README "CI parity").
+#
+# The render job (docs-diagrams.yml) is a SYNTAX gate only; this job runs the
+# checked-in SEMANTIC gate `docs/diagrams/c4-spot-check.py` (stdlib only, no
+# dependencies) from the repo root, so a diagram citing an invented module
+# path, an undocumented router, or a function claim without a matching def is
+# a red pipeline.
+#
+# GitLab `rules:changes` on merge-request pipelines is scoped to the exact
+# inputs the check reads (the diagram files AND the router wiring in
+# backend/src/genesis/api/app.py AND backend/migrations/versions/**) and
+# translates to the same `paths:` filters on pull_request. On push to main
+# the GitLab job runs UNCONDITIONALLY (no `changes:` filter): squash-merges
+# land file combinations no MR pipeline ever tested together, and a paths
+# skip at HEAD once painted main green while the check was red two merges
+# earlier — so push-to-main carries no `paths:` filter here either.
+# Both semantic gates are wired, mirroring the GitLab job: c4-spot-check.py
+# AND erd-spot-check.py (README "CI parity" records this).
+# =============================================================================
+name: docs-spot-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'docs/diagrams/**'
+      - 'backend/src/genesis/api/app.py'
+      - 'backend/migrations/versions/**'
+
+# Mirrors GitLab `default: interruptible: true`.
+concurrency:
+  group: docs-spot-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `docs:spot-check` (needs: [] — independent).
+  # ---------------------------------------------------------------------------
+  docs-spot-check:
+    name: "docs:spot-check"
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    steps:
+      - uses: actions/checkout@v4
+      # Verbatim from the GitLab `docs:spot-check` job.
+      - name: C4 semantic spot-check (stdlib only)
+        run: python3 docs/diagrams/c4-spot-check.py
+      - name: ERD semantic spot-check (stdlib only)
+        run: python3 docs/diagrams/erd-spot-check.py

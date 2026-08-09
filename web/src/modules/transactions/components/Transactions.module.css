@@ -1,0 +1,227 @@
+/*
+ * Transactions module styles (P15 module 6). Tokens only (gate 1.1);
+ * page-level GRIDS come from the shared modules/layout/grid.module.css
+ * — no private page grid lives here.
+ */
+
+/* Vertical rhythm between the toolbar, ops card and register. */
+.section {
+    margin-bottom: 16px;
+}
+
+.toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.filters {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+.filterGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Persistent label (issue #8 — never placeholder-as-label). */
+.filterLabel {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sub);
+    font-weight: 700;
+}
+
+.segment {
+    display: inline-flex;
+    flex-wrap: wrap;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--card);
+}
+
+.segmentButton {
+    border: none;
+    background: transparent;
+    padding: 0 14px;
+    min-height: 44px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--sub);
+    cursor: pointer;
+}
+
+.segmentButton+.segmentButton {
+    border-left: 1px solid var(--line);
+}
+
+.segmentButton[aria-pressed="true"] {
+    background: var(--navySoft);
+    color: var(--navy);
+    font-weight: 800;
+}
+
+.segmentButton:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: -2px;
+}
+
+.cellStrong {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.muted {
+    color: var(--sub);
+}
+
+/* Opaque record ids (member fallbacks, txn refs) — tabular, subdued. */
+.mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--sub);
+}
+
+/* DR / CR amount cells — color NEVER carries meaning alone: each
+ * amount sits in its own labelled column (issue #8). */
+.drCell {
+    font-weight: 700;
+    color: var(--brick);
+    font-variant-numeric: tabular-nums;
+}
+
+.crCell {
+    font-weight: 700;
+    color: var(--emerald);
+    font-variant-numeric: tabular-nums;
+}
+
+.emptyCell {
+    color: var(--line);
+}
+
+.input,
+.select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 12px;
+    min-height: 44px;
+    font-size: 13.5px;
+    background: var(--card);
+    color: var(--ink);
+}
+
+.input:focus-visible,
+.select:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 1px;
+}
+
+/* Narrow toolbar variants of the shared control shapes. */
+.filterControl {
+    min-width: 150px;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.toolbarActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.formNote {
+    font-size: 12px;
+    color: var(--sub);
+    margin: 10px 0;
+}
+
+.subhead {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    margin: 18px 0 8px;
+}
+
+.detailGrid {
+    margin: 14px 0;
+}
+
+/* Double-entry legs table (#31 ledger (g)) — one row per DR/CR leg,
+   verbatim server facts; deliberately NO footer/total row exists. */
+.legsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.legsTable th {
+    text-align: left;
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 700;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.legsTable td {
+    padding: 7px 0;
+    border-bottom: 1px solid var(--panel);
+}
+
+.legsTable td:last-child {
+    text-align: right;
+}
+
+.legsAmountHead {
+    text-align: right !important;
+}
+
+/* Ledger table header card (prototype vTxn head). */
+.ledgerHead {
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.ledgerNote {
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 600;
+}
+
+/* Posting / interest-run result panel — server figures verbatim. */
+.resultPanel {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
+}
+
+.resultTitle {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}

@@ -1,0 +1,41 @@
+/* Mirrors prototype.btn /.btn.p /.btn.g */
+.btn {
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--sub);
+  border-radius: var(--radius-md);
+  padding: 9px 16px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  /* 44px minimum interactive target. */
+  min-height: var(--touch-target-min);
+  /* Labels never wrap to a second line. */
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  background: var(--line);
+  color: var(--sub);
+  cursor: not-allowed;
+}
+
+.primary {
+  border: none;
+  background: var(--navy);
+  color: #fff;
+}
+
+.success {
+  border: none;
+  background: var(--emerald);
+  color: #fff;
+}
+
+/* Destructive actions (suspend, force re-enrolment) — brick tokens. */
+.danger {
+  border: none;
+  background: var(--brick);
+  color: #fff;
+}

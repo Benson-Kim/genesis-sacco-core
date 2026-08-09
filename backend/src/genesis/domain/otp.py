@@ -1,4 +1,4 @@
-"""OTP policy mirroring the prototype login gate (MASTER_PROMPT 1.6).
+"""OTP policy mirroring the prototype login gate (the house doctrine 1.6).
 
 6 digits, at most 5 attempts, 5-minute TTL, single-use, constant-time
 compare. Pure logic only: persistence, delivery, and clocks live outside.

@@ -1,0 +1,219 @@
+/*
+ * Permissions matrix — role sidebar + permission table.
+ * Salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238;
+ * adapted to this branch's token set (scale.css --fs-* and --duration-*;
+ * the salvage source's --font-size-*, --ease-standard, --focus-ring do
+ * not exist here) and issue- conventions: visible outline focus
+ * rings and a >=44px checkbox hit target (.checkTarget wrapper).
+ */
+
+/* Page layout comes from the shared responsive module
+   (src/modules/layout/grid.module.css.sideMain) — one copy, reuse-first. */
+
+/* Role sidebar */
+.roleList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roleItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--sub);
+  text-align: left;
+  transition:
+    background var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roleItem,
+  .check {
+    transition: none;
+  }
+}
+
+.roleItem:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.roleItem.active {
+  background: var(--navySoft);
+  color: var(--navy);
+  font-weight: 800;
+}
+
+/* Focus ring replaced, never removed. */
+.roleItem:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: -2px;
+}
+
+/* Skeleton row while roles load (tokens only — no inline styles). */
+.roleSkeleton {
+  opacity: 0.4;
+}
+
+.roleIcon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  /* Shield icon via CSS mask — no external asset */
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  opacity: 0.5;
+}
+
+.roleItem.active .roleIcon {
+  opacity: 1;
+}
+
+/* Matrix panel */
+.matrixHead {
+  font-size: var(--fs-title);
+  font-weight: 800;
+  color: var(--navy);
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.matrixTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.matrixTable thead tr {
+  background: var(--panel);
+}
+
+.matrixTh {
+  padding: 10px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+}
+
+.matrixTh:not(:first-child) {
+  text-align: center;
+}
+
+.matrixTd {
+  padding: 13px 16px;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--ink);
+  border-bottom: 1px solid var(--panel);
+}
+
+.matrixTd:not(:first-child) {
+  text-align: center;
+}
+
+/* >=44px hit target wrapping the 24px visual checkbox. */
+.checkTarget {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+/* Custom checkbox replacing native — visually matches the prototype */
+.check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  transition:
+    background var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
+  flex: none;
+}
+
+.check:checked {
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+.check:checked::after {
+  content: "";
+  width: 10px;
+  height: 7px;
+  border-left: 2.5px solid #fff;
+  border-bottom: 2.5px solid #fff;
+  transform: rotate(-45deg) translateY(-1px);
+  display: block;
+}
+
+/* Focus ring replaced, never removed. */
+.check:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
+
+.check:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.matrixFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.saveStatus {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+}
+
+.saveStatus.error {
+  color: var(--brick);
+}
+
+.saveStatus.ok {
+  color: var(--emerald);
+}
+
+/* Loading / empty states */
+.placeholder {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--sub);
+  font-size: var(--fs-body);
+}

@@ -1,0 +1,243 @@
+# =============================================================================
+# Genesis Prestige — GitHub Actions mirror of the web jobs in .gitlab-ci.yml
+# (the single source of truth — see README "CI parity"). Job-for-job:
+#   web:lint -> web:test -> web:build   (needs chain, node:22-alpine)
+#   web:e2e          (independent, Playwright v1.62.1-noble, real prod build)
+#   web:spec-drift   (independent, backend OpenAPI vs committed snapshot)
+#   web:client-drift (independent, committed snapshot vs generated client,
+#                     with the falsifiability negative proof on every run)
+#
+# GitLab `workflow:rules` (merge_request_event | default branch | tag)
+# translates to: pull_request + push to main + tag push.
+# GitLab `rules:exists` on web/package.json / web/playwright.config.ts /
+# web/packages/api-client/openapi.json is satisfied at every commit of this
+# repo, so no paths: filter — the web jobs run on every pipeline, as on GitLab.
+#
+# NOT mirrored (documented in README "CI parity"): web:lockfile — a
+# GitLab-agent-sandbox utility (lockfile produced in CI and shipped via the
+# job trace) that is meaningless on GitHub runners with registry access.
+# =============================================================================
+name: web
+
+on:
+  push:
+    branches: [main]
+    tags: ['**']
+  pull_request:
+
+# Mirrors GitLab `default: interruptible: true`.
+concurrency:
+  group: web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `web:lint` (extends .web).
+  # ---------------------------------------------------------------------------
+  web-lint:
+    name: "web:lint"
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-alpine
+    defaults:
+      run:
+        # node:22-alpine ships no bash — same POSIX sh GitLab uses.
+        shell: sh
+    env:
+      # Mirrors GitLab global `npm_config_cache: $CI_PROJECT_DIR/.cache/npm`.
+      npm_config_cache: ${{ github.workspace }}/.cache/npm
+    steps:
+      - uses: actions/checkout@v4
+      # Mirrors GitLab `.web` cache (key: files: web/package-lock.json).
+      - uses: actions/cache@v4
+        with:
+          path: .cache/npm
+          key: npm-${{ hashFiles('web/package-lock.json') }}
+      # Mirrors GitLab `.web` before_script.
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+      # Mirrors GitLab `web:lint` script verbatim.
+      - name: eslint + tsc
+        working-directory: web
+        run: |
+          npm run lint
+          npx tsc --noEmit
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `web:test` (needs: web:lint).
+  # ---------------------------------------------------------------------------
+  web-test:
+    name: "web:test"
+    needs: web-lint
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-alpine
+    defaults:
+      run:
+        shell: sh
+    env:
+      npm_config_cache: ${{ github.workspace }}/.cache/npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/npm
+          key: npm-${{ hashFiles('web/package-lock.json') }}
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+      - name: Unit tests
+        working-directory: web
+        run: npm test -- --ci
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `web:build` (needs: web:test); .next kept 1 week.
+  # ---------------------------------------------------------------------------
+  web-build:
+    name: "web:build"
+    needs: web-test
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-alpine
+    defaults:
+      run:
+        shell: sh
+    env:
+      npm_config_cache: ${{ github.workspace }}/.cache/npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/npm
+          key: npm-${{ hashFiles('web/package-lock.json') }}
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+      - name: Production build
+        working-directory: web
+        run: npm run build
+      - name: Upload .next build (expire_in 1 week)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-next-build
+          path: web/.next
+          retention-days: 7
+          # .next is a dotdir — upload-artifact v4 skips hidden files unless told.
+          include-hidden-files: true
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `web:e2e` (needs: [] — independent). Playwright runs the
+  # REAL production build (next start — middleware/CSP live) in real browsers;
+  # the API is mocked at the BROWSER network boundary inside the specs
+  # (page.route) — request counts/bodies are the assertion surface for
+  # double-submit/409 single-attempt proofs.
+  # ---------------------------------------------------------------------------
+  web-e2e:
+    name: "web:e2e"
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+    env:
+      npm_config_cache: ${{ github.workspace }}/.cache/npm
+      # NEXT_PUBLIC_* are inlined at build time; the tenant id is public
+      # by definition (gate 1.6) and only needs a stable value here.
+      NEXT_PUBLIC_TENANT_ID: "22222222-2222-2222-2222-222222222222"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      # Mirrors the job-local cache (key: files: web/package-lock.json).
+      - uses: actions/cache@v4
+        with:
+          path: .cache/npm
+          key: npm-${{ hashFiles('web/package-lock.json') }}
+      - name: Build + Playwright E2E
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npx playwright test
+      # Mirrors GitLab artifacts (when: on_failure, expire_in 1 week).
+      - name: Upload Playwright report + traces (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `web:spec-drift` (needs: [] — independent). Contract
+  # drift-check (P14): backend code vs committed openapi.json snapshot.
+  # ---------------------------------------------------------------------------
+  web-spec-drift:
+    name: "web:spec-drift"
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    env:
+      PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+    steps:
+      - uses: actions/checkout@v4
+      # Mirrors the job cache (key: files: backend/pyproject.toml).
+      - uses: actions/cache@v4
+        with:
+          path: .cache/pip
+          key: pip-${{ hashFiles('backend/pyproject.toml') }}
+      - name: Export backend OpenAPI and diff against committed snapshot
+        run: |
+          pip install --upgrade pip
+          pip install ./backend
+          python backend/scripts/export_openapi.py /tmp/openapi.json
+          if ! diff -u web/packages/api-client/openapi.json /tmp/openapi.json; then
+            echo "ERROR: web/packages/api-client/openapi.json is STALE relative to the backend."
+            echo "Regenerate: (cd backend && python scripts/export_openapi.py ../web/packages/api-client/openapi.json)"
+            echo "then (cd web && npm run generate:api) and commit both."
+            exit 1
+          fi
+          echo "OK - committed OpenAPI snapshot matches the backend contract."
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `web:client-drift` (needs: [] — independent). Contract
+  # drift-check (P14): committed openapi.json vs committed generated client,
+  # plus the falsifiability negative proof on EVERY run.
+  # ---------------------------------------------------------------------------
+  web-client-drift:
+    name: "web:client-drift"
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-alpine
+    defaults:
+      run:
+        shell: sh
+    env:
+      npm_config_cache: ${{ github.workspace }}/.cache/npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/npm
+          key: npm-${{ hashFiles('web/package-lock.json') }}
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+      - name: check:client-drift
+        working-directory: web
+        run: npm run check:client-drift
+      # Falsifiability self-test (P14 EXIT): a deliberately staled generated
+      # client must make the same check FAIL — proven on EVERY pipeline, not
+      # once at bootstrap. Runs on a workspace copy; nothing is committed.
+      - name: Falsifiability negative proof (stale client must fail)
+        working-directory: web
+        run: |
+          cp packages/api-client/src/generated/schema.d.ts /tmp/schema.orig.d.ts
+          echo "// deliberately staled for the drift-check negative proof" >> packages/api-client/src/generated/schema.d.ts
+          if npm run check:client-drift; then
+            echo "ERROR: drift check passed against a staled client" >&2
+            exit 1
+          fi
+          cp /tmp/schema.orig.d.ts packages/api-client/src/generated/schema.d.ts
+          echo "OK - drift check fails on a stale client"

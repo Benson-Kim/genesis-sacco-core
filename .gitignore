@@ -1,0 +1,73 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test & coverage artefacts
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage/
+htmlcov/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+.pytype/
+
+# Ruff cache (appears at both root and backend/)
+.ruff_cache/
+
+# Node / npm workspaces
+node_modules/
+
+# Build output
+.next/
+.nuxt/
+out/
+dist/
+build/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Playwright test artefacts
+/playwright/.cache/
+/playwright-report/
+/test-results/
+
+# Vitest coverage
+coverage/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker 
+# Keep docker-compose.yml tracked; ignore local overrides
+docker-compose.override.yml

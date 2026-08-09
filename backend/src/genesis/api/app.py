@@ -8,10 +8,30 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from genesis.api.access import router as access_router
+from genesis.api.accounting_periods import jobs_router as accounting_jobs_router
+from genesis.api.accounting_periods import router as accounting_periods_router
+from genesis.api.audit_log import router as audit_log_router
 from genesis.api.auth import router as auth_router
+from genesis.api.branches import router as branches_router
+from genesis.api.corrections import router as corrections_router
+from genesis.api.dashboard import router as dashboard_router
+from genesis.api.dividends import router as dividends_router
 from genesis.api.health import router as health_router
 from genesis.api.idempotency import IdempotencyMiddleware
+from genesis.api.loan_book import router as loan_book_router
+from genesis.api.loans import router as loans_router
 from genesis.api.me import router as me_router
+from genesis.api.member import router as member_router
+from genesis.api.member_exits import router as member_exits_router
+from genesis.api.member_identity import router as member_identity_router
+from genesis.api.member_kyc import router as member_kyc_router
+from genesis.api.members import router as members_router
+from genesis.api.recovery import router as recovery_router
+from genesis.api.reports import router as reports_router
+from genesis.api.tenant_settings import router as tenant_settings_router
+from genesis.api.transactions import router as transactions_router
+from genesis.api.users import router as users_router
+from genesis.application.pagination import assert_cursor_signing_key_configured
 from genesis.errors import AppError, ErrorCategory
 from genesis.logging import configure_logging, correlation_id_var
 
@@ -24,11 +44,34 @@ def _envelope(category: ErrorCategory) -> dict[str, str]:
 
 def create_app() -> FastAPI:
     configure_logging()
+    # Fail-closed boot guard: a missing
+    # or short cursor-signing key aborts startup here, never at the
+    # first decode.
+    assert_cursor_signing_key_configured()
     app = FastAPI(title="Genesis Prestige API", version="0.1.0")
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(members_router)
+    app.include_router(member_kyc_router)
+    app.include_router(member_exits_router)
+    app.include_router(member_identity_router)
+    app.include_router(member_router)
+    app.include_router(loans_router)
+    app.include_router(loan_book_router)
+    app.include_router(recovery_router)
+    app.include_router(transactions_router)
+    app.include_router(corrections_router)
+    app.include_router(dashboard_router)
+    app.include_router(dividends_router)
+    app.include_router(reports_router)
+    app.include_router(tenant_settings_router)
+    app.include_router(accounting_periods_router)
+    app.include_router(accounting_jobs_router)
     app.include_router(me_router)
     app.include_router(access_router)
+    app.include_router(users_router)
+    app.include_router(audit_log_router)
+    app.include_router(branches_router)
     app.add_middleware(IdempotencyMiddleware)
 
     @app.middleware("http")

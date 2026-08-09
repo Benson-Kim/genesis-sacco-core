@@ -1,4 +1,4 @@
-"""Money primitives: the single source of rounding truth (MASTER_PROMPT 1.1).
+"""Money primitives: the single source of rounding truth (the house doctrine 1.1).
 
 Currency is KES held as Decimal - money is NEVER float. Every module that
 touches money imports these helpers instead of re-implementing rounding.

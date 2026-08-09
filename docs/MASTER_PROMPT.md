@@ -33,7 +33,9 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Email/SMS/push/webhooks go through the **transactional outbox** only:
   write `outbox_events` in the SAME transaction as the domain change; a worker
   dispatches with retry + exponential backoff + dead-letter table. Direct
-  provider calls from request handlers are forbidden.
+  provider calls from request handlers are forbidden. The as-built flow
+  is `docs/diagrams/sequence-outbox-dispatch.md` (P-DIAG.5) — reference
+  it instead of re-describing the pattern.
 - Every service exposes `/healthz` (liveness) and `/readyz` (deps checked).
 
 ### 1.3 Scalability
@@ -61,7 +63,21 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Reference/number generation (member no `GP-XXXX`, txn refs `MP-/LN-/RP-/SH-/WD-`)
   is race-safe: `pg_advisory_xact_lock(tenant_id, seq_name)` + UNIQUE constraint
   + retry-on-conflict. Never `SELECT max()+1` without a lock.
+- Approvals of money-moving operations (committee decisions, settlements,
+  quotes) bind to a PERSISTED snapshot row (amount + component breakdown +
+  version); execution re-verifies every component under the full lock set
+  and returns 409 if anything moved since approval. Approving "the current
+  state" is a rejected design (quote/approve/execute TOCTOU). As-built
+  sequence diagrams (P-DIAG.5 — reference, never re-describe):
+  committee/voting `docs/diagrams/sequence-committee-voting.md`;
+  snapshot-bind-reverify `docs/diagrams/sequence-snapshot-bind-reverify.md`.
+- Uniqueness/idempotency claims are made atomically:
+  `INSERT ... ON CONFLICT DO NOTHING` checked by rowcount. SELECT-then-INSERT
+  against a UNIQUE key is a rejected pattern (race -> unhandled IntegrityError).
 - Outbox dispatch holds no domain row locks.
+- Batched jobs (arrears, accruals, backfills) run through the shared batch
+  runner: id-keyset batches, one short transaction each, `FOR UPDATE SKIP
+  LOCKED`, injected session scope (no infrastructure imports in jobs).
 
 ### 1.5 Data integrity
 - Constraints in the DATABASE, not just the app: CHECK (amounts >= 0, rate
@@ -75,6 +91,14 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Multi-step operations (disburse = approve check + ledger post + schedule
   generation + outbox) run in ONE transaction owned by a single application-service
   function that owns commit/rollback. No partial success.
+- Values derived from balances OVER A PERIOD (deposit interest, fees,
+  averages) are computed from the append-only ledger — e.g. the average
+  daily balance reconstructed from posting legs under the account row lock —
+  never from a point-in-time balance snapshot. A snapshot basis is a proven
+  exploit class (park funds on the measurement day, withdraw the next).
+- Postings that recognise a period (interest, accruals) carry `occurred_at`
+  at the END of that period so they sort after the period's real activity
+  and compound into the next period's basis.
 
 ### 1.6 Security
 - Every endpoint authenticated (JWT access <= 15 min + rotating refresh; OTP
@@ -86,6 +110,21 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Multi-tenancy isolation: `tenant_id` on every table + PostgreSQL **Row-Level
   Security** with `SET LOCAL app.tenant_id` per request. App DB role cannot
   bypass RLS. A cross-tenant leakage test suite is a release blocker.
+- Defence in depth on top of RLS: every tenant-owned query — reads AND
+  writes (UPDATE/DELETE included) — carries an explicit bound
+  `tenant_id = :tid` predicate. A query filtering by row id alone is a
+  rejected MR: one misconfigured session must not equal cross-tenant access.
+- Money-affecting parameters (interest rates, fees, accrual periods,
+  penalty schedules) are resolved SERVER-SIDE from tenant/product
+  configuration (`tenant_settings`, product rows). Request bodies must not
+  accept them and must reject unknown fields (`extra="forbid"` -> 422).
+  A caller-suppliable rate or backdatable period is a rejected design.
+- SQL exclusively via bound parameters — no value (enum values included) is
+  ever string-interpolated into a statement. Only identifiers chosen from
+  code-owned mappings may be interpolated, with a comment stating so.
+- Least disclosure: error messages never echo balances, capacities, pledge
+  totals, or other derived figures; the in-transaction audit row records
+  the exact numbers for staff entitled to them.
 - No PII in logs, analytics, error messages, or URLs. Errors surface a
   sanitized category + correlation ID; stack traces only in secured APM.
 - Secrets only via GitLab CI/CD variables / external secret manager. Any
@@ -95,10 +134,29 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Rate limiting on auth/OTP/M-Pesa callbacks; OTP: 6 digits, <= 5 attempts,
   5-min TTL, single-use, constant-time compare.
 - M-Pesa callbacks: verify source, validate against pending intent, idempotent.
+- Threat model: the as-built data-flow diagrams (`docs/diagrams/dfd.md`,
+  P-DIAG.3) and the STRIDE-per-element table (`docs/diagrams/stride.md`,
+  P-DIAG.4) are the authoritative map of this section's gates onto the
+  code; an MR that changes a money flow or trust boundary updates them
+  in the same MR (BUILD_PROMPTS v1.2 rule 11).
 
 ## 2. ARCHITECTURE
 
+Authoritative diagrams live under `docs/diagrams/` (P-DIAG series).
+The lock-ordering DAG — `docs/diagrams/lock-order.md` — is the single
+authority for every lock-order statement (concurrency gates in §1.4);
+MRs reference it instead of restating chains, and any MR that changes
+a lock-graph edge updates it in the same MR (BUILD_PROMPTS v1.2 rule 11).
+The data-flow diagrams (`docs/diagrams/dfd.md`, P-DIAG.3) and the STRIDE
+threat model (`docs/diagrams/stride.md`, P-DIAG.4) trace every
+money-bearing flow, store and trust boundary to the implementing
+module or migration.
+
 ### 2.1 Backend (Python 3.12, FastAPI)
+As-built C4 diagrams (P-DIAG.1, drift-governed per v1.2 rule 11):
+context `docs/diagrams/c4-context.md`, containers
+`docs/diagrams/c4-container.md`, components (one per API router group)
+`docs/diagrams/c4-component.md`.
 Layered/hexagonal, dependency direction inward:
 `api (routers/schemas) -> application (use-case services, owns transactions)
 -> domain (entities, transitions, pure logic — no I/O) -> infrastructure
@@ -111,6 +169,9 @@ Layered/hexagonal, dependency direction inward:
   hand-written.
 
 ### 2.2 Data model (core tables)
+As-built ERD (P-DIAG.2, drift-governed per v1.2 rule 11):
+`docs/diagrams/erd.md` — every table and FK at the alembic head,
+gated by `docs/diagrams/erd-spot-check.py`.
 tenants, users, roles, permissions, members (type: person|company|group|vehicle),
 share_accounts, deposit_accounts, loan_products, loan_applications
 (stage machine incl. Rejected), loans, loan_schedules, repayments, guarantees,
@@ -142,6 +203,10 @@ deploy-staging -> deploy-prod (manual)`.
   jobs run as non-root; `rules:` not `only/except`.
 - Commits: atomic, Conventional Commits, trailer
   `Duo-Workflow-Definition: ci_expert_agent/v1` on agent-authored commits.
+- Incremental push discipline: work is committed and pushed after each
+  coherent unit (fix, feature slice) and its pipeline observed before the
+  next unit. Long-lived unpushed work is forbidden — a crashed session must
+  never lose completed work.
 - Never present or commit CI config that fails `gitlab-ci` lint.
 
 ## 4. TESTING STRATEGY (Quality gates)
@@ -153,6 +218,19 @@ deploy-staging -> deploy-prod (manual)`.
   produce exactly one effect), stale-version edit (409), cross-tenant access
   (404/403 + zero rows), truncated export headers, outbox retry after
   provider failure.
+- Anti-reward-hacking rules (every MR):
+  * Test oracles are HAND-COMPUTED and documented in comments — never
+    captured from the implementation under test.
+  * Idempotency is asserted via side-effect row counts (ledger, audit,
+    outbox, claim tables), never via return values alone.
+  * Falsifiability: every guard test must fail when its guard is removed
+    (row lock deleted, UNIQUE claim bypassed, anti-join dropped). A test
+    that cannot fail is a rejected test.
+  * No coverage padding, no weakened gates, no `allow_failure`, no skipped
+    downgrade paths.
+- Kill-switch atomicity tests for every multi-step money operation: abort
+  mid-transaction and prove zero partial state (no posting, no balance
+  change, no state transition, no claim row).
 
 ## 5. DEFINITION OF DONE (every MR)
 1. Reuses existing modules; no duplication.
@@ -162,6 +240,15 @@ deploy-staging -> deploy-prod (manual)`.
 5. OpenAPI updated; clients regenerated.
 6. Pipeline fully green including security stage.
 7. MR description: what/why, EXPLAIN for new hot queries, rollback plan.
+8. Honest DoD: a checkbox is ticked only when pipeline evidence exists;
+   pending items stay unchecked with a stated reason. Post-implementation
+   self-review findings are listed in the MR description with severity and
+   fix (the !17 review-sweep table is the template).
+9. Pre-implementation review: before the first line of code, record the
+   reuse audit (what exists, what will be reused, duplications removed),
+   the lock-ordering the change must match, and a short threat model
+   (caller-controlled parameters? TOCTOU windows? tenant scoping? partial
+   states?).
 
 ## 6. ROLE SUB-PROMPTS
 - **Product Manager**: prototype is the source of scope; write issues as

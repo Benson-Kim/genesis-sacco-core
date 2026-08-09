@@ -1,0 +1,23 @@
+/* Visually hidden until keyboard focus lands on it (focus is always visible; targets are 44px+). Tokens only. */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-md);
+  background: var(--navy);
+  color: #fff;
+  font-weight: 700;
+  font-size: var(--fs-body);
+  text-decoration: none;
+  border-radius: 0 0 var(--radius-md) 0;
+}
+
+.skip:focus-visible {
+  left: 0;
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}

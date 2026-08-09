@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import text
 
 from db_helpers import api_client, factory, latest_otp_code, seed_user, unique_email
+from genesis.application.auth import STAFF_AUDIENCE
 from genesis.infrastructure.tenancy import tenant_session
 
 pytestmark = pytest.mark.skipif(
@@ -30,9 +31,14 @@ def test_otp_flow_issues_short_lived_tokens() -> None:
             )
             assert res.status_code == 200
             tokens = res.json()
+        # P14.5 FM1: staff tokens carry the code-owned staff audience.
         claims = jwt.decode(
-            tokens["access_token"], os.environ["JWT_SIGNING_KEY"], algorithms=["HS256"]
+            tokens["access_token"],
+            os.environ["JWT_SIGNING_KEY"],
+            algorithms=["HS256"],
+            audience=STAFF_AUDIENCE,
         )
+        assert claims["aud"] == "genesis-staff"
         assert claims["tid"] == str(tid)
         assert claims["exp"] - claims["iat"] <= 900
         assert tokens["expires_in"] == 900
@@ -148,5 +154,76 @@ def test_auth_rate_limit_returns_429() -> None:
                 )
                 statuses.append(res.status_code)
         assert 429 in statuses
+
+    asyncio.run(run())
+
+
+def test_logout_revokes_family_and_returns_204() -> None:
+    """Covers revoke_refresh_token and the /auth/logout endpoint."""
+
+    async def run() -> None:
+        email = unique_email()
+        tid, _ = await seed_user(email)
+        headers = {"x-tenant-id": str(tid)}
+        async with api_client() as client:
+            await client.post("/auth/otp/request", json={"email": email}, headers=headers)
+            code = await latest_otp_code(tid)
+            res = await client.post(
+                "/auth/otp/verify", json={"email": email, "code": code}, headers=headers
+            )
+            assert res.status_code == 200
+            tokens = res.json()
+            logout_res = await client.post(
+                "/auth/logout",
+                json={"refresh_token": tokens["refresh_token"]},
+                headers=headers,
+            )
+            assert logout_res.status_code == 204
+            refresh_after = await client.post(
+                "/auth/refresh",
+                json={"refresh_token": tokens["refresh_token"]},
+                headers=headers,
+            )
+            assert refresh_after.status_code == 401
+
+    asyncio.run(run())
+
+
+def test_unknown_or_expired_refresh_token_returns_401() -> None:
+    """Covers unknown refresh token and expired refresh token in rotate_refresh_token."""
+
+    async def run() -> None:
+        email = unique_email()
+        tid, _ = await seed_user(email)
+        headers = {"x-tenant-id": str(tid)}
+        async with api_client() as client:
+            # 1. Unknown refresh token
+            res = await client.post(
+                "/auth/refresh",
+                json={"refresh_token": "a" * 48},
+                headers=headers,
+            )
+            assert res.status_code == 401
+
+            # 2. Expired refresh token
+            await client.post("/auth/otp/request", json={"email": email}, headers=headers)
+            code = await latest_otp_code(tid)
+            res_otp = await client.post(
+                "/auth/otp/verify", json={"email": email, "code": code}, headers=headers
+            )
+            assert res_otp.status_code == 200
+            refresh_token = res_otp.json()["refresh_token"]
+
+            async with tenant_session(factory(), tid) as session:
+                await session.execute(
+                    text("UPDATE refresh_tokens SET expires_at = now() - interval '1 hour'")
+                )
+
+            res_expired = await client.post(
+                "/auth/refresh",
+                json={"refresh_token": refresh_token},
+                headers=headers,
+            )
+            assert res_expired.status_code == 401
 
     asyncio.run(run())

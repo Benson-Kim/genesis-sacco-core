@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git fetch origin:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(sed -n:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(python3 -c:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format --check:*)"
+    ],
+    "deny": [
+      "Bash(npm install:*)",
+      "Bash(npm ci:*)",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git rebase:*)",
+      "Bash(git fetch --unshallow:*)",
+      "Bash(git reset --hard origin:*)",
+      "Bash(rm -rf:*)",
+      "Edit(web/packages/api-client/src/generated/**)",
+      "Edit(web/packages/api-client/openapi.json)",
+      "Write(web/packages/api-client/src/generated/**)",
+      "Write(web/packages/api-client/openapi.json)"
+    ]
+  }
+}

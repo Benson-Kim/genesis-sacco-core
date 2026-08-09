@@ -1,0 +1,29 @@
+/* Typed-confirmation dialog — tokens only. */
+.phrase {
+  font-weight: 800;
+  font-family: inherit;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-sm);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink);
+  background: var(--card);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: -2px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+}

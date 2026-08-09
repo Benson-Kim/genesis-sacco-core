@@ -1,0 +1,130 @@
+/*
+ * Loan products panel (Settings module) — prototype "Loan products"
+ * tab: product sidebar + edit card. Layout comes from the SHARED
+ * grid.sideMain (no private page grids — blocker (f)); this
+ * file styles the sidebar entries, form controls and notes only.
+ * Issue: 44px+ targets,:focus-visible rings replaced never removed,
+ * reduced-motion fallbacks.
+ */
+
+.productList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.productItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-md);
+  min-height: var(--touch-target-min);
+  border: none;
+  border-bottom: 1px solid var(--panel);
+  background: var(--card);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--duration-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .productItem {
+    transition: none;
+  }
+}
+
+.productItem:hover {
+  background: var(--panel);
+}
+
+.productItem:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: -2px;
+}
+
+.productItem.active {
+  background: var(--navySoft);
+}
+
+.productName {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.productSub {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+  margin-top: 2px;
+}
+
+.addProduct {
+  padding: var(--space-md);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--line);
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.panelBody {
+  padding: var(--space-lg);
+}
+
+.fieldsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--space-md);
+}
+
+@media (max-width: 640px) {
+  .fieldsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.input {
+  padding: 0 12px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--card);
+  color: var(--ink);
+  width: 100%;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 1px;
+}
+
+.formNote {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+  margin: var(--space-sm) 0 var(--space-md);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: var(--space-md);
+}
+
+.placeholder {
+  padding: var(--space-xxl) var(--space-lg);
+  text-align: center;
+  color: var(--sub);
+  font-size: var(--fs-body);
+}

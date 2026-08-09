@@ -1,1 +1,1 @@
-"""Use-case services. Own transactions and commit/rollback (MASTER_PROMPT 1.5, 2.1)."""
+"""Use-case services. Own transactions and commit/rollback (the house doctrine 1.5, 2.1)."""

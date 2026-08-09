@@ -1,0 +1,44 @@
+@import "../../packages/design-system/src/tokens.css";
+@import "../../packages/design-system/src/scale.css";
+
+/* Base reset + body styling from the prototype. */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  line-height: var(--leading-body);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Keyboard focus is never removed without replacement: a
+ * high-contrast ring on:focus-visible for every interactive element.
+ */
+:focus-visible {
+  outline: 2px solid var(--navyMid);
+  outline-offset: 2px;
+}
+
+/*
+ * prefers-reduced-motion fallback: all non-essential motion
+ * collapses for motion-sensitive users. State changes remain instant.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

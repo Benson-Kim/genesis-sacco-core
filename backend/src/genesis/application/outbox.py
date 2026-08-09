@@ -1,7 +1,7 @@
-"""Transactional outbox writer: events commit with the domain change (gate 1.2).
+"""Transactional outbox writer: events commit with the domain change (reliability).
 
 Dispatch happens later, off-transaction, in the outbox worker. Direct
-provider calls from request handlers are forbidden (MASTER_PROMPT 1.2).
+provider calls from request handlers are forbidden (the house doctrine 1.2).
 """
 
 from __future__ import annotations

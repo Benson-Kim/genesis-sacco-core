@@ -1,4 +1,4 @@
-"""Alembic environment. DATABASE_URL comes from the environment only (gate 1.6)."""
+"""Alembic environment. DATABASE_URL comes from the environment only (least disclosure)."""
 
 import os
 

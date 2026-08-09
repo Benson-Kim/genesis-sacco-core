@@ -1,0 +1,72 @@
+/*
+ * Access control page — tab row + panel layout.
+ * Salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238;
+ * adapted to this branch's token set (--fs-*, --duration-*, --touch-target;
+ * the salvage --font-sans, --font-size-*, --ease-standard, --focus-ring
+ * tokens do not exist here) with issue- focus rings and targets.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Tab row: tabs on the left, action button on the right */
+.tabsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  padding: 7px 16px;
+  min-height: var(--touch-target-min);
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--sub);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
+  }
+}
+
+.tab:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.tab.tabActive {
+  background: var(--navySoft);
+  color: var(--navy);
+}
+
+/* Focus ring replaced, never removed. */
+.tab:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: -2px;
+}
+
+/* Lazy tab-panel loading state (tokens only). */
+.panelLoading {
+  padding: var(--space-xxl) var(--space-lg);
+  text-align: center;
+  color: var(--sub);
+  font-size: var(--fs-body);
+}

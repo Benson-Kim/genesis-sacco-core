@@ -1,0 +1,54 @@
+/* Maker-checker panel — the two contexts are VISUALLY
+   separated (clarity; the maker side must never look like the place to approve). Tokens only. */
+.panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.maker,
+.checker {
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.maker {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.checker {
+  background: var(--navySoft);
+  border: 1px solid var(--navy);
+}
+
+.roleTag {
+  font-size: var(--fs-meta);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--sub);
+  margin-bottom: var(--space-xs);
+}
+
+.checker .roleTag {
+  color: var(--navy);
+}
+
+.makerIdentity {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.makerAt {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+  margin-bottom: var(--space-xs);
+}

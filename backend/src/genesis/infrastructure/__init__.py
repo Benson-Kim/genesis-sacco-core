@@ -1,1 +1,1 @@
-"""Adapters: database, cache, outbox, external providers (MASTER_PROMPT 2.1)."""
+"""Adapters: database, cache, outbox, external providers (the house doctrine 2.1)."""

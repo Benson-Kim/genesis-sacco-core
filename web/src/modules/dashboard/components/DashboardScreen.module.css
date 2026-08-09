@@ -1,0 +1,79 @@
+/* Page grid comes from the shared responsive module
+   (src/modules/layout/grid.module.css) — one copy, reuse-first. */
+
+.title {
+    font-size: 15px;
+    font-weight: 800;
+    margin-bottom: 14px;
+}
+
+.muted {
+    font-size: 13px;
+    color: var(--sub);
+}
+
+.pipeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.pipelineRow {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+}
+
+.pipelineRow:last-child {
+    border-bottom: none;
+}
+
+.stageName {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.stageCount {
+    color: var(--sub);
+    font-variant-numeric: tabular-nums;
+}
+
+.flows {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.th,
+.thRight {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sub);
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+}
+
+.thRight {
+    text-align: right;
+}
+
+.td,
+.tdRight {
+    padding: 8px;
+    border-bottom: 1px solid var(--line);
+}
+
+.tdRight {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.asOf {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: var(--sub);
+}

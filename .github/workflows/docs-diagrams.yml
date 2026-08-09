@@ -1,0 +1,79 @@
+# =============================================================================
+# Genesis Prestige — GitHub Actions mirror of the `docs:diagrams` job in
+# .gitlab-ci.yml (the single source of truth — see README "CI parity").
+#
+# P-DIAG.0 SYNTAX gate: renders every standalone .mmd file AND every
+# ```mermaid fenced block inside docs/diagrams/*.md with mermaid-cli, so an
+# unrenderable diagram is a red pipeline.
+#
+# GitLab `rules:changes: docs/diagrams/**/*` (on merge_request_event and the
+# default branch only — no tag rule) translates to `paths:` filters on
+# pull_request and push-to-main. This workflow lives in its own file because
+# GitHub paths filters are workflow-scoped, and this job's filter differs
+# from docs:spot-check's.
+# =============================================================================
+name: docs-diagrams
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/diagrams/**'
+  pull_request:
+    paths:
+      - 'docs/diagrams/**'
+
+# Mirrors GitLab `default: interruptible: true`.
+concurrency:
+  group: docs-diagrams-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `docs:diagrams` (needs: [] — independent).
+  # Same pinned image; GitHub job containers override the entrypoint just as
+  # GitLab's `entrypoint: [""]` does.
+  # ---------------------------------------------------------------------------
+  docs-diagrams:
+    name: "docs:diagrams"
+    runs-on: ubuntu-latest
+    container:
+      # Official mermaid-cli image (bundles headless Chromium); pinned —
+      # identical to the GitLab job.
+      image: minlag/mermaid-cli:11.4.2
+    defaults:
+      run:
+        shell: sh
+    steps:
+      - uses: actions/checkout@v4
+      # Script below is verbatim from the GitLab `docs:diagrams` job.
+      - name: Render every diagram source (standalone .mmd + fenced blocks)
+        run: |
+          mkdir -p /tmp/mmd /tmp/rendered
+          # Standalone diagram sources.
+          for f in docs/diagrams/*.mmd; do
+            [ -e "$f" ] || continue
+            cp "$f" "/tmp/mmd/$(basename "$f")"
+          done
+          # ```mermaid fenced blocks inside the markdown diagram documents.
+          for f in docs/diagrams/*.md; do
+            [ -e "$f" ] || continue
+            awk -v base="/tmp/mmd/$(basename "${f%.md}")" '
+              /^```mermaid[[:space:]]*$/ { in_block = 1; n++; out = base "-block" n ".mmd"; next }
+              /^```[[:space:]]*$/ && in_block { in_block = 0; next }
+              in_block { print > out }
+            ' "$f"
+          done
+          found=0
+          for m in /tmp/mmd/*.mmd; do
+            [ -e "$m" ] || continue
+            found=1
+            echo "rendering $m"
+            /home/mermaidcli/node_modules/.bin/mmdc -p /puppeteer-config.json \
+              -i "$m" -o "/tmp/rendered/$(basename "${m%.mmd}").svg"
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "docs/diagrams changed but no mermaid sources found" >&2
+            exit 1
+          fi
+          ls -l /tmp/rendered

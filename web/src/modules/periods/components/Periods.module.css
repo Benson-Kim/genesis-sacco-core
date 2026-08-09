@@ -1,0 +1,119 @@
+/*
+ * Accounting-periods module styles. Tokens only
+ * (reuse-first); page-level GRIDS come from the shared
+ * modules/layout/grid.module.css — no private page grid lives here
+ * (blocker (f)).
+ */
+
+.toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.toolbarNote {
+    font-size: 12px;
+    color: var(--sub);
+    max-width: 560px;
+}
+
+.toolbarActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.muted {
+    color: var(--sub);
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.formNote {
+    font-size: 12px;
+    color: var(--sub);
+    margin: 10px 0;
+}
+
+.select {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--card);
+    color: var(--ink);
+}
+
+.input {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--card);
+    color: var(--ink);
+}
+
+/* Register header card (the exits register-head convention). */
+.registerHead {
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.registerNote {
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 600;
+}
+
+/* Close-period result panel — server facts verbatim. */
+.resultPanel {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
+}
+
+.resultTitle {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+/* Period-context note: close-state next to the figures operators
+ * read (transactions register, reports). Informational styling only —
+ * never success/error semantics. */
+.contextNote {
+    font-size: 12px;
+    color: var(--sub);
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    flex-wrap: wrap;
+}
+
+.contextStrong {
+    font-weight: 800;
+    color: var(--ink);
+}

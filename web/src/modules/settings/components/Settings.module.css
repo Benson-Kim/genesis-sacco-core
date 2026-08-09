@@ -1,0 +1,186 @@
+/*
+ * Settings screen (P15) — tab row + panel forms + band tables.
+ * Page-level layout comes from the SHARED grid module (grid.half /
+ * grid.cards4 — Phase B blocker (f): no private page grids); this file
+ * styles tabs, form controls, band rows and notes only.
+ * Issue #8: 44px+ targets, persistent labels, :focus-visible rings
+ * replaced never removed, reduced-motion fallbacks.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 7px 16px;
+  min-height: var(--touch-target-min);
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--sub);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab {
+    transition: none;
+  }
+}
+
+.tab:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.tab.tabActive {
+  background: var(--navySoft);
+  color: var(--navy);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: -2px;
+}
+
+.panelLoading {
+  padding: var(--space-xxl) var(--space-lg);
+  text-align: center;
+  color: var(--sub);
+  font-size: var(--fs-body);
+}
+
+.sectionTitle {
+  font-size: var(--fs-heading);
+  font-weight: 800;
+  color: var(--ink);
+  margin: 0 0 var(--space-md);
+}
+
+.subhead {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--sub);
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+
+.fieldsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--space-md);
+}
+
+@media (max-width: 640px) {
+  .fieldsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.input,
+.select {
+  padding: 0 12px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--card);
+  color: var(--ink);
+  width: 100%;
+}
+
+.input:focus-visible,
+.select:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 1px;
+}
+
+.formNote {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+  margin: var(--space-sm) 0;
+}
+
+.saveRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-md);
+}
+
+/* Band editor: one row per band; controls keep 44px targets. */
+.bandTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.bandTh {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--sub);
+  padding: var(--space-xs) var(--space-xs) var(--space-xs) 0;
+}
+
+.bandTd {
+  padding: var(--space-xxs) var(--space-xs) var(--space-xxs) 0;
+  vertical-align: top;
+}
+
+.bandFrom {
+  display: inline-block;
+  padding: 12px 0;
+  font-size: 13.5px;
+  color: var(--sub);
+  overflow-wrap: anywhere;
+}
+
+.bandActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: var(--space-sm);
+}
+
+.fieldError {
+  font-size: var(--fs-meta);
+  color: var(--brick);
+  margin: var(--space-xs) 0;
+}
+
+/* Read-only-by-default shell (#35 item 3) */
+.viewModeBar {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.viewModeNote {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+}
+
+.viewModeFieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: auto;
+}

@@ -76,4 +76,6 @@ source_modules = ["genesis.api"]
 forbidden_modules = [
     "genesis.infrastructure.providers",
     "genesis.infrastructure.outbox_worker",
+    "genesis.infrastructure.export_worker",
+    "genesis.infrastructure.idempotency_worker",
 ]

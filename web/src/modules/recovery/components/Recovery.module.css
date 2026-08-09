@@ -1,0 +1,209 @@
+/*
+ * Recovery module styles. Tokens only (gate
+ * 1.1); page-level GRIDS come from the shared
+ * modules/layout/grid.module.css — no private page grid lives here.
+ */
+
+.muted {
+    color: var(--sub);
+}
+
+/* Opaque record ids (case/loan/member/staff UUIDs) — tabular, subdued. */
+.mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--sub);
+}
+
+/* Days-past-due — a workflow number, never a money figure. */
+.dpdCell {
+    font-weight: 800;
+    color: var(--brick);
+    font-variant-numeric: tabular-nums;
+}
+
+.input,
+.select,
+.textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 12px;
+    min-height: 44px;
+    font-size: 13.5px;
+    background: var(--card);
+    color: var(--ink);
+}
+
+.textarea {
+    padding: 10px 12px;
+    min-height: 72px;
+    resize: vertical;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 1px;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.formNote {
+    font-size: 12px;
+    color: var(--sub);
+    margin: 10px 0;
+}
+
+.subhead {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    margin: 18px 0 8px;
+}
+
+.detailGrid {
+    margin: 14px 0;
+}
+
+/* Register header card (worklist head). */
+.registerHead {
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.registerNote {
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 600;
+}
+
+.toolbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+/* Declared-filter controls — the members
+   register's filter classes verbatim (persistent labels, segmented ≤5 options, tokens only). */
+.filters {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.filterGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.filterLabel {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sub);
+    font-weight: 700;
+}
+
+.segment {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--card);
+}
+
+.segmentButton {
+    border: none;
+    background: transparent;
+    padding: 0 14px;
+    min-height: 44px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--sub);
+    cursor: pointer;
+}
+
+.segmentButton+.segmentButton {
+    border-left: 1px solid var(--line);
+}
+
+.segmentButton[aria-pressed="true"] {
+    background: var(--navySoft);
+    color: var(--navy);
+    font-weight: 800;
+}
+
+.segmentButton:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: -2px;
+}
+
+/* Write result panel — server facts verbatim. */
+.resultPanel {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
+}
+
+.resultTitle {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+/* The permanent case file: append-only notes. */
+.noteItem {
+    border: 1px solid var(--panel);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.noteMeta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--sub);
+    margin-bottom: 4px;
+}
+
+.noteBody {
+    font-size: 13px;
+    color: var(--ink);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Inline assignment row inside the drawer. */
+.assignRow {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.assignField {
+    flex: 1 1 260px;
+}

@@ -1,6 +1,6 @@
-"""Notification provider adapters behind interfaces (gate 1.2).
+"""Notification provider adapters behind interfaces (reliability).
 
-Real SMS/email/push wiring lands in P20; every adapter MUST be idempotent
+Real SMS/email/push wiring lands in; every adapter MUST be idempotent
 by event id so outbox redeliveries never double-send. Request handlers are
 forbidden from importing this module (import-linter contract).
 """
@@ -24,7 +24,7 @@ class NotificationProvider(Protocol):
 
 
 class StubProvider:
-    """Logs deliveries (never payload contents); used until P20 wires real providers."""
+    """Logs deliveries (never payload contents); used until wires real providers."""
 
     def __init__(self, channel: str = "stub") -> None:
         self.channel = channel

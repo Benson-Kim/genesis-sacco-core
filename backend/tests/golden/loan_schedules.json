@@ -1,0 +1,732 @@
+[
+  {
+    "name": "standard_24000_12pct_12m",
+    "principal": "24000.00",
+    "annual_rate_pct": "12.00",
+    "months": 12,
+    "installments": [
+      {
+        "number": 1,
+        "principal_due": "1892.37",
+        "interest_due": "240.00",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 2,
+        "principal_due": "1911.29",
+        "interest_due": "221.08",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 3,
+        "principal_due": "1930.41",
+        "interest_due": "201.96",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 4,
+        "principal_due": "1949.71",
+        "interest_due": "182.66",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 5,
+        "principal_due": "1969.21",
+        "interest_due": "163.16",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 6,
+        "principal_due": "1988.90",
+        "interest_due": "143.47",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 7,
+        "principal_due": "2008.79",
+        "interest_due": "123.58",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 8,
+        "principal_due": "2028.88",
+        "interest_due": "103.49",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 9,
+        "principal_due": "2049.17",
+        "interest_due": "83.20",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 10,
+        "principal_due": "2069.66",
+        "interest_due": "62.71",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 11,
+        "principal_due": "2090.35",
+        "interest_due": "42.02",
+        "total_due": "2132.37"
+      },
+      {
+        "number": 12,
+        "principal_due": "2111.26",
+        "interest_due": "21.11",
+        "total_due": "2132.37"
+      }
+    ]
+  },
+  {
+    "name": "zero_rate_1200_0pct_6m",
+    "principal": "1200.00",
+    "annual_rate_pct": "0.00",
+    "months": 6,
+    "installments": [
+      {
+        "number": 1,
+        "principal_due": "200.00",
+        "interest_due": "0.00",
+        "total_due": "200.00"
+      },
+      {
+        "number": 2,
+        "principal_due": "200.00",
+        "interest_due": "0.00",
+        "total_due": "200.00"
+      },
+      {
+        "number": 3,
+        "principal_due": "200.00",
+        "interest_due": "0.00",
+        "total_due": "200.00"
+      },
+      {
+        "number": 4,
+        "principal_due": "200.00",
+        "interest_due": "0.00",
+        "total_due": "200.00"
+      },
+      {
+        "number": 5,
+        "principal_due": "200.00",
+        "interest_due": "0.00",
+        "total_due": "200.00"
+      },
+      {
+        "number": 6,
+        "principal_due": "200.00",
+        "interest_due": "0.00",
+        "total_due": "200.00"
+      }
+    ]
+  },
+  {
+    "name": "single_installment_5000_18pct_1m",
+    "principal": "5000.00",
+    "annual_rate_pct": "18.00",
+    "months": 1,
+    "installments": [
+      {
+        "number": 1,
+        "principal_due": "5000.00",
+        "interest_due": "75.00",
+        "total_due": "5075.00"
+      }
+    ]
+  },
+  {
+    "name": "rounding_drift_9999_99_13_5pct_36m",
+    "principal": "9999.99",
+    "annual_rate_pct": "13.50",
+    "months": 36,
+    "installments": [
+      {
+        "number": 1,
+        "principal_due": "226.85",
+        "interest_due": "112.50",
+        "total_due": "339.35"
+      },
+      {
+        "number": 2,
+        "principal_due": "229.40",
+        "interest_due": "109.95",
+        "total_due": "339.35"
+      },
+      {
+        "number": 3,
+        "principal_due": "231.98",
+        "interest_due": "107.37",
+        "total_due": "339.35"
+      },
+      {
+        "number": 4,
+        "principal_due": "234.59",
+        "interest_due": "104.76",
+        "total_due": "339.35"
+      },
+      {
+        "number": 5,
+        "principal_due": "237.23",
+        "interest_due": "102.12",
+        "total_due": "339.35"
+      },
+      {
+        "number": 6,
+        "principal_due": "239.90",
+        "interest_due": "99.45",
+        "total_due": "339.35"
+      },
+      {
+        "number": 7,
+        "principal_due": "242.60",
+        "interest_due": "96.75",
+        "total_due": "339.35"
+      },
+      {
+        "number": 8,
+        "principal_due": "245.33",
+        "interest_due": "94.02",
+        "total_due": "339.35"
+      },
+      {
+        "number": 9,
+        "principal_due": "248.09",
+        "interest_due": "91.26",
+        "total_due": "339.35"
+      },
+      {
+        "number": 10,
+        "principal_due": "250.88",
+        "interest_due": "88.47",
+        "total_due": "339.35"
+      },
+      {
+        "number": 11,
+        "principal_due": "253.70",
+        "interest_due": "85.65",
+        "total_due": "339.35"
+      },
+      {
+        "number": 12,
+        "principal_due": "256.56",
+        "interest_due": "82.79",
+        "total_due": "339.35"
+      },
+      {
+        "number": 13,
+        "principal_due": "259.44",
+        "interest_due": "79.91",
+        "total_due": "339.35"
+      },
+      {
+        "number": 14,
+        "principal_due": "262.36",
+        "interest_due": "76.99",
+        "total_due": "339.35"
+      },
+      {
+        "number": 15,
+        "principal_due": "265.31",
+        "interest_due": "74.04",
+        "total_due": "339.35"
+      },
+      {
+        "number": 16,
+        "principal_due": "268.30",
+        "interest_due": "71.05",
+        "total_due": "339.35"
+      },
+      {
+        "number": 17,
+        "principal_due": "271.32",
+        "interest_due": "68.03",
+        "total_due": "339.35"
+      },
+      {
+        "number": 18,
+        "principal_due": "274.37",
+        "interest_due": "64.98",
+        "total_due": "339.35"
+      },
+      {
+        "number": 19,
+        "principal_due": "277.45",
+        "interest_due": "61.90",
+        "total_due": "339.35"
+      },
+      {
+        "number": 20,
+        "principal_due": "280.58",
+        "interest_due": "58.77",
+        "total_due": "339.35"
+      },
+      {
+        "number": 21,
+        "principal_due": "283.73",
+        "interest_due": "55.62",
+        "total_due": "339.35"
+      },
+      {
+        "number": 22,
+        "principal_due": "286.92",
+        "interest_due": "52.43",
+        "total_due": "339.35"
+      },
+      {
+        "number": 23,
+        "principal_due": "290.15",
+        "interest_due": "49.20",
+        "total_due": "339.35"
+      },
+      {
+        "number": 24,
+        "principal_due": "293.42",
+        "interest_due": "45.93",
+        "total_due": "339.35"
+      },
+      {
+        "number": 25,
+        "principal_due": "296.72",
+        "interest_due": "42.63",
+        "total_due": "339.35"
+      },
+      {
+        "number": 26,
+        "principal_due": "300.06",
+        "interest_due": "39.29",
+        "total_due": "339.35"
+      },
+      {
+        "number": 27,
+        "principal_due": "303.43",
+        "interest_due": "35.92",
+        "total_due": "339.35"
+      },
+      {
+        "number": 28,
+        "principal_due": "306.85",
+        "interest_due": "32.50",
+        "total_due": "339.35"
+      },
+      {
+        "number": 29,
+        "principal_due": "310.30",
+        "interest_due": "29.05",
+        "total_due": "339.35"
+      },
+      {
+        "number": 30,
+        "principal_due": "313.79",
+        "interest_due": "25.56",
+        "total_due": "339.35"
+      },
+      {
+        "number": 31,
+        "principal_due": "317.32",
+        "interest_due": "22.03",
+        "total_due": "339.35"
+      },
+      {
+        "number": 32,
+        "principal_due": "320.89",
+        "interest_due": "18.46",
+        "total_due": "339.35"
+      },
+      {
+        "number": 33,
+        "principal_due": "324.50",
+        "interest_due": "14.85",
+        "total_due": "339.35"
+      },
+      {
+        "number": 34,
+        "principal_due": "328.15",
+        "interest_due": "11.20",
+        "total_due": "339.35"
+      },
+      {
+        "number": 35,
+        "principal_due": "331.84",
+        "interest_due": "7.51",
+        "total_due": "339.35"
+      },
+      {
+        "number": 36,
+        "principal_due": "335.68",
+        "interest_due": "3.78",
+        "total_due": "339.46"
+      }
+    ]
+  },
+  {
+    "name": "long_tenor_100000_15pct_60m",
+    "principal": "100000.00",
+    "annual_rate_pct": "15.00",
+    "months": 60,
+    "installments": [
+      {
+        "number": 1,
+        "principal_due": "1128.99",
+        "interest_due": "1250.00",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 2,
+        "principal_due": "1143.10",
+        "interest_due": "1235.89",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 3,
+        "principal_due": "1157.39",
+        "interest_due": "1221.60",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 4,
+        "principal_due": "1171.86",
+        "interest_due": "1207.13",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 5,
+        "principal_due": "1186.51",
+        "interest_due": "1192.48",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 6,
+        "principal_due": "1201.34",
+        "interest_due": "1177.65",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 7,
+        "principal_due": "1216.35",
+        "interest_due": "1162.64",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 8,
+        "principal_due": "1231.56",
+        "interest_due": "1147.43",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 9,
+        "principal_due": "1246.95",
+        "interest_due": "1132.04",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 10,
+        "principal_due": "1262.54",
+        "interest_due": "1116.45",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 11,
+        "principal_due": "1278.32",
+        "interest_due": "1100.67",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 12,
+        "principal_due": "1294.30",
+        "interest_due": "1084.69",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 13,
+        "principal_due": "1310.48",
+        "interest_due": "1068.51",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 14,
+        "principal_due": "1326.86",
+        "interest_due": "1052.13",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 15,
+        "principal_due": "1343.45",
+        "interest_due": "1035.54",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 16,
+        "principal_due": "1360.24",
+        "interest_due": "1018.75",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 17,
+        "principal_due": "1377.24",
+        "interest_due": "1001.75",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 18,
+        "principal_due": "1394.46",
+        "interest_due": "984.53",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 19,
+        "principal_due": "1411.89",
+        "interest_due": "967.10",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 20,
+        "principal_due": "1429.54",
+        "interest_due": "949.45",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 21,
+        "principal_due": "1447.41",
+        "interest_due": "931.58",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 22,
+        "principal_due": "1465.50",
+        "interest_due": "913.49",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 23,
+        "principal_due": "1483.82",
+        "interest_due": "895.17",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 24,
+        "principal_due": "1502.37",
+        "interest_due": "876.62",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 25,
+        "principal_due": "1521.15",
+        "interest_due": "857.84",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 26,
+        "principal_due": "1540.16",
+        "interest_due": "838.83",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 27,
+        "principal_due": "1559.41",
+        "interest_due": "819.58",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 28,
+        "principal_due": "1578.90",
+        "interest_due": "800.09",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 29,
+        "principal_due": "1598.64",
+        "interest_due": "780.35",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 30,
+        "principal_due": "1618.62",
+        "interest_due": "760.37",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 31,
+        "principal_due": "1638.86",
+        "interest_due": "740.13",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 32,
+        "principal_due": "1659.34",
+        "interest_due": "719.65",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 33,
+        "principal_due": "1680.08",
+        "interest_due": "698.91",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 34,
+        "principal_due": "1701.09",
+        "interest_due": "677.90",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 35,
+        "principal_due": "1722.35",
+        "interest_due": "656.64",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 36,
+        "principal_due": "1743.88",
+        "interest_due": "635.11",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 37,
+        "principal_due": "1765.68",
+        "interest_due": "613.31",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 38,
+        "principal_due": "1787.75",
+        "interest_due": "591.24",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 39,
+        "principal_due": "1810.09",
+        "interest_due": "568.90",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 40,
+        "principal_due": "1832.72",
+        "interest_due": "546.27",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 41,
+        "principal_due": "1855.63",
+        "interest_due": "523.36",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 42,
+        "principal_due": "1878.83",
+        "interest_due": "500.16",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 43,
+        "principal_due": "1902.31",
+        "interest_due": "476.68",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 44,
+        "principal_due": "1926.09",
+        "interest_due": "452.90",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 45,
+        "principal_due": "1950.17",
+        "interest_due": "428.82",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 46,
+        "principal_due": "1974.54",
+        "interest_due": "404.45",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 47,
+        "principal_due": "1999.22",
+        "interest_due": "379.77",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 48,
+        "principal_due": "2024.21",
+        "interest_due": "354.78",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 49,
+        "principal_due": "2049.52",
+        "interest_due": "329.47",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 50,
+        "principal_due": "2075.14",
+        "interest_due": "303.85",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 51,
+        "principal_due": "2101.08",
+        "interest_due": "277.91",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 52,
+        "principal_due": "2127.34",
+        "interest_due": "251.65",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 53,
+        "principal_due": "2153.93",
+        "interest_due": "225.06",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 54,
+        "principal_due": "2180.85",
+        "interest_due": "198.14",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 55,
+        "principal_due": "2208.12",
+        "interest_due": "170.87",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 56,
+        "principal_due": "2235.72",
+        "interest_due": "143.27",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 57,
+        "principal_due": "2263.66",
+        "interest_due": "115.33",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 58,
+        "principal_due": "2291.96",
+        "interest_due": "87.03",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 59,
+        "principal_due": "2320.61",
+        "interest_due": "58.38",
+        "total_due": "2378.99"
+      },
+      {
+        "number": 60,
+        "principal_due": "2349.88",
+        "interest_due": "29.37",
+        "total_due": "2379.25"
+      }
+    ]
+  }
+]

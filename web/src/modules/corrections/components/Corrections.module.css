@@ -1,0 +1,194 @@
+/*
+ * Corrections module styles. Tokens only
+ * (reuse-first); page-level GRIDS come from the shared
+ * modules/layout/grid.module.css — no private page grid lives here.
+ */
+
+.muted {
+    color: var(--sub);
+}
+
+/* Opaque record ids (adjustment/write-off/txn refs) — tabular, subdued. */
+.mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--sub);
+}
+
+/* Correction figures — tabular numerals; each figure sits in its own
+ * labelled row (color never carries meaning alone). */
+.amountCell {
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The headline figure of a card (total written off, reversal amount)
+ * — the server's figure, verbatim. */
+.netCell {
+    font-weight: 800;
+    color: var(--navy);
+    font-variant-numeric: tabular-nums;
+}
+
+.input,
+.select,
+.textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 12px;
+    min-height: 44px;
+    font-size: 13.5px;
+    background: var(--card);
+    color: var(--ink);
+}
+
+.textarea {
+    padding: 10px 12px;
+    min-height: 72px;
+    resize: vertical;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 1px;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.formNote {
+    font-size: 12px;
+    color: var(--sub);
+    margin: 10px 0;
+}
+
+.subhead {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    margin: 18px 0 8px;
+}
+
+.detailGrid {
+    margin: 14px 0;
+}
+
+/* Workbench card internals (the console's three surfaces). */
+.cardTitle {
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.cardBody {
+    font-size: 12px;
+    color: var(--sub);
+    margin-bottom: 12px;
+}
+
+.cardActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+
+/* Lookup-by-reference row (no list contract exists — honest scoping). */
+.lookupRow {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.lookupField {
+    flex: 1 1 260px;
+}
+
+/* Register header card (the checker/committee registers). */
+.registerHead {
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+
+}
+
+.registerNote {
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 600;
+
+}
+
+/* Lifecycle-write result panel — server figures verbatim. */
+.resultPanel {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 14px;
+}
+
+.resultTitle {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+/* Committee tally pills row (the committee-screen convention). */
+.tally {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 12px 0;
+}
+
+.voteActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+/* Receipts trail table (the write-off drawer's keyset list). */
+.receiptsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+}
+
+.receiptsTable th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--sub);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+}
+
+.receiptsTable td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--panel);
+}
+
+.receiptsTable th.num,
+.receiptsTable td.num {
+    text-align: right;
+}

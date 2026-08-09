@@ -1,0 +1,129 @@
+# =============================================================================
+# Genesis Prestige — GitHub-side security stage.
+#
+# HONEST PARITY, NOT IDENTICAL COVERAGE: the GitLab pipeline includes the
+# GitLab-maintained templates Jobs/SAST.latest (semgrep-sast with
+# GitLab-curated rulesets), Jobs/Secret-Detection.latest, and
+# Jobs/Dependency-Scanning.latest (Gemnasium). Those templates, their
+# rulesets, the MR security widget, and the vulnerability-management /
+# "critical vulnerabilities block merge" policy layer CANNOT be imported
+# into GitHub Actions. The jobs below are the closest open equivalents:
+#
+#   semgrep-sast          -> semgrep with the open p/default ruleset
+#   secret_detection      -> gitleaks (full-history scan)
+#   gemnasium dep-scanning-> pip-audit (backend) + npm audit (web),
+#                            report-only, plus dependency-review on PRs
+#
+# Every deviation is documented in README "CI parity" — read it before
+# treating a green GitHub run as equivalent to a green GitLab security stage.
+# =============================================================================
+name: security
+
+on:
+  push:
+    branches: [main]
+    tags: ['**']
+  pull_request:
+
+# Mirrors GitLab `default: interruptible: true`.
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Closest equivalent of GitLab `semgrep-sast` (Jobs/SAST.latest template).
+  # DELTA: open p/default ruleset instead of GitLab's curated rulesets, and
+  # findings FAIL this job (--error) — on GitLab the job passes and findings
+  # go to the MR security widget / merge policies, which do not exist here.
+  # ---------------------------------------------------------------------------
+  semgrep-sast:
+    name: "security: semgrep (SAST)"
+    runs-on: ubuntu-latest
+    container:
+      # Official semgrep image (rolling tag, as recommended by semgrep docs;
+      # GitLab's own analyzer image is likewise version-tracked upstream).
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep scan (p/default ruleset, findings block)
+        run: semgrep scan --config p/default --error --metrics=off .
+
+  # ---------------------------------------------------------------------------
+  # Closest equivalent of GitLab `secret_detection`
+  # (Jobs/Secret-Detection.latest template). DELTA: gitleaks default ruleset
+  # instead of GitLab's, and leaks FAIL this job (on GitLab the job passes
+  # and findings go to the security widget).
+  # ---------------------------------------------------------------------------
+  secret-detection:
+    name: "security: gitleaks (secret detection)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history — secret detection must catch a secret committed
+          # and later deleted, like GitLab's historic scan mode.
+          fetch-depth: 0
+      - name: gitleaks detect (full history)
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0=/repo \
+            zricethezav/gitleaks:v8.18.4 \
+            detect --source /repo --redact --verbose
+
+  # ---------------------------------------------------------------------------
+  # Closest equivalent of GitLab dependency scanning (Gemnasium) for the
+  # backend. Report-only (continue-on-error), matching Gemnasium's
+  # non-blocking behavior: a new upstream advisory in an unchanged
+  # dependency must not redden unrelated PRs; triage is the Security
+  # Analyst's 48h SLA (MASTER_PROMPT §6), not a pipeline gate.
+  # ---------------------------------------------------------------------------
+  dependency-scan-python:
+    name: "security: pip-audit (backend dependencies)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container:
+      image: python:3.12-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: pip-audit over the installed backend dependency closure
+        run: |
+          pip install --upgrade pip
+          pip install pip-audit
+          pip install ./backend
+          pip-audit
+
+  # ---------------------------------------------------------------------------
+  # Closest equivalent of GitLab dependency scanning (Gemnasium) for the
+  # web app. Report-only for the same reason as above.
+  # ---------------------------------------------------------------------------
+  dependency-scan-node:
+    name: "security: npm audit (web dependencies)"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container:
+      image: node:22-alpine
+    defaults:
+      run:
+        shell: sh
+    steps:
+      - uses: actions/checkout@v4
+      - name: npm audit (lockfile-based, all dependency groups)
+        working-directory: web
+        run: npm audit
+
+  # ---------------------------------------------------------------------------
+  # PR-only blocking gate for NEWLY INTRODUCED vulnerable dependencies —
+  # the closest GitHub-native analogue to GitLab's "critical vulnerabilities
+  # block merge" policy. Requires the repository dependency graph (enabled
+  # by default on public repos; needs enabling on private ones).
+  # ---------------------------------------------------------------------------
+  dependency-review:
+    name: "security: dependency review (PR gate)"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
