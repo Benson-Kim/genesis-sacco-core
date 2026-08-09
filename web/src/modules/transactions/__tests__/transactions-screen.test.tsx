@@ -257,14 +257,14 @@ test("hostile txn ref renders as inert TEXT; DR/CR amounts render VERBATIM in th
   expect(screen.queryByText(/Totals/)).toBeNull();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
   mocked.fetchTransactionsPage
     .mockResolvedValueOnce(page([debitTxn()], "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([creditTxn()]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchTransactionsPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchTransactionsPage.mock.calls[0]?.[1]).toBeNull();
@@ -281,14 +281,17 @@ test("type/channel/direction filters drive the SERVER query — the client never
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "withdrawal" }),
       null,
+      10,
     ),
   );
 
-  await user.selectOptions(screen.getByLabelText("Channel"), "accrual");
+  // Four declared channels → the shared filter renders its segment variant.
+  await user.click(screen.getByRole("button", { name: "Accrual" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "withdrawal", channel: "accrual" }),
       null,
+      10,
     ),
   );
 
@@ -297,6 +300,7 @@ test("type/channel/direction filters drive the SERVER query — the client never
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ direction: "debit" }),
       null,
+      10,
     ),
   );
 });
@@ -318,6 +322,7 @@ test("exact-ref + date-range drafts apply on submit as SERVER query params; the 
         date_to: "2026-07-31",
       }),
       null,
+      10,
     ),
   );
 
@@ -326,6 +331,7 @@ test("exact-ref + date-range drafts apply on submit as SERVER query params; the 
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ member_id: MEMBER_ID }),
       null,
+      10,
     ),
   );
 });
