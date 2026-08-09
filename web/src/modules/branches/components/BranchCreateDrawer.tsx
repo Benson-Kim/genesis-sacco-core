@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Register-branch drawer (issue #31 batch 4): `POST /branches`
+ * Register-branch drawer: `POST /branches`
  * (settings:create).
  *
  * - The ONLY field is the branch name — exactly the BranchCreateBody
@@ -42,7 +42,7 @@ export function BranchCreateDrawer({ onClose }: Readonly<{ onClose: () => void }
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<BranchRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload.
   const [reloadEpoch, setReloadEpoch] = useState(0);
   // Per-success intent counter (W59-3): "Register another" followed by
@@ -81,7 +81,7 @@ export function BranchCreateDrawer({ onClose }: Readonly<{ onClose: () => void }
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the register (the name is
+    // Explicit reload flow: refetch the register (the name is
     // probably already registered); the failed request is structurally
     // WITHDRAWN — re-entering it is a NEW operator intent whose key
     // rotates via the reload epoch. NOTHING is replayed.
@@ -126,7 +126,7 @@ export function BranchCreateDrawer({ onClose }: Readonly<{ onClose: () => void }
       {/* Informational, NOT success styling (W59-4). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={create.error} onReload={reloadAfterConflict} />
       {create.isError && !conflict && !renderedInline && <ErrorBanner error={create.error} />}
 

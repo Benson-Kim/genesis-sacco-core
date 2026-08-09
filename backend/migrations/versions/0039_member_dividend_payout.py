@@ -1,27 +1,26 @@
-"""members.dividend_payout — stored payout PREFERENCE (#31 ledger (c))
+"""members.dividend_payout — stored payout PREFERENCE
 
 Revision ID: 0039
 Revises: 0038
 Create Date: 2026-08-06
 
-Expand-only revision for issue #31 batch 8 ledger item (c), claimed as
+Expand-only revision for ledger item (c), claimed as
 0039 with down_revision '0038' in the MR description at branch time
-(v1.2 rule 14; head 0038 re-verified against main, !77 merge eeb8113).
+(the migration-declaration rule; head 0038 re-verified against main, merge eeb8113).
 
 One nullable TEXT column on members carrying the member's dividend
 payout PREFERENCE. The vocabulary is CODE-OWNED (domain/members.py
 DividendPayout — see its provenance note: the prototype declares the
 field but no option list; the values are the prototype's own cash
 channels plus its two retention destinations) and is enforced AT THE
-DATABASE by the CHECK below (gate 1.5: constraints in the database,
-not just the app).
+DATABASE by the CHECK below (data integrity: constraints in the database, not just the app).
 
 NULL is the honest "not chosen" state: every existing member keeps
 NULL — there is deliberately NO backfill and NO default (an invented
 default would fabricate a preference no member ever expressed).
 
-REGULATORY/ACCOUNTING FENCE (batch 8): this column is a stored
-preference ONLY. The P13.11 dividends distribution engine does NOT
+REGULATORY/ACCOUNTING FENCE: this column is a stored
+preference ONLY. The dividends distribution engine does NOT
 read it in this batch — routing money by preference is a separate,
 separately-authorized batch. No money moves; no ledger contact.
 

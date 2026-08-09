@@ -1,29 +1,28 @@
-"""committee-recommender attribution: recommended_by on loan_applications (issue #30)
+"""committee-recommender attribution: recommended_by on loan_applications
 
 Revision ID: 0037
 Revises: 0036
 Create Date: 2026-08-05
 
-Additive revision closing the issue-#30 committee-recommender contract
+Additive revision closing the committee-recommender contract
 gap (status ledger note 3646960565 item 2: the web applications module
 documents the recommender as per-tab-witness-only in makerRegistry.ts),
-claimed as 0037 with down_revision '0036' in MR !71's description and
-the BUILD_PROMPTS registry at branch time (v1.2 rule 14; head 0036 +
-the open-MR list verified — no other in-flight claim).
+claimed as 0037 with down_revision '0036' in its MR description and
+the build plan registry at branch time (the migration-declaration rule; head 0036 + the open-MR
+list verified — no other in-flight claim).
 
   * loan_applications.recommended_by — the acting principal that moved
     the application INTO the committee stage (the "refer to committee"
     recommendation), recorded at that transition from then on
     (application/loan_applications.py:transition_stage). Powers the
-    recommender separation-of-duties checks (the recommender can
-    neither vote on nor disburse the application they put before the
-    committee — the exit-requester-cannot-vote / write-off-proposer /
-    !66 initiator-cannot-disburse posture, applied consistently) and
+    recommender separation-of-duties checks (the recommender can neither vote on nor disburse the
+    application they put before the committee — the exit-requester-cannot-vote / write-off-proposer
+    / initiator-cannot-disburse posture, applied consistently) and
     rides the ApplicationOut read model as the bare staff UUID (least
     disclosure; resolving it stays behind access_control). NULL for
     system_actor transitions (an honest "moved by the system") and for
     pre-0037 rows without unambiguous history — attribution is never
-    invented (FM-B).
+    invented.
 
   * Backfill — ONLY from each row's own in-transaction audit record
     (the 0031/0036 truthful-history rule; audit rows are written in
@@ -37,7 +36,7 @@ the open-MR list verified — no other in-flight claim).
     append-only fence, so no trigger toggle is needed (unlike 0036's
     transactions leg).
 
-  * NO new indexes (v1.1 rule; EXPLAIN posture documented in !71): no
+  * NO new indexes (v1.1 rule; EXPLAIN posture documented in): no
     read path filters or orders by recommended_by — both SoD checks
     read the column under the application row lock already taken by PK
     (cast_vote and disburse_loan hold it FOR UPDATE), the read models

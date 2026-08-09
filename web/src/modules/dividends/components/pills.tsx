@@ -4,8 +4,8 @@ import { DECLARATION_STATUS_LABELS, type DeclarationStatus } from "../schemas";
 
 /**
  * Declaration lifecycle status pill (prototype status colors). One
- * copy for the register and the drawers (gate 1.1). Never color
- * alone: the pill text carries the meaning (issue #8).
+ * copy for the register and the drawers (reuse-first). Never color
+ * alone: the pill text carries the meaning.
  */
 export function declarationStatusPill(status: DeclarationStatus): ReactNode {
   switch (status) {

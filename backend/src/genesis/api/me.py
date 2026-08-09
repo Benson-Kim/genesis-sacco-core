@@ -29,7 +29,7 @@ class MyPermissionsResponse(BaseModel):
 
 @router.get("/me/permissions")
 async def my_permissions(request: Request) -> MyPermissionsResponse:
-    """Drives client route guards; the API still enforces every call (gate 1.6)."""
+    """Drives client route guards; the API still enforces every call (least disclosure)."""
     ctx = get_auth_context(request)
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:

@@ -1,6 +1,5 @@
-/* Maker-checker panel (P15 Phase B) — the two contexts are VISUALLY
-   separated (issue #8 clarity; the maker side must never look like the
-   place to approve). Tokens only. */
+/* Maker-checker panel — the two contexts are VISUALLY
+   separated (clarity; the maker side must never look like the place to approve). Tokens only. */
 .panel {
   display: grid;
   grid-template-columns: 1fr 1fr;

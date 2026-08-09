@@ -7,8 +7,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Settings — Interest / Loan products / Parameters / Approval matrix
- * (P15). Static segment takes precedence over the scaffold's
+ * Settings — Interest / Loan products / Parameters / Approval matrix.
+ * Static segment takes precedence over the scaffold's
  * [moduleId] placeholder. Deny-by-default: the route mounts only with
  * a settings:view grant (the API enforces every call regardless).
  */

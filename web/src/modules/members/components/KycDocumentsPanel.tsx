@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * KYC required-documents checklist panel (issue #31 batch 3 — P13.12
- * documents routes; prototype `docsFor` checklist, audit #30 U1).
+ * KYC required-documents checklist panel (documents routes; prototype `docsFor` checklist).
  * Embedded by BOTH the registration wizard's final step and the member
- * KYC drawer (one copy, gate 1.1).
+ * KYC drawer (one copy, reuse-first).
  *
  * HONEST SCOPING (stated on-screen): binary document UPLOAD has NO
  * backend contract — storage is deferred behind ADR-0003, so the
@@ -13,11 +12,10 @@
  * tracking a required document and moving it through the review status
  * machine (pending, received, verified, rejected — server-validated).
  *
- * - Reads under members:view (server access-audits every checklist
- *   read — P13 blocker f); tracking under members:create; review moves
+ * - Reads under members:view (server access-audits every checklist read — blocker f); tracking under members:create; review moves
  *   and expiry corrections under members:edit. Affordances mount only
  *   with the grant — pure UX; the server enforces every call (1.6).
- * - Keyset list ONLY (gate 1.3). The checklist is 5 code-owned types
+ * - Keyset list ONLY (scalability). The checklist is 5 code-owned types
  *   per member type, so the "not yet tracked" affordances derive from
  *   the loaded pages verbatim.
  * - Review moves and expiry edits PIN the row version (409 on stale —
@@ -171,8 +169,8 @@ export function KycDocumentsPanel({
       return;
     }
     setExpiryError("");
-    // Blank input = EXPLICIT clear (the contract's null branch —
-    // review K2); a kept expiry is simply not edited.
+    // Blank input = EXPLICIT clear (the contract's null branch);
+    // a kept expiry is simply not edited.
     saveExpiry.mutate({ document: doc, expiresAt: raw === "" ? null : raw });
   }
 
@@ -187,7 +185,7 @@ export function KycDocumentsPanel({
       {list.isPending && <div className={styles.muted}>Loading checklist…</div>}
       {list.isError && <ErrorBanner error={list.error} />}
       {track.isError && <ErrorBanner error={track.error} />}
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1);
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first);
           ErrorBanner covers the non-409s — never double-reported. */}
       <ConflictBanner
         error={move.error}

@@ -1,20 +1,18 @@
 "use client";
 
 /**
- * Generic branch roster panel (#31 ledger (j).1) — ONE component
- * consumed for both roster kinds (gate 1.1, the BranchAssignPanel
- * precedent): the expand-only keyset reads over the 0016 assignment
+ * Generic branch roster panel — ONE component
+ * consumed for both roster kinds (reuse-first, the BranchAssignPanel precedent): the expand-only keyset reads over the 0016 assignment
  * columns, rendered inside the branch detail drawer.
  *
- * Permission model (the batch-4 assignment split MIRRORED on reads,
- * enforced server-side regardless — gate 1.6): the USER roster mounts
+ * Permission model (the assignment split MIRRORED on reads, enforced server-side regardless — least disclosure): the USER roster mounts
  * only with access_control:view, the MEMBER roster only with
  * members:view. The DRAWER decides mounting — this panel is only ever
  * rendered under its grant, so withholding is STRUCTURAL: an
  * unmounted panel holds no query and probes nothing (jest-proven).
  *
- * - Keyset pagination only (opaque cursors — gate 1.3) through the
- *   shared useKeysetList/KeysetTable primitives (gate 1.1).
+ * - Keyset pagination only (opaque cursors — scalability) through the
+ *   shared useKeysetList/KeysetTable primitives (reuse-first).
  * - Identity facts VERBATIM: names/emails are operator free text —
  *   attacker-influenced data rendered exclusively as React text (the
  *   module's named XSS threat, gate-tested). NO money field exists on

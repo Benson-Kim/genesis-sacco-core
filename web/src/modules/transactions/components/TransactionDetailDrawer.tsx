@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Transaction detail drawer (P15 module 6 — prototype `vTxn` row
+ * Transaction detail drawer (prototype `vTxn` row
  * drill-down). The P11 contract exposes NO per-transaction read
  * endpoint — this drawer renders the WITNESSED list row: an
  * append-only ledger fact that never changes after it is served
@@ -42,10 +42,10 @@ export function TransactionDetailDrawer({
   const mayViewMembers = can(permissions.data, "members", "view");
   const mayViewTransactions = can(permissions.data, "transactions", "view");
 
-  // Double-entry legs drill-down (#31 ledger (g)): the append-only
+  // Double-entry legs drill-down: the append-only
   // ledger_entries truth behind this row, one item per DR/CR leg.
   // Structurally withheld without transactions:view (deny-by-default:
-  // no grant, no probe — gate 1.6); ledger rows are immutable server
+  // no grant, no probe — least disclosure); ledger rows are immutable server
   // facts, so the register staleness class applies.
   const legs = useQuery({
     queryKey: ["transactions", "legs", txn.id],
@@ -62,7 +62,7 @@ export function TransactionDetailDrawer({
       return fetchMember(memberId);
     },
     // Deny-by-default: without members:view this drawer fetches NOTHING
-    // and renders the opaque id (gate 1.6).
+    // and renders the opaque id (least disclosure).
     enabled: memberId !== null && mayViewMembers,
     staleTime: STALE_TIME.record,
   });
@@ -78,6 +78,13 @@ export function TransactionDetailDrawer({
       <div className={styles.detailGrid}>
         <Kv label="Reference">
           <span className={styles.mono}>{txn.txn_ref}</span>
+        </Kv>
+        <Kv label="External reference">
+          {txn.external_ref === null ? (
+            <span className={styles.muted}>— (system posting or pre-0043 row)</span>
+          ) : (
+            <span className={styles.mono}>{txn.external_ref}</span>
+          )}
         </Kv>
         <Kv label="Type">{txnTypePill(txn.type, txn.direction)}</Kv>
         <Kv label="Direction">{directionPill(txn.direction)}</Kv>
@@ -97,9 +104,9 @@ export function TransactionDetailDrawer({
         </Kv>
         <Kv label="Reversal">{txn.is_reversal ? reversalPill() : "No"}</Kv>
         <Kv label="Posted by">
-          {/* Posting-actor attribution (issue #30 / !66 follow-up):
+          {/* Posting-actor attribution:
               the SERVER's bare staff UUID, short-id convention — least
-              disclosure (FM-D): no name/email is ever fetched for it.
+              disclosure: no name/email is ever fetched for it.
               NULL renders the honest affordance (FM-B): system/job
               postings and pre-0036 rows are never given an invented
               actor. */}
@@ -116,7 +123,7 @@ export function TransactionDetailDrawer({
         </Kv>
       </div>
 
-      {/* Double-entry legs (#31 ledger (g)): the per-posting DR/CR
+      {/* Double-entry legs: the per-posting DR/CR
           rows from the append-only ledger_entries truth, rendered
           VERBATIM — never summed, never netted, no client-side
           balancing total (blocker (a)); the 0004/0014 DB trigger

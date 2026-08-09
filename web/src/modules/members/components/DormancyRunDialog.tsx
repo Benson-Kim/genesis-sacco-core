@@ -1,24 +1,22 @@
 "use client";
 
 /**
- * Dormancy run dialog (#31 ledger (f) — the P13.13 nightly job's
- * operations catch-up route, `POST /members/jobs/dormancy`,
- * members:edit; the batch-4 backfill / interest-run precedent).
+ * Dormancy run dialog (the nightly job's operations catch-up route, `POST /members/jobs/dormancy`, members:edit; the backfill / interest-run precedent).
  *
  * - The request body carries the batch size ONLY (the contract's sole
  *   caller-tunable field, sent at its documented default): the
  *   dormancy period resolves exclusively from tenant settings
- *   server-side (extra="forbid" — v1.1 rule 1) and as_of is
+ *   server-side (extra="forbid") and as_of is
  *   deliberately not sent (the server resolves today). No money moves
  *   and NO money field exists anywhere on this contract.
- * - Status-rewriting write: typed ConfirmDangerModal (!60 F7), ONE
+ * - Status-rewriting write: typed ConfirmDangerModal, ONE
  *   idempotent write (pending short-circuit), SPENT affordance (the
  *   result panel replaces the action; a re-run is a NEW intent with a
  *   rotated key — README MATERIAL rule 4 per-success counter).
  * - A 409 is a CREATE-style conflict (dormancy period unconfigured or
  *   corrupt — the run fails CLOSED with zero transitions): no record
  *   version exists to reload, so it renders the least-disclosure
- *   ErrorBanner with an operator note (!56 F-B4); the acknowledged
+ *   ErrorBanner with an operator note; the acknowledged
  *   conflict rotates the key (T3) so a post-fix retry is a NEW
  *   intent. Nothing is replayed either way.
  * - Every result figure (dates, period, counts) is the SERVER's,
@@ -51,7 +49,7 @@ export function DormancyRunDialog({ onClose }: Readonly<{ onClose: () => void }>
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<DormancyRun | null>(null);
   // Per-success run counter + conflict epoch (README MATERIAL rules
-  // 3/4, the interest-run T3 precedent): an intentional RE-RUN after a
+  // 3/4, the interest-run precedent): an intentional RE-RUN after a
   // success is a NEW intent (the server must scan again), and a retry
   // after an acknowledged 409 (period fixed in Settings) is too; pure
   // 5xx retries keep the SAME key.

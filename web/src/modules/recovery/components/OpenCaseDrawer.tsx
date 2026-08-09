@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Open-recovery-case drawer (P15 batch 1 — the prototype's "Initiate
- * recovery" action, adapted to the P13.16 contract):
+ * Open-recovery-case drawer (the prototype's "Initiate recovery" action, adapted to the contract):
  * `POST /recovery-cases` (loan_book:create) opens a case on a
  * non-performing ACTIVE loan.
  *
@@ -21,7 +20,7 @@
  *   flow — NOTHING is replayed.
  * - The result panel renders the SERVER's case record verbatim; the
  *   affordance is then SPENT. NO money figure exists anywhere on this
- *   surface (least disclosure, addendum A5).
+ *   surface (least disclosure, addendum).
  */
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -59,7 +58,7 @@ export function OpenCaseDrawer({
   const [confirmEntry, setConfirmEntry] = useState<OpenCaseEntry | null>(null);
   const [result, setResult] = useState<CaseRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3).
+  // Freshness component for the idempotency key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
@@ -97,7 +96,7 @@ export function OpenCaseDrawer({
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): a live case already claims this
+    // Explicit reload flow: a live case already claims this
     // loan (one live case per loan), or the loan is not a
     // non-performing active loan. NOTHING is replayed.
     void queryClient.invalidateQueries({ queryKey: ["recovery", "worklist"] });
@@ -139,7 +138,7 @@ export function OpenCaseDrawer({
     >
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={open.error} onReload={reloadAfterConflict} />
       {open.isError && !conflict && !renderedInline && <ErrorBanner error={open.error} />}
 

@@ -1,13 +1,12 @@
 import { z } from "zod";
 
 /**
- * Zod-validated response boundary for the loan-products API (P15,
- * Settings module — prototype "Loan products" tab). Shapes mirror the
+ * Zod-validated response boundary for the loan-products API (Settings module — prototype "Loan products" tab). Shapes mirror the
  * generated client types (components["schemas"]["ProductOut"]) — the
  * drift-checked OpenAPI snapshot remains the contract; these schemas
  * only assert it at runtime.
  *
- * MONEY RULE (P15 blocker (a)): rate_pct and deposit_multiplier are
+ * MONEY RULE: rate_pct and deposit_multiplier are
  * money-adjacent rule parameters. They travel as API decimal STRINGS,
  * render verbatim, and are SUBMITTED as strings — the client never
  * coerces or computes them.

@@ -5,7 +5,7 @@ import { env } from "@/lib/env";
 /**
  * The single authenticated API client for the app. All server state flows
  * through TanStack Query hooks that call this client — no ad-hoc fetch
- * (MASTER_PROMPT §2.3).
+ * (the house doctrine).
  */
 export const api = createGenesisClient({
   baseUrl: env.apiBaseUrl,

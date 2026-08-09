@@ -6,15 +6,15 @@ import {
 } from "@/lib/schemas";
 
 /**
- * Zod validation of GET /dashboard/summary (P13.9 composite endpoint).
+ * Zod validation of GET /dashboard/summary (composite endpoint).
  * Money values are decimal STRINGS end-to-end — never coerced to
- * numbers in the client (P15 blocker (a)).
+ * numbers in the client.
  *
  * The endpoint omits (nulls) every slice the caller's role is not
  * granted — the UI renders "—" for missing slices and never fabricates
- * figures (deny-by-default, gate 1.6).
+ * figures (deny-by-default, least disclosure).
  *
- * MONEY SHAPES (issue #30 A2/S2 retrofit): every figure here is a SQL
+ * MONEY SHAPES (retrofit): every figure here is a SQL
  * aggregate (application/dashboard.py / loans.py — COALESCE(SUM(...),
  * 0) and friends), so the shared AGGREGATE shapes apply: the canonical
  * two-place decimal OR the bare "0" an empty aggregate serialises to.
@@ -38,7 +38,7 @@ export const membersOverviewSchema = z.object({
 export const depositTotalsSchema = z.object({
     /** DEPOSIT_TOTAL_SQL and SHARE_TOTAL_SQL — COALESCE(SUM(balance),
      * 0) over CHECK (balance >= 0) columns: non-negative aggregates,
-     * fmtKes-fed (issue #30 A2/S2 retrofit). */
+     * fmtKes-fed (retrofit). */
     total_deposits: aggregateMoneySchema,
     total_share_capital: aggregateMoneySchema,
 });
@@ -47,7 +47,7 @@ export const classificationSliceSchema = z.object({
     classification: z.string(),
     count: z.number().int(),
     /** Grouped COALESCE(SUM(...), 0) aggregates (loans.py
-     * portfolio_summary), fed to fmtAmount (A2/S2 retrofit). */
+     * portfolio_summary), fed to fmtAmount (retrofit). */
     balance: aggregateMoneySchema,
     provisions: aggregateMoneySchema,
 });
@@ -55,9 +55,9 @@ export const classificationSliceSchema = z.object({
 export const portfolioSummarySchema = z.object({
     active_loans: z.number().int(),
     /** COALESCE(SUM(...), 0) aggregates — bare "0" on an empty book,
-     * two-place otherwise; fmtKes-fed (A2/S2 retrofit). The ratio
+     * two-place otherwise; fmtKes-fed (retrofit). The ratio
      * percentages are rendered as "%" text, never fmtKes-fed —
-     * deliberately left unasserted (A2/S2 sweep note). */
+     * deliberately left unasserted (sweep note). */
     outstanding_balance: aggregateMoneySchema,
     npl_balance: aggregateMoneySchema,
     npl_ratio_pct: z.string(),
@@ -73,12 +73,12 @@ export const guarantorCapacitySchema = z.object({
     member_no: z.string(),
     name: z.string(),
     /** live_pledged_total — a COALESCE'd SUM of CHECK (amount > 0)
-     * pledges: non-negative aggregate, fmtKes-fed (A2/S2 retrofit). */
+     * pledges: non-negative aggregate, fmtKes-fed (retrofit). */
     pledged_total: aggregateMoneySchema,
     /** ADVISORY "balance less pledged" difference (dashboard.py
      * GuarantorCapacity), read without the P9 locks — legitimately
      * NEGATIVE when the balance dropped after pledging or no deposit
-     * account exists; fmtKes-fed with its sign (A2/S2 retrofit). */
+     * account exists; fmtKes-fed with its sign (retrofit). */
     free_capacity: signedAggregateMoneySchema,
 });
 
@@ -86,7 +86,7 @@ export const guarantorAggregatesSchema = z.object({
     active_guarantees: z.number().int(),
     /** GUARANTEE_TOTALS_SQL — COALESCE(SUM(amount), 0) over
      * CHECK (amount > 0) pledges: non-negative aggregate, fmtKes-fed
-     * (A2/S2 retrofit). */
+     * (retrofit). */
     total_pledged: aggregateMoneySchema,
     distinct_guarantors: z.number().int(),
     guarantors: z.array(guarantorCapacitySchema),
@@ -94,14 +94,14 @@ export const guarantorAggregatesSchema = z.object({
 
 export const monthlyFlowSchema = z.object({
     /** "YYYY-MM" UTC calendar month key — rendered verbatim, never
-     * fmtDateTime-fed: deliberately left unasserted (A2/S2 sweep
+     * fmtDateTime-fed: deliberately left unasserted (sweep
      * note). */
     month: z.string(),
     /** MONTHLY_FLOWS_SQL — reversal rows SUBTRACT in the month they
      * were posted, so a reversal-only month legitimately nets
      * negative; zero-filled silent months arrive as "0.00" and an
      * all-other-types month as the SQL bare "0"; fed to fmtAmount
-     * with the sign (A2/S2 retrofit). */
+     * with the sign (retrofit). */
     deposits: signedAggregateMoneySchema,
     disbursements: signedAggregateMoneySchema,
 });
@@ -112,12 +112,12 @@ export const pipelineStageSchema = z.object({
 });
 
 /**
- * CHART GEOMETRY (issue #32, the RECORDED design decision route (a)):
+ * CHART GEOMETRY (the RECORDED design decision route (a)):
  * every percentage below is SERVER-computed (Decimal, ROUND_HALF_UP,
  * application/dashboard.py scale_pct) from figures inside the same
  * REPEATABLE READ snapshot as the sibling slices. The client renders
  * these integers as visual scale ONLY — no client-side money math
- * exists anywhere (P15 blocker (a) stays absolute); the sibling
+ * exists anywhere (the money rule stays absolute); the sibling
  * monthly_flows / loan_book slices remain the figures of record and
  * the accessible truth (a11y: colour-never-alone).
  *
@@ -160,16 +160,16 @@ export const dashboardChartsSchema = z.object({
 });
 
 /**
- * PER-KPI TREND SERIES (#31 batch 8, ledger (k)): server-computed
+ * PER-KPI TREND SERIES: server-computed
  * month-end points, capped at 12, from posting-history / audit-fact
  * truth inside the same REPEATABLE READ snapshot. The client consumes
  * the series VERBATIM: pct is share-of-window-peak geometry computed
  * SERVER-side (Decimal) — no client summing, interpolation or derived
- * deltas exist anywhere (P15 blocker (a)); ratio_pct/active are the
+ * deltas exist anywhere; ratio_pct/active are the
  * accessible figures of record and are never re-scaled. Each series
  * follows its KPI card's parent grant (par30 <- loan_book:view,
  * members <- members:view) and is OMITTED when ungranted — an absent
- * series mounts NOTHING (structural withholding, gate 1.6).
+ * series mounts NOTHING (structural withholding, least disclosure).
  */
 export const par30TrendPointSchema = z.object({
     /** "YYYY-MM" month key — rendered verbatim if surfaced. */
@@ -197,7 +197,7 @@ export const kpiTrendsSchema = z.object({
 export const dashboardSummarySchema = z.object({
     /** datetime.isoformat() (api/dashboard.py summary.as_of) — feeds
      * fmtDateTime in the header: garbage is REJECTED, never
-     * "Invalid Date" (the !63 F-R4 lesson; A2/S2 retrofit). */
+     * "Invalid Date" (an earlier review lesson; retrofit). */
     as_of: isoTimestampSchema,
     members: membersOverviewSchema.nullish(),
     deposits: depositTotalsSchema.nullish(),

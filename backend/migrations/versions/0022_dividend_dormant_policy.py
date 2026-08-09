@@ -1,40 +1,39 @@
-"""dividends x dormancy policy (issue #19)
+"""dividends x dormancy policy
 
 Revision ID: 0022
 Revises: 0021
 Create Date: 2026-08-01
 
-Backs the issue-#19 maintainer policy decision (P13.11 x P13.13).
-Claimed as 0022 with down_revision 0021 per v1.2 rule 14 — 0021
-(member dormancy, !32) verified as main's migration head at branch
+Backs a maintainer policy decision.
+Claimed as 0022 with down_revision 0021 per the migration-declaration rule — 0021
+(member dormancy) verified as main's migration head at branch
 time (0001-0021 linear).
 
   * idx_members_dividend_scan predicate WIDENED to include 'dormant'
-    (issue #19 P1: dormant members remain shareholders and ARE
-    dividend/rebate-eligible on their share basis; exited members
-    stay excluded from direct payment). The swap is CREATE new + DROP
+    (P1: dormant members remain shareholders and ARE dividend/rebate-eligible on their share basis;
+    exited members stay excluded from direct payment). The swap is CREATE new + DROP
     old under a rename, atomic inside the migration transaction, and
     keeps the index name the production scan and the EXPLAIN gate
     (tests/test_p1311_explain.py) assert against. The predicate
     matches application/dividends.members_scan_sql exactly (partial-
     index implication), shipped in the same MR as the widened query
-    (gate 1.3).
+    (scalability).
 
   * dividend_distributions.disposition — the explicit, audited
-    terminal disposition on the per-member claim row (issue #19 P3):
-    'paid' (the !30 path: posted and credited to the member's
-    accounts) or 'unclaimed' (a member who EXITED mid-run: their
+    terminal disposition on the per-member claim row (P3):
+    'paid' (the path: posted and credited to the member's accounts) or 'unclaimed' (a member who
+    EXITED mid-run: their
     record-date entitlement is recognised as an explicit
     liability.unclaimed_dividends payable posting, never credited to
     member accounts and never left as a silent pending_members
-    shortfall). Additive, NOT NULL DEFAULT 'paid': every existing !30
+    shortfall). Additive, NOT NULL DEFAULT 'paid': every existing
     claim row IS a paid disposition. Resolution of unclaimed rows
-    happens through the P13.15 correction paths (reversing entries)
+    happens through the correction paths (reversing entries)
     — a forward reference, deliberately not modelled here.
 
   * idx_members_exited_scan — the driving index for the unclaimed
-    disposition scan (application/dividends.unclaimed_scan_sql,
-    shipped with this query, gate 1.3). Partial over
+    disposition scan (application/dividends.unclaimed_scan_sql, shipped with this query,
+    scalability). Partial over
     status = 'exited'; the member_exits settled-after-declaration
     probe rides idx_exits_member (0001) and the claim anti-join rides
     uq_dividend_distributions_claim (0020).
@@ -43,15 +42,15 @@ No new tables: no TENANT_TABLES delta, no new RLS policies
 (dividend_distributions keeps its 0020 forced tenant_isolation
 policy), no ENTITY_MODULES change (unclaimed audit rows use
 entity='dividend_distributions', already mapped). No new lock-graph
-edges (the disposition scan locks member rows only — the ROOT tier of
-the established chain, exactly like the !30 batch scan).
+edges (the disposition scan locks member rows only — the ROOT tier of the established chain, exactly
+like the batch scan).
 
 Downgrade restores the narrower active/arrears scan predicate cleanly
 and drops the disposition column — but REFUSES LOUDLY on a database
 holding 'unclaimed' dispositions (the 0017/0020/0021 conditional-
 refusal precedent): an unclaimed disposition is money-bearing audit
 state (a recognised payable) and is never silently rewritten to
-'paid'. Resolve unclaimed rows through the P13.15 correction paths
+'paid'. Resolve unclaimed rows through the correction paths
 first. CI migrate-check (up -> down -> up) runs on a database without
 unclaimed rows and passes.
 """

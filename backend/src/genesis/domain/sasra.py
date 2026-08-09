@@ -1,4 +1,4 @@
-"""SASRA return skeleton: versioned, code-owned line-item mapping (P13.10).
+"""SASRA return skeleton: versioned, code-owned line-item mapping.
 
 Zero I/O — no imports from application, infrastructure, or api layers.
 
@@ -23,7 +23,7 @@ account silently missing from a return):
 Line amounts use the natural-sign convention from
 ``genesis.domain.ledger.signed_balance``: debit-normal positive for
 asset/expense/clearing lines, credit-normal positive for liability/
-equity/income lines. Because every posting is balanced (gate 1.5), the
+equity/income lines. Because every posting is balanced (data integrity), the
 double-entry identity holds on natural-sign balances — assets +
 expenses + clearing == liabilities + equity + income — rendered as the
 final ``CHK1`` control row (debit-normal minus credit-normal), which a
@@ -40,9 +40,9 @@ from genesis.domain.ledger import Account
 #: filed return is traceable to the exact mapping that produced it.
 #: Bump this (and keep the old mapping importable in history) whenever
 #: the regulator's prescribed line items change.
-#: 2025.2 (P13.15): adds X400 "Loan write-off expense" for the new
+#: 2025.2: adds X400 "Loan write-off expense" for the new
 #: expense.loan_writeoffs account (the write-off provisioning posting).
-#: 2025.3 (issue #21): adds I400 "Recoveries on loans written off" for
+#: 2025.3: adds I400 "Recoveries on loans written off" for
 #: the new income.bad_debt_recoveries account (RC- recovery receipts).
 SASRA_RETURN_VERSION = "SASRA-DS-2025.3"
 
@@ -69,7 +69,7 @@ SASRA_LINES: tuple[SasraLine, ...] = (
     SasraLine("I100", "Interest income on loans", (Account.INTEREST_INCOME,)),
     SasraLine("I200", "Penalty income", (Account.PENALTY_INCOME,)),
     SasraLine("I300", "Fee income", (Account.FEE_INCOME,)),
-    # Issue #21: cash recovered against written-off loans (RC-
+    # Issue: cash recovered against written-off loans (RC-
     # receipts) is recovery income — the written-off portfolio never
     # re-enters A200 (write-off is not forgiveness, but neither is a
     # recovery a resurrection of the receivable).
@@ -77,7 +77,7 @@ SASRA_LINES: tuple[SasraLine, ...] = (
     SasraLine("X100", "Interest expense on member deposits", (Account.INTEREST_EXPENSE,)),
     SasraLine("X200", "Dividends on member shares", (Account.DIVIDEND_EXPENSE,)),
     SasraLine("X300", "Rebates on member deposits", (Account.REBATE_EXPENSE,)),
-    # P13.15: bad-debt expense from committee-approved loan write-offs.
+    # bad-debt expense from committee-approved loan write-offs.
     SasraLine("X400", "Loan write-off expense", (Account.WRITE_OFF_EXPENSE,)),
     SasraLine(
         "C100",

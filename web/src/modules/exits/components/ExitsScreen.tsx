@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Member-exit register (P15 module 7 — prototype member exit, adapted
- * to the P12 contract): the exit workflow's read surface plus entry
+ * Member-exit register (module 7 — prototype member exit, adapted to the contract): the exit workflow's read surface plus entry
  * points for the lifecycle writes.
  *
  * Security posture (transactions/loans precedent):
@@ -10,14 +9,14 @@
  *   it renders exclusively through React text interpolation — no
  *   parser sink exists in this module (gate-tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). "Request exit" mounts
+ *   the server enforces every call (least disclosure). "Request exit" mounts
  *   only with members:edit (the route itself is members:view via
  *   RequireModule); vote/void/settle affordances mount in the drawers
  *   only with members:approve.
- * - Keyset pagination only (opaque cursors — gate 1.3); the status
- *   filter — the ONLY filter the P12 list contract declares — is a
+ * - Keyset pagination only (opaque cursors — scalability); the status
+ *   filter — the ONLY filter the list contract declares — is a
  *   SERVER query parameter; nothing is filtered locally.
- * - MONEY (blocker (a)): !63's reports picker consumes this list with
+ * - MONEY (blocker (a)): reports picker consumes this list with
  *   its money fields STRIPPED; THIS register is where those figures
  *   render — each snapshot component (shares, deposits, loan balance,
  *   fees, net payable) is an API decimal STRING rendered via fmtKes in
@@ -35,9 +34,10 @@ import { fmtDateTime, fmtKes } from "@/lib/format";
 import { EMPTY_EXIT_FILTERS, fetchExitsPage, type ExitListFilters } from "../api";
 import { EXIT_STATUSES, EXIT_STATUS_LABELS, type ExitRecord } from "../schemas";
 import { exitStatusPill } from "./pills";
+import { FormField } from "@/modules/forms/FormField";
 import styles from "./Exits.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load
+// Drawer-level code splitting (speed): drawer chunks load
 // on first open, not with the list route.
 const ExitDetailDrawer = dynamic(
   () => import("./ExitDetailDrawer").then((m) => m.ExitDetailDrawer),
@@ -73,8 +73,8 @@ export function ExitsScreen() {
     fetchPage: (cursor) => fetchExitsPage(filters, cursor),
   });
 
-  // Creating an exit request is a member lifecycle change (P12:
-  // members:edit); the drawer also fresh-reads the member — the same
+  // Creating an exit request is a member lifecycle change
+  // (members:edit); the drawer also fresh-reads the member — the same
   // module grant the route guard already established.
   const mayRequest = can(permissions.data, "members", "edit");
 
@@ -88,8 +88,8 @@ export function ExitsScreen() {
       key: "member",
       header: "Member",
       render: (exit) => (
-        // The P12 list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record (!58 precedent).
+        // The list carries member_id only (no joined name) — the
+        // detail drawer resolves the member record (precedent).
         <span className={styles.mono} title={exit.member_id}>
           {exit.member_id.slice(0, 8)}
         </span>
@@ -136,26 +136,25 @@ export function ExitsScreen() {
     <div>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel} htmlFor="exit-filter-status">
-              Status
-            </label>
-            <select
-              id="exit-filter-status"
-              className={`${styles.select} ${styles.filterControl}`}
-              value={filters.status}
-              onChange={(event) =>
-                setFilters({ status: event.target.value as ExitListFilters["status"] })
-              }
-            >
-              <option value="">All statuses</option>
-              {EXIT_STATUSES.map((option) => (
-                <option key={option} value={option}>
-                  {EXIT_STATUS_LABELS[option]}
-                </option>
-              ))}
-            </select>
-          </div>
+          <FormField id="exit-filter-status" label="Status">
+            {(control) => (
+              <select
+                {...control}
+                className={`${styles.select} ${styles.filterControl}`}
+                value={filters.status}
+                onChange={(event) =>
+                  setFilters({ status: event.target.value as ExitListFilters["status"] })
+                }
+              >
+                <option value="">All statuses</option>
+                {EXIT_STATUSES.map((option) => (
+                  <option key={option} value={option}>
+                    {EXIT_STATUS_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
         </div>
         <div className={styles.toolbarActions}>
           {mayRequest && (

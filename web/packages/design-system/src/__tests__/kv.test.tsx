@@ -63,4 +63,44 @@ describe("Kv (label/value detail row — #31 batch 9, DA-72.2)", () => {
     expect(screen.getByText(HOSTILE_LABEL)).toBeInTheDocument();
     expect(screen.getByText(HOSTILE_VALUE)).toBeInTheDocument();
   });
+
+  it("FM5: valueClassName is APPENDED to the value span's class list when given — and ABSENT from it when omitted (both directions)", () => {
+    // Hand-computed oracle: the composed value span carries exactly
+    // {kvVal, tnum}; the plain value span carries kvVal ONLY (the
+    // batch-9 rendered class set, unchanged by the new prop).
+    render(
+      <>
+        <Kv label="Composed" variant="quiet" valueClassName="tnum">
+          12:00
+        </Kv>
+        <Kv label="Plain" variant="quiet">
+          12:01
+        </Kv>
+      </>,
+    );
+    const composedVal = screen.getByText("12:00");
+    const plainVal = screen.getByText("12:01");
+    expect(composedVal.className).toContain("kvVal");
+    expect(composedVal.className).toContain("tnum");
+    expect(plainVal.className).toContain("kvVal");
+    expect(plainVal.className).not.toContain("tnum");
+  });
+
+  it("FM6: a hostile string through valueClassName is inert — React-escaped class ATTRIBUTE only, no element injection, no script execution", () => {
+    const HOSTILE_CLASS =
+      '"><img src=x onerror=window.__pwned=3><script>window.__pwned=4</script>';
+    const { container } = render(
+      <Kv label="Hostile class" valueClassName={HOSTILE_CLASS}>
+        inert value
+      </Kv>,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("script")).toBeNull();
+    expect(
+      (window as unknown as { __pwned?: number }).__pwned,
+    ).toBeUndefined();
+    // The payload lands verbatim INSIDE the class attribute — never
+    // parsed as markup.
+    expect(screen.getByText("inert value").getAttribute("class")).toContain("onerror");
+  });
 });

@@ -1,26 +1,23 @@
 "use client";
 
 /**
- * Repayment-adjustment request drawer (P15 batch 1 — the MAKER phase
- * of the issue-#24 two-phase correction): `POST
+ * Repayment-adjustment request drawer (the MAKER phase of the issue- two-phase correction): `POST
  * /corrections/repayment-adjustments` (corrections:create) creates a
  * PENDING adjustment bound to the persisted approval snapshot —
  * nothing posts until a DISTINCT checker approves.
  *
  * - The body carries the repayment id and the reason ONLY — NO amounts,
- *   ever (FM5/v1.1 rule 1): the reversal derives every figure from the
+ *   ever (rule 1): the reversal derives every figure from the
  *   original transaction's append-only legs. There is no repayments
  *   list contract to pick from (the id comes from the posting receipt
  *   or the audit trail — recorded honestly on the workbench card).
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase (the
  *   repayment id prefix), pending short-circuit, `retry: 0`, one
- *   Idempotency-Key per logical intent — simple-create material (the
- *   README rule 2: op + the full canonical body; the server holds the
- *   one-live-adjustment-per-repayment claim, FM2).
+ *   Idempotency-Key per logical intent — simple-create material (the README rule 2: op + the full canonical body; the server holds the one-live-adjustment-per-repayment claim).
  * - A 409 (a live adjustment already exists / the repayment is not
  *   adjustable) renders the shared ConflictBanner's explicit
  *   reload-and-re-enter flow — NOTHING is replayed; the re-entered
- *   intent rotates the key via the reload epoch (!60 F3).
+ *   intent rotates the key via the reload epoch.
  * - The result panel renders the SERVER's snapshot verbatim (blocker
  *   (a)): the complete original allocation being undone and the 0031
  *   approval snapshot. The affordance is then SPENT.
@@ -64,7 +61,7 @@ export function AdjustmentRequestDrawer({
   const [confirmEntry, setConfirmEntry] = useState<AdjustmentRequestEntry | null>(null);
   const [result, setResult] = useState<AdjustmentRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload — a re-entered identical entry
   // after an acknowledged 409 is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -110,7 +107,7 @@ export function AdjustmentRequestDrawer({
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): the conflicted request is
+    // Explicit reload flow: the conflicted request is
     // structurally WITHDRAWN — a live adjustment already claims this
     // repayment, or the repayment is not adjustable. NOTHING is
     // replayed; re-entering is a NEW intent (rotated key).
@@ -156,7 +153,7 @@ export function AdjustmentRequestDrawer({
     >
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={request.error} onReload={reloadAfterConflict} />
       {request.isError && !conflict && !renderedInline && <ErrorBanner error={request.error} />}
 

@@ -1,15 +1,15 @@
 "use client";
 
 /**
- * Loan-applications register (P15 module 3 — prototype `vApps`).
+ * Loan-applications register (module 3 — prototype `vApps`).
  *
  * Security posture (users/members precedent):
  * - Every rendered string (purpose, product names, ids) is
  *   attacker-influenced data; it renders exclusively through React text
  *   interpolation — no parser sink exists in this module (gate-tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6).
- * - Keyset pagination only (opaque cursors — gate 1.3).
+ *   the server enforces every call (least disclosure).
+ * - Keyset pagination only (opaque cursors — scalability).
  * - MONEY (blocker (a)): the amount and cover% are API decimal STRINGS
  *   rendered via fmtKes or verbatim — nothing monetary is computed here. Stage
  *   pipeline COUNTS are deliberately absent: the server-computed counts
@@ -36,7 +36,7 @@ import {
 import { coverPill, stagePill } from "./pills";
 import styles from "./Applications.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load on
+// Drawer-level code splitting (speed): drawer chunks load on
 // first open, not with the list route.
 const ApplicationCreateDrawer = dynamic(
   () => import("./ApplicationCreateDrawer").then((m) => m.ApplicationCreateDrawer),

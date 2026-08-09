@@ -7,8 +7,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Access control — Users table + Permissions matrix (P15; salvaged from
- * duo/feature/p13-5-frontend-followthrough @ 198a238). Static segment
+ * Access control — Users table + Permissions matrix (salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238). Static segment
  * takes precedence over the scaffold's [moduleId] placeholder.
  * Metadata lives here (server component); tab state lives in the client child.
  */

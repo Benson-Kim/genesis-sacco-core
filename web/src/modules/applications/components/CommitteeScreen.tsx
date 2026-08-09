@@ -1,19 +1,18 @@
 "use client";
 
 /**
- * Credit-committee review screen (P15 module 3 — prototype
- * `vCommittee`): agenda of committee-stage applications (keyset) plus
+ * Credit-committee review screen (module 3 — prototype `vCommittee`): agenda of committee-stage applications (keyset) plus
  * the review panel, on the SHARED grid.sideMain (no private page grid).
  *
  * MAKER-CHECKER (blocker (f)): every vote affordance mounts INSIDE
  * MakerCheckerPanel — the checker controls exist only for a different,
  * known principal (getOwnUserId; no override prop). The maker identity
- * is SERVER TRUTH first (issue #30 close-out, 0037): the contract's
+ * is SERVER TRUTH first (close-out, 0037): the contract's
  * `recommended_by` (the committee referrer — the vote SoD subject the
- * server enforces) with `created_by` (the initiator, !66/0036) also
+ * server enforces) with `created_by` (the initiator, /0036) also
  * withheld structurally; the per-tab registry (makerRegistry.ts) is
  * the fallback witness for unattributed rows only. The server enforces
- * the voting invariants regardless (gate 1.6): one vote per voter (DB
+ * the voting invariants regardless (least disclosure): one vote per voter (DB
  * UNIQUE ⇒ 409), the RECOMMENDER cannot vote (403, keyed on the
  * persisted recommended_by — 0037), voting open only in committee
  * stage, quorum from tenant config AT VOTE TIME, authority bands on
@@ -26,7 +25,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Card, ConfirmDangerModal, Pill } from "@genesis/design-system";
+import { Banner, Button, Card, ConfirmDangerModal, Kv, Pill } from "@genesis/design-system";
 import { MakerCheckerPanel } from "@/modules/authz/components/MakerCheckerPanel";
 import { ConflictBanner } from "@/modules/layout/ConflictBanner";
 import { ErrorBanner } from "@/modules/layout/ErrorBanner";
@@ -190,10 +189,10 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
   const mayApprove = can(permissions.data, "applications", "approve");
   const product = products.data?.find((p) => p.id === app.product_id);
   const conflict = vote.isError && isConflict(vote.error);
-  // SERVER TRUTH FIRST (issue #30 close-out, 0037): recommended_by is
+  // SERVER TRUTH FIRST (close-out, 0037): recommended_by is
   // the contract's recommender attribution — the vote's SoD subject
   // (the server refuses the recommender's vote, 403). created_by (the
-  // initiator, !66/0036) stays structurally withheld too — EXTEND,
+  // initiator, /0036) stays structurally withheld too — EXTEND,
   // never weaken: if the signed-in operator is EITHER server-attributed
   // principal, the panel's self-check matches and the vote affordances
   // are withheld. The registry (the referral THIS TAB witnessed) is
@@ -210,7 +209,7 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
     app.recommended_by !== null
       ? app.recommended_by === ownId
         ? "You recommended this application to committee (server attribution) — the server refuses your vote."
-        : // Least disclosure (FM-D): the bare staff UUID via the
+        : // Least disclosure: the bare staff UUID via the
           // short-id convention — never a name or email.
           `Recommending officer ${app.recommended_by.slice(0, 8)} (server attribution).`
       : app.created_by !== null
@@ -264,16 +263,14 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
           <div className={styles.statValue}>{coverPill(app.cover_pct)}</div>
         </div>
       </div>
-      <div className={styles.kvRow}>
-        <span className={styles.kvKey}>Product</span>
-        <span className={styles.kvVal}>
-          {product !== undefined ? product.name : <span className={styles.mono}>{app.product_id}</span>}
-        </span>
-      </div>
-      <div className={styles.kvRow}>
-        <span className={styles.kvKey}>Purpose</span>
-        <span className={styles.kvVal}>{app.purpose ?? "—"}</span>
-      </div>
+      {/* Design-system Kv rows — default
+          variant, byte-equivalent rules to the module CSS this replaced;
+          the product-id fallback keeps its nested mono span in children
+          (the ApplicationDetailDrawer precedent — identical DOM). */}
+      <Kv label="Product">
+        {product !== undefined ? product.name : <span className={styles.mono}>{app.product_id}</span>}
+      </Kv>
+      <Kv label="Purpose">{app.purpose ?? "—"}</Kv>
       {result !== null && (
         <div className={styles.tally} role="status">
           <Pill bg="emeraldSoft" color="emerald">
@@ -291,7 +288,7 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
           )}
         </div>
       )}
-      {/* One copy of the 409 reload flow (gate 1.1): an already-voted or
+      {/* One copy of the 409 reload flow (reuse-first): an already-voted or
           stage-moved conflict is reloaded, never replayed. */}
       <ConflictBanner error={vote.error} onReload={reloadRecord} />
       {vote.isError && !conflict && <ErrorBanner error={vote.error} />}

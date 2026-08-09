@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Loan products — shared reference data (P15 Phase B reuse, gate 1.1).
+ * Loan products — shared reference data (reuse, reuse-first).
  *
  * Lives OUTSIDE any screen component module so cross-screen consumers
  * (applications register, committee, loans, guarantors) never import a
  * screen component's chunk for a hook — importing a screen module for
  * reference data couples the screens' bundles and partially defeats the
- * drawer-level code splitting (review !60 F4).
+ * drawer-level code splitting.
  */
 import { useQuery } from "@tanstack/react-query";
 import { STALE_TIME } from "@/lib/query";

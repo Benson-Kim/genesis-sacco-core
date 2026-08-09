@@ -1,8 +1,8 @@
-"""Lending engine: single source of truth for loan math (MASTER_PROMPT 2.1).
+"""Lending engine: single source of truth for loan math (the house doctrine 2.1).
 
 Pure functions only: no I/O, no imports from other layers. Mirrors the
 canonical prototype `inst()` and `classify()` semantics exactly. Money
-rounding comes from `genesis.domain.money` (gate 1.1: reuse-first).
+rounding comes from `genesis.domain.money` (reuse-first).
 """
 
 from __future__ import annotations
@@ -92,9 +92,9 @@ class Classification:
 
 #: Named days-past-due boundaries of classify() below — the SINGLE
 #: source of truth for consumers that need a threshold as a value
-#: rather than a label (#31 batch 8, ledger (k)): dpd > PAR_DPD_DAYS
+#: rather than a label: dpd > PAR_DPD_DAYS
 #: is the PAR-30 membership (watch and worse — the same `> 30` the
-#: P10 portfolio_summary FILTER uses); dpd > NPL_DPD_DAYS is NPL
+#:  portfolio_summary FILTER uses); dpd > NPL_DPD_DAYS is NPL
 #: membership (substandard and worse — the boundary the month-end
 #: reconstruction has always applied). classify() consumes these
 #: constants directly, so the existing boundary oracles in
@@ -119,11 +119,11 @@ def classify(days_past_due: int) -> Classification:
     return Classification(LoanClass.LOSS, Decimal("100"), True)
 
 
-#: The NPL label set, BY LABEL (P13.16). classify() above is the single
+#: The NPL label set, BY LABEL. classify() above is the single
 #: source of truth for NPL-ness by days-past-due; consumers that hold a
 #: STORED classification label (the arrears job's persisted output on
 #: loans.classification) test membership here instead of re-deriving
-#: days past due (v1.1 rule 2 — never a parallel dpd recomputation).
+#: days past due (never a parallel dpd recomputation).
 #: tests/test_recovery_domain.py pins this set to classify()'s is_npl
 #: flag across every threshold, so the two can never drift.
 NPL_CLASSES: frozenset[LoanClass] = frozenset(
@@ -139,7 +139,7 @@ class LoanStatus(enum.StrEnum):
 
 _LOAN_ALLOWED: dict[LoanStatus, frozenset[LoanStatus]] = {
     LoanStatus.ACTIVE: frozenset({LoanStatus.CLOSED, LoanStatus.WRITTEN_OFF}),
-    # P13.15 (FM6): the ONE documented reopen branch. A closed loan
+    #  the ONE documented reopen branch. A closed loan
     # re-opens only when the repayment adjustment service reverses the
     # repayment that closed it (the restored balance/penalty is again
     # outstanding). No other code path may take this edge — the
@@ -151,14 +151,14 @@ _LOAN_ALLOWED: dict[LoanStatus, frozenset[LoanStatus]] = {
 
 
 def loan_transition(current: LoanStatus, target: LoanStatus) -> LoanStatus:
-    """The single gatekeeper for loan status changes (gate 1.4).
+    """The single gatekeeper for loan status changes (concurrency safety).
 
-    WRITTEN_OFF is terminal — DELIBERATELY even for the issue-#21
+    WRITTEN_OFF is terminal — DELIBERATELY even for the issue-
     recovery branch: a bad-debt recovery receipt recognises income
     against the surviving write-once claim and NEVER resurrects the
     loan (corrections.record_recovery_receipt touches no loan status
     or balance); a repayment or adjustment against a written-off loan
-    stays refused loudly. CLOSED re-opens ONLY via the P13.15
+    stays refused loudly. CLOSED re-opens ONLY via the
     repayment-adjustment branch (see _LOAN_ALLOWED); generic ledger
     corrections remain reversing entries, never status edits.
     """
@@ -167,7 +167,7 @@ def loan_transition(current: LoanStatus, target: LoanStatus) -> LoanStatus:
     return target
 
 
-#: Day-count convention for the arrears penalty (P13.8): a penalty
+#: Day-count convention for the arrears penalty: a penalty
 #: rate quoted in % per MONTH accrues in daily steps of 1/30 of the
 #: monthly figure — "actual/30". Every calendar day past grace accrues
 #: the same daily amount regardless of which month it falls in
@@ -177,7 +177,7 @@ PENALTY_DAYS_PER_MONTH = Decimal(30)
 
 
 def daily_penalty(basis_amount: Decimal, rate_pct_per_month: Decimal) -> Decimal:
-    """One day's arrears penalty on the given basis (P13.8).
+    """One day's arrears penalty on the given basis.
 
     THE single rounding point for penalty accrual (rounding-drift
     blocker): the daily amount is cent-rounded HERE via to_cents
@@ -188,14 +188,14 @@ def daily_penalty(basis_amount: Decimal, rate_pct_per_month: Decimal) -> Decimal
     final the night it is claimed and never restated, so the accrued
     total always equals the exact sum of the claim rows.
 
-    INTENDED consequence of the per-day rule (review V3): per-day
+    INTENDED consequence of the per-day rule: per-day
     rounding permanently starves sub-half-cent daily penalties — any
     basis where basis x rate / 3000 < 0.005 rounds to a 0.00 day and
     therefore accrues 0.00 every day FOREVER and never claims, where
     period-end rounding would eventually accrue. A "why is this small
     loan never penalised" incident resolves to design, not defect.
 
-    Hand-computed anchor (documented in BUILD_PROMPTS P13.8): 1%/mo on
+    Hand-computed anchor (documented in the build plan): 1%/mo on
     a 10,000.00 instalment -> 100.00/month -> 3.3333../day -> 3.33/day;
     12 days past grace accrue exactly 39.96.
 
@@ -212,10 +212,10 @@ def daily_penalty(basis_amount: Decimal, rate_pct_per_month: Decimal) -> Decimal
 class RepaymentAllocation:
     """One repayment split across the documented allocation order.
 
-    Allocation order (P10 contract, single source of truth):
-      1. penalties  — outstanding penalty charges are cleared first
-      2. interest   — accrued unpaid interest on installments already due
-      3. principal  — the remainder reduces the outstanding balance
+    Allocation order (contract, single source of truth):
+      1. penalties — outstanding penalty charges are cleared first
+      2. interest — accrued unpaid interest on installments already due
+      3. principal — the remainder reduces the outstanding balance
     """
 
     penalties: Decimal
@@ -299,7 +299,7 @@ class ApplicationStage(enum.StrEnum):
 
 
 class InvalidTransitionError(Exception):
-    """Raised on any transition not in the allowed map (gate 1.4)."""
+    """Raised on any transition not in the allowed map (concurrency safety)."""
 
 
 _ALLOWED: dict[ApplicationStage, frozenset[ApplicationStage]] = {

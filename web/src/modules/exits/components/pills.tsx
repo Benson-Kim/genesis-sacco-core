@@ -4,8 +4,8 @@ import { EXIT_STATUS_LABELS, type ExitStatus } from "../schemas";
 
 /**
  * Exit lifecycle status pill (prototype status colors). One copy for
- * the register, the detail drawer and the statement (gate 1.1). Never
- * color alone: the pill text carries the meaning (issue #8).
+ * the register, the detail drawer and the statement (reuse-first). Never
+ * color alone: the pill text carries the meaning.
  */
 export function exitStatusPill(status: ExitStatus): ReactNode {
   switch (status) {

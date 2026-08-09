@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Exit-statement drawer (P15 module 7): the CANONICAL P12 exit
+ * Exit-statement drawer (module 7): the CANONICAL exit
  * statement JSON document (`GET /member-exits/{id}/statement`,
  * members:view) rendered VERBATIM — a financial document, not a
  * computed view.
@@ -13,14 +13,13 @@
  *   equals shares plus deposits; that arithmetic is the server's).
  * - Every string field (member name, member no, reason, txn ref) is
  *   attacker-influenced data and renders exclusively as React text —
- *   no parser sink exists in this module (gate-tested, the !63 F-R5
- *   posture extended to statement fields).
+ *   no parser sink exists in this module (gate-tested, the posture extended to statement fields).
  * - READ-ONLY surface: no lifecycle write mounts here and the default
  *   light overlay dismissal applies (the W56-3 convention reserves the
  *   opt-out for form-bearing surfaces). No download affordance exists
  *   here — the CSV/PDF export of this document is the reports module's
- *   `member_exit_statement` (P13 blocker (k)), so no filename is ever
- *   derived from a server string (the !63 F-R1 class cannot arise).
+ *   `member_exit_statement` (blocker (k)), so no filename is ever
+ *   derived from a server string (the class cannot arise).
  */
 import { useQuery } from "@tanstack/react-query";
 import { Kv, Modal } from "@genesis/design-system";
@@ -65,11 +64,10 @@ export function ExitStatementDrawer({
           <Kv label="Member status">{statement.data.member_status}</Kv>
           <Kv label="Reason">{statement.data.reason ?? "—"}</Kv>
           <Kv label="Requested by">
-            {/* Initiator attribution on the canonical document (issue
-                #30 / !66 follow-up): the SERVER's bare staff UUID via
-                the short-id convention — least disclosure (FM-D): no
+            {/* Initiator attribution on the canonical document (/ follow-up): the SERVER's bare staff UUID via
+                the short-id convention — least disclosure: no
                 name/email is ever fetched for it; NULL renders the
-                honest unattributed line (FM-B). */}
+                honest unattributed line. */}
             {statement.data.requested_by !== null ? (
               <span className={styles.mono} title={statement.data.requested_by}>
                 {statement.data.requested_by.slice(0, 8)}

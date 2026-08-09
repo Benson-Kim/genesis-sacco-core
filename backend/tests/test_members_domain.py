@@ -12,6 +12,7 @@ from genesis.domain.members import (
     dormancy_cutoff,
     format_member_no,
     member_may,
+    normalize_kenya_msisdn,
     transition,
 )
 
@@ -150,3 +151,42 @@ def test_dormancy_cutoff_hand_computed_oracles() -> None:
 def test_dormancy_cutoff_rejects_non_positive_periods() -> None:
     with pytest.raises(ValueError, match="at least one month"):
         dormancy_cutoff(datetime.date(2026, 8, 1), 0)
+
+
+# ---------------------------------------------------------------------------
+# #35 item 1 — Kenya MSISDN normalization to E.164 storage.
+# Hand-computed oracles: every accepted spelling of the SAME number
+# maps to the SAME +254… string; anything else is None.
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_kenya_msisdn_accepted_formats_converge_to_one_e164() -> None:
+    # 07XXXXXXXX and +2547XXXXXXXX are the same subscriber: 712345678.
+    assert normalize_kenya_msisdn("0712345678") == "+254712345678"
+    assert normalize_kenya_msisdn("+254712345678") == "+254712345678"
+    # 01XXXXXXXX and +2541XXXXXXXX likewise: 110000000.
+    assert normalize_kenya_msisdn("0110000000") == "+254110000000"
+    assert normalize_kenya_msisdn("+254110000000") == "+254110000000"
+    # Surrounding whitespace is a hand-typing courtesy, nothing more.
+    assert normalize_kenya_msisdn("  0712345678 ") == "+254712345678"
+
+
+def test_normalize_kenya_msisdn_rejects_everything_else() -> None:
+    rejected = [
+        "",  # empty
+        "0712345 678",  # interior whitespace is NOT harvested
+        "071234567",  # 9 digits — too short
+        "07123456789",  # 11 digits — too long
+        "0212345678",  # 02 — not a Kenya mobile prefix
+        "0812345678",  # 08 — not accepted
+        "254712345678",  # missing the +
+        "+255712345678",  # Tanzania country code
+        "+25471234567",  # +254 but 8 subscriber digits
+        "+2542712345678",  # +2542 followed by too many digits
+        "07-1234-5678",  # punctuation is not harvested
+        "0712345678x",  # trailing junk
+        "a0712345678",  # leading junk
+        "+254712345678 ext 2",  # trailing text
+    ]
+    for value in rejected:
+        assert normalize_kenya_msisdn(value) is None, value

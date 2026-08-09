@@ -3,9 +3,8 @@ import type { components } from "@genesis/api-client";
 import { isoTimestampSchema } from "@/lib/schemas";
 
 /**
- * Zod-validated response boundary for the users administration API (P15;
- * salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238).
- * Shapes mirror the generated client types (MASTER_PROMPT §2.3)
+ * Zod-validated response boundary for the users administration API (salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238).
+ * Shapes mirror the generated client types (the house doctrine)
  * (components["schemas"]["UserOut"] etc.) — the drift-checked OpenAPI
  * snapshot remains the contract; these schemas only assert it at runtime.
  */
@@ -30,7 +29,7 @@ export const userSchema = z.object({
    * when the column is set) — feeds fmtDateTime (UserDetailDrawer,
    * UsersScreen title) and relTime (UsersScreen row): a garbage value
    * is REJECTED at the boundary, never rendered "Invalid Date"
-   * (issue #30 A2/S2 retrofit). */
+   * (retrofit). */
   last_active_at: isoTimestampSchema.nullable(),
   version: z.number().int(),
 });
@@ -61,7 +60,7 @@ export const roleSchema = z.object({
 export const rolesSchema = z.array(roleSchema);
 export type Role = z.infer<typeof roleSchema>;
 
-/** Side-effect COUNTS only — never challenge contents (gate 1.6). */
+/** Side-effect COUNTS only — never challenge contents (least disclosure). */
 export const otpInvalidateSchema = z.object({
   voided_otp_challenges: z.number().int(),
 });

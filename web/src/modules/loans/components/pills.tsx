@@ -11,8 +11,8 @@ import {
  * Loan status + classification pills (prototype `classify()` colors,
  * SERVER-computed classification only — the client never re-derives it
  * from days past due). One copy for the register, the detail drawer and
- * the portfolio strip (gate 1.1). Never color alone: the pill text
- * carries the meaning (issue #8).
+ * the portfolio strip (reuse-first). Never color alone: the pill text
+ * carries the meaning.
  */
 export function loanStatusPill(status: LoanStatus): ReactNode {
   switch (status) {

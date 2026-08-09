@@ -1,5 +1,5 @@
 /**
- * Reports API layer (P15 module 8 — the P13 exports API) over the
+ * Reports API layer (module 8 — the exports API) over the
  * GENERATED client.
  *
  * - The contract exposes the EXPORT workflow only: request
@@ -9,22 +9,20 @@
  *   in-browser report-viewing endpoint and NO export list endpoint —
  *   neither is invented client-side (recorded honestly in the MR).
  * - Callers never supply money, cost, format, row-limit or
- *   storage-path parameters (P13 blocker (a)): the request body
+ *   storage-path parameters (blocker (a)): the request body
  *   carries the report name and its declared id/date filters ONLY
  *   (`extra="forbid"` server-side); empty filters are OMITTED, never
  *   sent as empty strings.
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the stability/rotation contract (gate 1.4). A 409 is a
+ *   the stability/rotation contract (concurrency safety). A 409 is a
  *   CREATE-style conflict (no export record exists to reload) —
  *   surfaced once, never replayed.
  * - Ids and download tokens travel as PATH parameters serialized by
  *   the generated client; bearer/tenant/idempotency secrets travel as
- *   HEADERS ONLY — nothing secret enters a hand-built URL (gate 1.6;
- *   downloads ride the shared `downloadExport` helper on the generated
- *   client's Response).
+ *   HEADERS ONLY — nothing secret enters a hand-built URL (least disclosure; downloads ride the shared `downloadExport` helper on the generated client's Response).
  * - The picker reads for the id filters ride the existing keyset
  *   contracts (`GET /member-exits`, `GET /dividends/declarations`)
- *   with opaque cursors echoed verbatim (gate 1.3); their money fields
+ *   with opaque cursors echoed verbatim (scalability); their money fields
  *   are STRIPPED at this module's boundary — nothing here renders a
  *   figure.
  */
@@ -116,7 +114,7 @@ export function downloadToken(downloadPath: string): string {
 
 /**
  * Stream a rendered artifact through the GENERATED client and hand the
- * Response to the shared `downloadExport` helper (one copy, gate 1.1):
+ * Response to the shared `downloadExport` helper (one copy, reuse-first):
  * the token rides the contract's path parameter; auth/tenant stay
  * HEADERS; failures surface least-disclosure; the object URL is
  * transient and revoked.
@@ -133,7 +131,7 @@ export function downloadArtifact(downloadPath: string, filename: string): Promis
 }
 
 /** The on-screen view's artifact payload: the server-rendered CSV
- * TEXT plus the truncation headers VERBATIM (P15 batch 5, U2). */
+ * TEXT plus the truncation headers VERBATIM. */
 export interface ArtifactText {
   text: string;
   /** X-Export-Truncated response header, verbatim ("true"/"false"). */
@@ -144,7 +142,7 @@ export interface ArtifactText {
 
 /**
  * Fetch a rendered CSV artifact as TEXT for the on-screen report view
- * (U2 — ZERO contract change: the same capability-token download route
+ * (ZERO contract change: the same capability-token download route
  * the CSV button uses, through the GENERATED client; bearer/tenant
  * stay HEADERS). The body is the server's own render; the caller
  * parses it strictly (csv.ts) and renders every cell VERBATIM — the

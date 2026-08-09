@@ -1,4 +1,4 @@
-"""Audit-log viewer endpoint (P13.5, gates 1.3, 1.6).
+"""Audit-log viewer endpoint (the house gates).
 
 GET /audit-log: keyset-paginated (never OFFSET), filterable by
 entity/actor/action/date, gated by access_control:view. before/after

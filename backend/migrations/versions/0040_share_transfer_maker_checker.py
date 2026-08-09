@@ -1,23 +1,22 @@
-"""share-transfer maker-checker workflow + history register (issue #31 ledger (l)/(m))
+"""share-transfer maker-checker workflow + history register
 
 Revision ID: 0040
 Revises: 0039
 Create Date: 2026-08-07
 
-Expand-only revision backing the issue-#31 batch-10 HUMAN-AUTHORIZED
-remediation (the !77 human-review findings (l) HIGH and (m) MEDIUM,
-recorded on #31's ledger and #33 item G2), claimed as 0040 with
-down_revision '0038' in MR !83's description at branch time (v1.2 rule
-14; head 0038 + the single in-flight 0039 claim (!79) verified —
-declared plan: when !79 merges, this revision RE-CHAINS its
-down_revision to '0039' on the !83 branch, the !26/0017 re-chain
-precedent; never renumber another track's claim). RE-CHAINED to
-'0039' as declared: the batch-8 merge landed 0039_member_dividend_payout
+Expand-only revision backing the HUMAN-AUTHORIZED
+remediation (the human-review findings (l) HIGH and (m) MEDIUM, recorded on ledger and item G2),
+claimed as 0040 with
+down_revision '0038' in its MR description at branch time (the migration-declaration rule; head
+0038 + the single in-flight 0039 claim verified — declared plan: when merges, this revision
+RE-CHAINS its down_revision to '0039' on the branch, the /0017 re-chain precedent; never renumber
+another track's claim). RE-CHAINED to
+'0039' as declared: the merge landed 0039_member_dividend_payout
 on main and this branch plain-merged it.
 
   * share_transfers becomes the TWO-PHASE maker-checker workflow row
-    (the issue-#24/0031 repayment-adjustments pattern — the strongest
-    house SoD precedent, DB-backstopped): the MAKER's request INSERTs
+    (the issue-/0031 repayment-adjustments pattern — the strongest house SoD precedent,
+    DB-backstopped): the MAKER's request INSERTs
     a PENDING row bound to a persisted snapshot; a DISTINCT CHECKER
     approves — re-verifying every snapshot component under the full
     lock set — before any money moves.
@@ -29,7 +28,7 @@ on main and this branch plain-merged it.
       - approved_by (FK users, ON DELETE RESTRICT) + decided_at — the
         checker attribution of the decision.
       - from_balance_at_request — the persisted approval snapshot the
-        checker binds to (v1.1 rule 3); approval re-verifies it under
+        checker binds to; approval re-verifies it under
         the transferor's share-account lock and 409s on drift.
       - version + updated_at — optimistic locking for the rejection
         path (the house 409-on-stale rule).
@@ -55,18 +54,18 @@ on main and this branch plain-merged it.
   * idx_share_transfers_register — (tenant_id, (status = 'pending')
     DESC, created_at DESC, id DESC): the ledger-(m) history register's
     serving index, shipped in the SAME MR as the keyset query it
-    serves (gate 1.3 — the 0038 band-expression pattern: the checker's
-    job order is PENDING FIRST, newest first inside each band;
-    EXPLAIN-asserted, falsifiable by dropping it). Index audit first
-    (v1.1 discipline): 0020 ships (tenant_id, from_member_id, ...) and
-    (tenant_id, to_member_id, ...) — NEITHER serves a tenant-wide
+    serves (scalability — the 0038 band-expression pattern: the checker's job order is PENDING
+    FIRST, newest first inside each band; EXPLAIN-asserted, falsifiable by dropping it). Index audit
+    first
+    (v1.1 discipline): 0020 ships (tenant_id, from_member_id,...) and
+    (tenant_id, to_member_id,...) — NEITHER serves a tenant-wide
     register-ordered keyset walk. The boolean band expression is an
     IMMUTABLE text comparison over the status CHECK vocabulary pinned
     here — a vocabulary change requires a successor migration that
     regenerates the expression in the same MR (the 0038 note).
 
   * idx_share_transfers_approved_by — (tenant_id, approved_by): the FK
-    index rule (gate 1.3), mirroring 0031's checker index.
+    index rule (scalability), mirroring 0031's checker index.
 
   * NO RLS changes: share_transfers already carries forced RLS (0020);
     TENANT_TABLES and the leakage suite are unchanged.

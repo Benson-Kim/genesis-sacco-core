@@ -1,7 +1,7 @@
-"""Dividend & rebate domain: financial-year periods and payout math (P13.11).
+"""Dividend & rebate domain: financial-year periods and payout math.
 
 Pure functions only — no I/O. Money rounding comes from
-genesis.domain.money (gate 1.1: reuse-first).
+genesis.domain.money (reuse-first).
 
 Financial-year convention (documented, pinned by tests): a tenant's
 financial year ENDS on the last day of its configured
@@ -10,7 +10,7 @@ following month, one year earlier. Only the most recently COMPLETED
 financial year is ever declarable: the year ending on fy_end is
 complete once ``as_of`` is strictly past fy_end. FY boundaries are
 resolved exclusively server-side from tenant configuration — a caller
-can never supply or backdate a period (v1.1 rule 1).
+can never supply or backdate a period.
 
 Day-count convention for the pro-ration (documented, pinned by the
 mid-year-joiner and leap-year oracles): the basis is the AVERAGE DAILY
@@ -21,7 +21,7 @@ balance held for D of N days therefore earns exactly D/N of a full
 year's payout; the day the money arrives counts (its end-of-day
 balance includes it), the days before it do not.
 
-Rounding (one documented rule at one place, P13.11 failure mode 1):
+Rounding (one documented rule at one place, failure mode 1):
 each member's per-component figure is
 ``to_cents(basis * rate_pct / 100)`` — rounded exactly ONCE by the
 single money primitive, from a basis that is itself a stored
@@ -73,8 +73,7 @@ def last_completed_financial_year(as_of: date, end_month: int) -> FinancialYear:
 
     The year ending in end_month of year Y is complete once as_of is
     strictly past its last day — declaring ON the closing day would
-    recognise a year whose final day has not finished (the P11
-    previous_quarter convention).
+    recognise a year whose final day has not finished (the previous_quarter convention).
     """
     candidate = financial_year_ending(end_month, as_of.year)
     if as_of > candidate.end:

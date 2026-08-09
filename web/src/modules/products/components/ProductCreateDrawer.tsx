@@ -1,18 +1,18 @@
 "use client";
 
 /**
- * Add-product drawer (P15 Settings module — P9 POST /products).
+ * Add-product drawer (Settings module — P9 POST /products).
  *
- * - FormField + form-errors wiring on every field (Phase B blocker (f)):
+ * - FormField + form-errors wiring on every field (blocker (f)):
  *   client Zod issues merge with server 422 ApiError.fields, server
  *   verdict wins.
  * - The Idempotency-Key stays stable across retries of an identical
- *   submission and rotates when the form content changes (gate 1.4);
+ *   submission and rotates when the form content changes (concurrency safety);
  *   submit is disabled while pending — double-submit yields exactly one
  *   product.
  * - A duplicate-name conflict is a CREATE conflict: no version/reload
  *   flow exists, so it renders through ErrorBanner, not ConflictBanner
- *   (!56 finding F-B4 rationale).
+ *   (finding F-B4 rationale).
  * - Decimal rule fields submit as STRINGS verbatim (blocker (a)).
  */
 import { useRef, useState, type FormEvent } from "react";

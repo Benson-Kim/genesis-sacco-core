@@ -34,6 +34,21 @@
   re-chained onto 0039 after the batch-8 merge landed on main, as
   declared up front in !83; alters share_transfers only, no new
   table); diagram 2.D and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0043 by the issue-#35 remainder MR, IN THE SAME
+  COMMIT as the migration: alembic head 0042 -> 0043
+  (0043_external_txn_ref_and_search_index.py, down_revision = "0042"
+  — re-chained from "0041" after !87 merged 0042_phone_e164_backfill
+  to main, the 0017/0041 precedent; alters transactions only:
+  nullable external_ref + partial UNIQUE dedupe + the search prefix
+  index, no new table);
+  diagram 2.C, §3 and §5 updated accordingly (v1.2 rules 11/14).
+  Extended for 0044 by the issue-#35 sign-in-identifier MR, IN THE
+  SAME COMMIT as the migration: alembic head 0043 -> 0044
+  (0044_users_phone_signin_index.py, down_revision = "0043"; one
+  partial index idx_users_phone (tenant_id, phone) WHERE phone IS
+  NOT NULL serving the new phone sign-in lookup — no table, column,
+  constraint or RLS change);
+  diagram 2.A and §3 updated accordingly (v1.2 rules 11/14).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -44,10 +59,10 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0040** (on this tree — 0039 is
-the in-flight !79 claim): **47 tables** (0035 creates
-`member_credentials`; 0033/0034/0036/0037/0040 alter existing tables
-and create none; 0038 adds indexes only), drawn as
+The entire schema at alembic head **0044**: **47 tables** (0035
+creates `member_credentials`; 0033/0034/0036/0037/0040/0043 alter
+existing tables and create none; 0038/0041/0044 add indexes only;
+0042 is a data-only backfill touching no schema object), drawn as
 seven subject-area `erDiagram`s (one diagram would not render readably;
 the split follows the module boundaries in the §3 traceability table).
 An entity appearing in more than one diagram (e.g. `members`,
@@ -255,6 +270,7 @@ erDiagram
         uuid reversal_of_id FK "nullable; (tenant_id, reversal_of_id) -> transactions (tenant_id, id) (0004, tenant-safe 0014); partial UNIQUE: one reversal per original (0004)"
         text type "posting taxonomy CHECK (0001, widened 0020)"
         uuid created_by FK "nullable -> users.id; acting principal, NULL = system posting; pinned immutable by the 0004 append-only fence (0036)"
+        text external_ref UK "nullable, CHECK 2..40 chars; partial UNIQUE (tenant_id, channel, external_ref) — operator-entered external receipt ref (M-Pesa code / bank slip) on external-channel teller postings, NULL = system/legacy posting (0043)"
     }
     ledger_entries {
         uuid id PK
@@ -402,6 +418,7 @@ erDiagram
         uuid tenant_id FK "tenant spine (0001)"
         uuid role_id FK "-> roles.id ON DELETE RESTRICT (0001)"
         text email UK "UNIQUE (tenant_id, email) (0001)"
+        text phone "nullable, stored E.164 since the 0042 backfill; partial idx_users_phone (tenant_id, phone) WHERE phone IS NOT NULL serves the sign-in identifier lookup (0044)"
         uuid branch_id FK "nullable -> branches.id (0016)"
     }
     otp_challenges {
@@ -606,7 +623,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `tenants` | 0001 | 0003 (`active_tenant_ids()` worker registry fn) | `infrastructure/tenancy.py` seam; no request-path writer |
 | `roles` | 0001 | 0017 (system-role rename-guard trigger) | `application/rbac.py` |
 | `permissions` | 0001 | — | `application/rbac.py` |
-| `users` | 0001 | 0015 (`last_active_at`, keyset idx), 0016 (`branch_id`, idxs) | `application/users.py`, `application/auth.py` |
+| `users` | 0001 | 0015 (`last_active_at`, keyset idx), 0016 (`branch_id`, idxs), 0044 (partial `idx_users_phone` — sign-in identifier phone lookup) | `application/users.py`, `application/auth.py` |
 | `otp_challenges` | 0001 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_otp_challenges_one_principal` XOR, `idx_otp_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `refresh_tokens` | 0002 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_refresh_tokens_one_principal` XOR, `idx_refresh_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `members` | 0001 | 0016 (`branch_id`), 0018 (`uq_members_id_type`), 0020 (dividend-scan idx), 0021 (`dormant` status, dormancy-scan idx), 0022 (scan predicate widened, exited-scan idx), 0023 (register keyset idx), 0028 (`uq_members_tenant_id_id` composite-FK anchor) | `application/members.py` (+ `dormancy.py` batch) |
@@ -624,7 +641,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `repayments` | 0001 | 0014 (transaction-FK idx), 0025 (amount CHECK widened to `<> 0` for negative-linked correction rows), 0032 (append-only triggers `repayments_no_update`/`_no_delete` — issue #24 N4) | `application/ledger.py` (disburse-time rows), `application/loans.py` (repayment rows), `application/corrections.py` (negative correction rows) |
 | `guarantees` | 0001 | 0011 (loan-linkage data backfill), 0035 (consent-principal columns `consented_by_credential_id`/`consent_attested_by`/`consent_reference`, `ck_guarantees_attested_reference`, `guarantees_consent_principal` constraint trigger, consent idxs) | `application/guarantees.py` |
 | `penalty_accruals` | 0019 | — | `application/arrears.py` |
-| `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3) | `application/ledger.py` (every posting) |
+| `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3), 0043 (`external_ref` nullable CHECK-bounded + partial UNIQUE dedupe + `idx_txns_ref_prefix` text_pattern_ops search index — #35 items 6/13) | `application/ledger.py` (every posting) |
 | `ledger_entries` | 0001 | 0004 (append-only triggers, balanced deferred constraint trigger), 0014 (balance check also pins totals = `transactions.amount`) | `application/ledger.py` |
 | `txn_ref_sequences` | 0004 | — | `application/ledger.py` (`_next_ref`), `application/members.py` (member numbering) |
 | `accounting_periods` | 0012 | 0028 (`rollup_at` marker + write-once marker trigger, composite-FK target for the rollup tables) | `application/accounting_periods.py` (+ `period_rollups.py` marker) |
@@ -736,6 +753,7 @@ constraint, v1.1 rule 5):
 | `(tenant_id, key)` | `idempotency_keys` | 0001 | one middleware replay slot per request key |
 | `(tenant_id, txn_ref)` | `transactions` | 0001 | reference uniqueness backstop behind the advisory generator |
 | `(tenant_id, reversal_of_id)` partial | `transactions` | 0004 | at most one reversal per original |
+| `(tenant_id, channel, external_ref)` partial | `transactions` | 0043 | per-tenant per-channel external-reference dedupe, claimed atomically at the posting INSERT (legacy NULLs tolerated) |
 | `(tenant_id, application_id, voter_id)` | `committee_votes` | 0005 | one committee vote per voter |
 | `(tenant_id, account_id, period_start)` | `deposit_interest_accruals` | 0008 | one interest accrual per account-quarter |
 | `(tenant_id, member_id)` partial, open statuses | `member_exits` | 0010 | one open exit per member |

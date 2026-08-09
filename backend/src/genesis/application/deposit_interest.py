@@ -1,10 +1,10 @@
-"""Quarterly deposit-interest accrual job (P11).
+"""Quarterly deposit-interest accrual job.
 
 Runs per tenant in bounded id-keyset batches through the shared
-batch runner (each batch its own short transaction, gate 1.3). The
+batch runner (each batch its own short transaction, scalability). The
 caller injects a session scope (e.g. functools.partial(tenant_session,
 factory, tenant_id)) so this module stays free of infrastructure
-imports (P10 arrears precedent).
+imports (arrears precedent).
 
 Interest basis (review findings 1 and 14): interest is computed from
 the **average daily balance (ADB)** over the accrued period, never
@@ -35,9 +35,9 @@ accrued, advancing one completed quarter per run, capped at the most
 recent completed quarter. Callers can never supply a rate or backdate
 an arbitrary period.
 
-Idempotent at the database level (gates 1.4, 1.5): exactly one
+Idempotent at the database level (the house gates): exactly one
 deposit_interest_accruals row per (tenant, account, period_start),
-claimed with INSERT ... ON CONFLICT DO NOTHING (no race window, no
+claimed with INSERT... ON CONFLICT DO NOTHING (no race window, no
 IntegrityError mid-batch — review finding 4); rowcount 0 means a
 concurrent worker claimed the period between the scan and the insert
 and the account is skipped. The scan itself excludes accounts whose
@@ -93,7 +93,7 @@ from genesis.errors import ConflictError, InvalidInputError
 
 logger = logging.getLogger(__name__)
 
-#: Accounts accrued per transaction (P10 arrears precedent: short
+#: Accounts accrued per transaction (arrears precedent: short
 #: transactions, reasonable round trips).
 DEFAULT_BATCH_SIZE = 200
 
@@ -116,19 +116,19 @@ async def resolve_run_parameters(
 ) -> tuple[QuarterPeriod, Decimal]:
     """Resolve the (period, annual rate) the accrual job must run with.
 
-    The rate comes exclusively from tenant_settings (gate 1.6: never
-    caller-supplied). The period is the earliest quarter not yet fully
+    The rate comes exclusively from tenant_settings (least disclosure: never caller-supplied). The
+    period is the earliest quarter not yet fully
     accrued, in strict order, capped at the most recent completed
     quarter:
 
-      * no accruals yet            -> the last completed quarter
+      * no accruals yet -> the last completed quarter
       * latest accrued period has
-        accounts without a row     -> that period again (finish it —
+        accounts without a row -> that period again (finish it —
                                       crash recovery, new accounts)
       * latest period fully
         claimed and older than the
-        last completed quarter     -> the next quarter in sequence
-      * fully caught up            -> the last completed quarter again
+        last completed quarter -> the next quarter in sequence
+      * fully caught up -> the last completed quarter again
                                       (idempotent no-op re-run)
 
     Tenants behind by several quarters catch up one period per run, in
@@ -139,7 +139,7 @@ async def resolve_run_parameters(
         await session.execute(
             text(
                 # Explicit tenant predicate on top of RLS (defence in
-                # depth, gate 1.6) — money-path configuration read.
+                # depth, least disclosure) — money-path configuration read.
                 "SELECT deposit_interest_annual_rate_pct FROM tenant_settings "
                 "WHERE tenant_id = CAST(:tid AS uuid)"
             ),
@@ -149,7 +149,7 @@ async def resolve_run_parameters(
     if rate_row is None or rate_row[0] is None:
         # A settings row without a deposit rate (possible since 0017
         # made the column optional) is exactly as unconfigured as a
-        # missing row — same 409, unchanged contract (P13.7).
+        # missing row — same 409, unchanged contract.
         raise ConflictError(
             "deposit interest is not configured for this tenant "
             "(tenant_settings.deposit_interest_annual_rate_pct)"
@@ -206,7 +206,7 @@ async def _process_batch(
     average daily balance). The NOT EXISTS anti-join makes a re-run of
     a fully accrued period a cheap no-op (second-pass finding 16): no
     rows are locked, no ledger walks happen. Interest is computed and
-    posted under the account row lock (gate 1.4); the accrual row is
+    posted under the account row lock (concurrency safety); the accrual row is
     claimed with ON CONFLICT DO NOTHING for every scanned account —
     including zero-interest ones — so the period can never be
     double-processed even if a concurrent run claims between the scan
@@ -246,8 +246,8 @@ async def _process_batch(
         balance = Decimal(str(balance_raw))
         # Average daily balance over the period (review finding 14):
         # a last-day deposit earns 1/N of the quarter, not all of it.
-        # Reconstructed by the shared P11 helper (extracted to
-        # period_balances for the P13.11 dividend basis, gate 1.1);
+        # Reconstructed by the shared helper (extracted to
+        # period_balances for the dividend basis, reuse-first);
         # reads run under the account row lock held by this scan.
         basis = await average_daily_balance(
             session, tenant_id, member_id, kind="deposit", start=period.start, end=period.end
@@ -372,7 +372,7 @@ async def run_deposit_interest_for_tenant(
     """
     # Validate the rate once up front (domain rule), not per account,
     # translated into the shared error taxonomy so non-API callers get
-    # a mapped 4xx instead of an unhandled ValueError (gate 1.2).
+    # a mapped 4xx instead of an unhandled ValueError (reliability).
     try:
         quarterly_interest(ZERO, annual_rate_pct)
     except ValueError as exc:

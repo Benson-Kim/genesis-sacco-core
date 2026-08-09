@@ -3,8 +3,7 @@ import { isoTimestampSchema } from "@/lib/schemas";
 
 /**
  * Zod-validated response boundary for the accounting-periods console
- * (issue #31 batch 4 — the P12.5 period machinery; audit #30 finding
- * A5: "period-close state invisible in the console"). Shapes mirror
+ * (the period machinery;: "period-close state invisible in the console"). Shapes mirror
  * the generated client types (components["schemas"]["PeriodOut"]) —
  * the drift-checked OpenAPI snapshot remains the contract; these
  * schemas only assert it at runtime.
@@ -25,7 +24,7 @@ import { isoTimestampSchema } from "@/lib/schemas";
  *   `isoTimestampSchema.nullable()` — nullable, NOT optional.
  * - status: migration 0012's DB CHECK constrains the vocabulary to
  *   ('open', 'closed') and the service only ever writes 'closed'
- *   (absence of a row = the month is open — issue #12 design). An
+ *   (absence of a row = the month is open — design). An
  *   unknown value is a contract violation REJECTED at the boundary
  *   (the W57-2 fleet standard) — an unrecognised status must never
  *   masquerade as period context next to ledger figures. The contract
@@ -53,7 +52,7 @@ export const periodDateSchema = z.string().regex(PERIOD_DATE_RE);
  * One accounting period row (PeriodOut): a month whose books the
  * transactions-approve holders froze. Every posting-date check, the
  * period bounds and the "fully elapsed" rule are resolved exclusively
- * server-side (issue #12: never caller-backdatable). Extra keys are
+ * server-side (never caller-backdatable). Extra keys are
  * STRIPPED at this boundary.
  */
 export const periodSchema = z.object({

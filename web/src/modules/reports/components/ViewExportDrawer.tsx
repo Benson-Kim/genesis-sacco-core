@@ -1,15 +1,14 @@
 "use client";
 
 /**
- * On-screen report view (P15 batch 5, U2 — restores the prototype's
- * repShell/repPortfolio/repStatement "look at it now" job).
+ * On-screen report view (restores the prototype's repShell/repPortfolio/repStatement "look at it now" job).
  *
  * ZERO contract change: the drawer fetches the SAME server-rendered
  * CSV artifact the download button streams (the capability-token
  * route, generated client, headers-only auth) and renders it as a
  * read-only table.
  *
- * HONESTY RULES (the U2 mandate):
+ * HONESTY RULES (the mandate):
  * - Every cell is the SERVER's rendered artifact VERBATIM — parsed by
  *   the strict RFC 4180 parser (csv.ts) and rendered as inert React
  *   text. Nothing is summed, derived, re-formatted or re-labelled; a
@@ -23,8 +22,7 @@
  *   note pointing at the CSV/PDF downloads (a presentation cap, not a
  *   re-computation — the server row_count is quoted, never counted
  *   client-side beyond the rendered slice).
- * - Read-only surface: light dismissal is intentional (the exit-
- *   statement drawer precedent, audit #30 X7) — nothing can be lost.
+ * - Read-only surface: light dismissal is intentional (the exit- statement drawer precedent, X7) — nothing can be lost.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Modal } from "@genesis/design-system";

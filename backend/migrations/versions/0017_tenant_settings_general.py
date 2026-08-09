@@ -1,21 +1,21 @@
-"""tenant settings, parameters & approval matrix (P13.7)
+"""tenant settings, parameters & approval matrix
 
 Revision ID: 0017
 Revises: 0016
 Create Date: 2026-07-31
 
 Numbering note: this revision originally chained from 0015, reserving
-0016 for the then-in-flight P13.6 branches registry. P13.6 has since
+0016 for the then-in-flight branches registry. has since
 merged to main, so down_revision now points at 0016 and the alembic
 chain is linear again (the re-chain recorded in the MR).
 
-Expand-only revision backing BUILD_PROMPTS P13.7: generalise
+Expand-only revision backing the build plan: generalise
 tenant_settings (0009: deposit-interest rate; 0010: exit fee) into the
 prototype Settings screens' backend (GAP_ANALYSIS 2.9). One row per
 tenant (PK tenant_id — every settings read is a single PK lookup);
 every column nullable, NULL = "not configured, consumers fall back to
-the code-owned default". DB CHECKs on every bound (gate 1.5); the
-management API (the single legitimate writer, gate 1.6 v1.1 rule 1)
+the code-owned default". DB CHECKs on every bound (data integrity); the
+management API (the single legitimate writer, least disclosure)
 revalidates the same bounds at the boundary.
 
   1. deposit_interest_annual_rate_pct DROP NOT NULL — the settings row
@@ -26,8 +26,8 @@ revalidates the same bounds at the boundary.
 
   2. Interest config: dividend %, penalty rate %/mo, penalty grace
      days, penalty charged-on basis, loan interest method/basis
-     (STORED ONLY — the P6 engine extension is explicitly out of
-     scope, see BUILD_PROMPTS P13.7), tiered loan-rate bands (JSONB,
+     (STORED ONLY — the P6 engine extension is explicitly out of scope, see the build plan), tiered
+     loan-rate bands (JSONB,
      validated at write AND revalidated at read in
      genesis/domain/tenant_config.py; the DB CHECK pins the top-level
      type so a manual edit cannot smuggle a scalar).
@@ -36,8 +36,8 @@ revalidates the same bounds at the boundary.
      monthly contribution, max member exposure, dormancy period,
      financial year end month, exit notice period.
 
-  4. Approval matrix: committee size, committee quorum (consumed live
-     by P9 cast_vote and P12 cast_exit_vote), per-authority amount
+  4. Approval matrix: committee size, committee quorum (consumed live by P9 cast_vote and
+  cast_exit_vote), per-authority amount
      bands (JSONB, consumed live by the P9 stage machine).
 
   5. loan_products.guarantors_required — the prototype Settings > Loan
@@ -46,7 +46,7 @@ revalidates the same bounds at the boundary.
      this prompt; disbursement-time enforcement is recorded as a
      follow-up in the MR.
 
-  6. roles: system role names become immutable (review R5). Approval-
+  6. roles: system role names become immutable. Approval-
      band authorities key off seeded role NAMES, so a rename would
      silently detach a configured money ceiling. No application path
      updates roles.name (application/rbac.py mutates permissions
@@ -56,7 +56,7 @@ revalidates the same bounds at the boundary.
 No new tables and no new indexes: tenant_settings keeps its 0009 PK
 and RLS policy (forced, tenant_isolation), which serve every new read.
 
-Downgrade (review R4 — non-destructive by contract): the new columns,
+Downgrade (non-destructive by contract): the new columns,
 trigger and function are dropped and the NOT NULL on the deposit rate
 is restored, but ONLY when no tenant_settings row holds a NULL deposit
 rate. Such rows carry money parameters (penalty rates, approval
@@ -164,7 +164,7 @@ CREATE TRIGGER roles_refuse_system_rename
     FOR EACH ROW EXECUTE FUNCTION refuse_system_role_rename();
 """
 
-#: Downgrade guard (review R4), exported separately so the test suite
+#: Downgrade guard, exported separately so the test suite
 #: can prove it refuses while rows with a NULL deposit rate exist —
 #: falsifiable independently of a full downgrade run.
 _DOWN_GUARD = """

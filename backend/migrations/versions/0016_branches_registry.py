@@ -1,33 +1,32 @@
-"""branches registry (P13.6)
+"""branches registry
 
 Revision ID: 0016
 Revises: 0015
 Create Date: 2026-07-31
 
-EXPAND-ONLY revision backing BUILD_PROMPTS P13.6 (§3 migration policy:
-the free-text users.branch column is NOT touched here; its contract/
-removal is deferred one release, after this registry has shipped and
+EXPAND-ONLY revision backing the build plan (migration policy: the free-text users.branch column is
+NOT touched here; its contract/ removal is deferred one release, after this registry has shipped and
 the backfill has run everywhere):
 
   1. branches — the tenant-scoped registry behind the prototype's
      branch strings ("Nairobi CBD", "Thika", "HQ"). NOT NULL
      throughout, UNIQUE (tenant_id, name) as the atomic-claim key
-     (v1.1 rule 5), a DB CHECK refusing blank names (gate 1.5), and a
-     version column for optimistic locking (gate 1.4). RLS enabled +
+     a DB CHECK refusing blank names (data integrity), and a
+     version column for optimistic locking (concurrency safety). RLS enabled +
      FORCED with the same tenant_isolation policy shape as 0001
      (ADR-0002); the leakage suite is extended to it.
 
      Branch is organisational metadata ONLY: no money path keys on it
      in this prompt — cash/till management is explicitly out of scope
-     (GAP_ANALYSIS §2.6).
+     (GAP_ANALYSIS).
 
   2. users.branch_id / members.branch_id — nullable FKs (expand-only;
      existing rows stay valid) with explicit ON DELETE RESTRICT: a
      branch with people assigned cannot be deleted out from under
-     them. Both FKs are indexed tenant-first (gate 1.3).
+     them. Both FKs are indexed tenant-first (scalability).
 
   3. idx_branches_created_keyset — the listing paginates on the shared
-     (created_at DESC, id DESC) keyset (gate 1.3); shipped in the same
+     (created_at DESC, id DESC) keyset (scalability); shipped in the same
      revision as the query that needs it (EXPLAIN-asserted in
      tests/test_p136_explain.py).
 
@@ -36,10 +35,10 @@ the backfill has run everywhere):
      backfill scan (application/branches.py). The predicate is the
      backfill's anti-join claim key, so the index shrinks towards
      empty as the backfill completes and a re-run scans (and locks)
-     nothing (v1.1 rule 8).
+     nothing.
 
 The backfill itself is application code through the shared batch
-runner (gate 1.1), NOT a data migration: it is idempotent, resumable
+runner (reuse-first), NOT a data migration: it is idempotent, resumable
 and observable via side-effect counts, which an alembic step cannot
 prove. Downgrade fully reverses this revision: it drops only the new
 objects and no pre-existing data is touched (branch rows and

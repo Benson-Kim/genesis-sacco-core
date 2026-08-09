@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Declare-dividend drawer (issue #31 batch 2 — the P13.11 intake):
+ * Declare-dividend drawer (the intake):
  * `POST /dividends/declarations` (transactions:edit) computes and
  * persists the committee-approval snapshot for the LAST COMPLETED
  * financial year, entirely server-side.
  *
- * - NO field exists in this form AT ALL (v1.1 rule 1): rates and the
+ * - NO field exists in this form AT ALL: rates and the
  *   FY period come exclusively from tenant configuration and every
  *   total is computed by the server (`extra="forbid"` server-side —
  *   a caller-supplied rate/period/total is a 422). The body carries
@@ -16,7 +16,7 @@
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase,
  *   pending short-circuit + disabled controls, `retry: 0`, one
  *   Idempotency-Key per logical intent. Key material folds a post-409
- *   reload epoch (!60 F3/W59-2) and a per-success intent counter
+ *   reload epoch (F3/W59-2) and a per-success intent counter
  *   (W59-3/T2): stable across pure retries of one failed attempt,
  *   rotated when an acknowledged conflict OR a recorded success makes
  *   the next submission a NEW intent. (There is no record version to
@@ -26,11 +26,11 @@
  *   already exists for the FY, or no member has a positive
  *   entitlement) renders the shared ConflictBanner's explicit
  *   reload-and-re-enter flow with an INFORMATIONAL notice +
- *   announce() (!60 F5); the failed request is NEVER replayed.
+ *   announce(); the failed request is NEVER replayed.
  * - The result panel renders the SERVER's snapshot VERBATIM (blocker
  *   (a)). The maker identity this tab witnessed is still recorded,
  *   but only as the FALLBACK for unattributed rows — DeclarationOut
- *   now exposes requested_by (issue #31 ledger (a).4) and server
+ *   now exposes requested_by and server
  *   truth supersedes the per-tab witness; see makerRegistry.
  */
 import { useRef, useState } from "react";
@@ -58,7 +58,7 @@ export function DeclareDividendDrawer({ onClose }: Readonly<{ onClose: () => voi
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<DeclarationRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload — a re-entered declaration
   // after a 409 is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -75,7 +75,7 @@ export function DeclareDividendDrawer({ onClose }: Readonly<{ onClose: () => voi
           keySlot.current,
           // Key material per the README MATERIAL rule: op + the FULL
           // canonical write body (the server's own batch-size default
-          // — v1.1 rule 1: nothing else CAN travel) + reload epoch +
+          // —: nothing else CAN travel) + reload epoch +
           // per-success intent counter.
           JSON.stringify({
             op: "dividend-declare",
@@ -112,7 +112,7 @@ export function DeclareDividendDrawer({ onClose }: Readonly<{ onClose: () => voi
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the register (a live
+    // Explicit reload flow: refetch the register (a live
     // declaration may already exist, or configuration changed); the
     // failed request is structurally WITHDRAWN — re-entering it is a
     // NEW operator intent whose key rotates via the reload epoch.
@@ -134,10 +134,10 @@ export function DeclareDividendDrawer({ onClose }: Readonly<{ onClose: () => voi
       // money-adjacent governance flow.
       dismissOnOverlay={false}
     >
-      {/* Informational, NOT success styling (W59-4, the !60 F5 class). */}
+      {/* Informational, NOT success styling (W59-4, the F5 class). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={declare.error} onReload={reloadAfterConflict} />
       {conflict && (
         <div className={styles.formNote}>
@@ -189,8 +189,8 @@ export function DeclareDividendDrawer({ onClose }: Readonly<{ onClose: () => voi
             Declaring computes the payout snapshot for the LAST COMPLETED
             financial year from the tenant&apos;s configured rates — dividend on
             the share basis, rebate on the deposit basis — across every member
-            with a positive entitlement (dormant members included; issue #19
-            policy). There is nothing to enter here: no rate, period or figure
+            with a positive entitlement (dormant members included). There is
+            nothing to enter here: no rate, period or figure
             can travel from this client (the server rejects any such attempt).
             You will not be able to vote on or distribute your own declaration.
           </div>

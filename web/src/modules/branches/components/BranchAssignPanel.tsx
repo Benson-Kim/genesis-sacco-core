@@ -1,23 +1,20 @@
 "use client";
 
 /**
- * Generic branch-assignment panel (issue #31 batch 4) — ONE copy of
- * the assignment flow (gate 1.1) parameterised over the two entity
- * kinds the P13.6 contract exposes:
+ * Generic branch-assignment panel — ONE copy of
+ * the assignment flow (reuse-first) parameterised over the two entity
+ * kinds the contract exposes:
  *
- *   PUT /branches/{id}/users/{user_id}     (access_control:edit)
+ *   PUT /branches/{id}/users/{user_id} (access_control:edit)
  *   PUT /branches/{id}/members/{member_id} (members:edit)
  *
  * The registry/entity permission split is the router's recorded
  * decision: assigning a person to a branch is an edit of the PERSON's
  * record — settings rights alone must not allow it. The caller mounts
- * this panel only when the entity module's edit grant is held (pure
- * UX; the server enforces regardless, gate 1.6).
+ * this panel only when the entity module's edit grant is held (pure UX; the server enforces regardless, least disclosure).
  *
  * - Picker options come from the entity module's own keyset list
- *   (gate 1.3, explicit load-more; cached under a branches-scoped key
- *   so the mapped option shape can never collide with the entity
- *   module's canonical caches).
+ *   (scalability, explicit load-more; cached under a branches-scoped key so the mapped option shape can never collide with the entity module's canonical caches).
  * - FRESH ENTITY READ before the write (record class, staleTime 0;
  *   pattern (e)): the assignment pins the USER/MEMBER row's version —
  *   the write STRUCTURALLY refuses to fire without the loaded fresh
@@ -171,7 +168,7 @@ export function BranchAssignPanel({
   const conflict = assign.isError && isConflict(assign.error);
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the fresh entity (its row
+    // Explicit reload flow: refetch the fresh entity (its row
     // moved underneath); the failed request is structurally WITHDRAWN —
     // re-entering it is a NEW intent whose key rotates via the reload
     // epoch AND the reloaded version. NOTHING is replayed.
@@ -193,7 +190,7 @@ export function BranchAssignPanel({
       <div className={styles.subhead}>{adapter.title}</div>
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={assign.error} onReload={reloadAfterConflict} />
       {assign.isError && !conflict && <ErrorBanner error={assign.error} />}
 

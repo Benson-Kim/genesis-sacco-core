@@ -37,6 +37,8 @@ from sqlalchemy import text
 
 from db_helpers import api_client, factory
 from export_helpers import add_user, create_branch, seed_actor, seed_member_no
+from genesis.application.branches import BRANCH_MEMBERS_SCOPE, BRANCH_USERS_SCOPE
+from genesis.application.pagination import encode_cursor
 from genesis.domain.rbac import ROLE_NAMES, Action, Module, seed_matrix
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -94,8 +96,14 @@ def test_branch_users_roster_scoping_and_keyset() -> None:
         ordered = sorted(((r[1], uuid.UUID(str(r[0]))) for r in rows), reverse=True)
         expected = [str(u) for _, u in ordered]
         # The page-1 cursor is the SERVED position of its last row —
-        # the house '<created_at iso>|<id>' encoding.
-        expected_cursor = f"{ordered[1][0].isoformat()}|{ordered[1][1]}"
+        # the house '<created_at iso>|<id>' keyset, sealed by the
+        # #31 batch-13 opaque codec (deterministic encode, so this
+        # stays an exact-equality oracle).
+        expected_cursor = encode_cursor(
+            f"{ordered[1][0].isoformat()}|{ordered[1][1]}",
+            tenant_id=tid,
+            endpoint=BRANCH_USERS_SCOPE,
+        )
 
         headers = {"authorization": f"Bearer {admin_token}"}
         async with api_client() as client:
@@ -159,7 +167,11 @@ def test_branch_members_roster_scoping_keyset_and_status_mix() -> None:
                 ("GP-7001", "active"),
                 ("GP-7002", "dormant"),
             ]
-            assert page1["next_cursor"] == "GP-7002"
+            # #31 batch 13: the served cursor is the opaque signed
+            # seal of the same member_no position.
+            assert page1["next_cursor"] == encode_cursor(
+                "GP-7002", tenant_id=tid, endpoint=BRANCH_MEMBERS_SCOPE
+            )
             res = await client.get(
                 f"/branches/{branch_a}/members",
                 params={"limit": 2, "cursor": page1["next_cursor"]},

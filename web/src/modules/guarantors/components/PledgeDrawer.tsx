@@ -1,15 +1,14 @@
 "use client";
 
 /**
- * Guarantee-pledge drawer (P15 module 5 — the P9 surface !58/!59
- * deferred to this batch): encumbers a guarantor member's savings
+ * Guarantee-pledge drawer (module 5 — the P9 surface / deferred to this batch): encumbers a guarantor member's savings
  * against another member's application via
  * `POST /applications/{id}/guarantees` (applications:edit).
  *
  * - The drawer fetches the application FRESH (record class, staleTime
  *   0) and offers the pledge ONLY while the stage is pledgeable
  *   (submitted | appraisal | committee) — the UI never offers what the
- *   API forbids (gate 1.6). The server re-checks the stage AND the
+ *   API forbids (least disclosure). The server re-checks the stage AND the
  *   guarantor's capacity under the application row lock + the
  *   guarantor's deposit-account row lock; an over-pledge from a stale
  *   read is therefore impossible server-side, and this drawer NEVER
@@ -17,7 +16,7 @@
  * - SELF-GUARANTEE is structurally impossible from this client: the
  *   borrower never appears among the guarantor options (and the server
  *   rejects a self-pledge regardless — 400).
- * - Guarantor free capacity shown here is the SERVER's P13.9 aggregate
+ * - Guarantor free capacity shown here is the SERVER's aggregate
  *   figure, re-fetched fresh on drawer mount (staleTime 0) — nothing is
  *   computed client-side (blocker (a)); a member without live pledges
  *   is not in the slice and the capacity is stated as server-verified
@@ -105,7 +104,7 @@ export function PledgeDrawer({
     staleTime: STALE_TIME.record,
   });
 
-  // The SERVER's guarantor aggregates (P13.9), re-fetched FRESH on every
+  // The SERVER's guarantor aggregates, re-fetched FRESH on every
   // drawer mount (record class): the free-capacity figure shown next to
   // the picker is never served from a stale cache before this write.
   const aggregates = useQuery({
@@ -115,7 +114,7 @@ export function PledgeDrawer({
     refetchOnMount: "always",
   });
 
-  // Guarantor picker: ACTIVE members via the keyset contract (gate 1.3)
+  // Guarantor picker: ACTIVE members via the keyset contract (scalability)
   // — pages of 20 with an explicit "load more". The P8 list has no
   // search parameter; recorded honestly as a UX limitation in the MR.
   const members = useKeysetList<Member>({
@@ -135,7 +134,7 @@ export function PledgeDrawer({
         input,
         idempotencyKeyFor(
           keySlot.current,
-          // Key material = intent + FRESHNESS (!60 F3): the version of
+          // Key material = intent + FRESHNESS: the version of
           // the fresh (staleTime 0) application read anchors the key to
           // the record state the operator acted on. Pure retries of one
           // intent keep the key STABLE; a changed guarantor/amount OR a
@@ -192,7 +191,7 @@ export function PledgeDrawer({
     (PLEDGEABLE_STAGES as readonly string[]).includes(app.stage) && result === null;
 
   // The SERVER's free-capacity figure for the chosen guarantor, when the
-  // P13.9 slice carries them (it lists members WITH live pledges, by
+  //  slice carries them (it lists members WITH live pledges, by
   // exposure). Absence is stated honestly — never computed locally.
   const guarantorsSlice = aggregates.data?.guarantors ?? null;
   const chosenCapacity =
@@ -207,8 +206,8 @@ export function PledgeDrawer({
     void queryClient.refetchQueries({ queryKey: ["dashboard", "summary"] });
     pledge.reset();
     setNotice("Record reloaded — re-check the stage and capacity before acting again.");
-    // Every async outcome is announced (issue #8): the post-conflict
-    // reload is an outcome, not a success (!60 F5).
+    // Every async outcome is announced: the post-conflict
+    // reload is an outcome, not a success.
     announce("Record reloaded after the conflict — re-check the stage and capacity.");
   }
 
@@ -244,12 +243,12 @@ export function PledgeDrawer({
       closeDisabled={pledge.isPending}
       // W56-3: a stray overlay click must never discard a half-completed
       // pledge form — dismissal is the explicit ✕ or Escape. (This drawer
-      // arrived via the !60 main-merge after the W56-3 sweep; convention
+      // arrived via the main-merge after the W56-3 sweep; convention
       // completed here.)
       dismissOnOverlay={false}
     >
       {/* Informational, NOT success styling: the notice reports a
-          post-conflict reload (!60 F5). */}
+          post-conflict reload. */}
       {notice !== "" && <Banner variant="info">{notice}</Banner>}
       <div className={styles.detailGrid}>
         <Kv label="Borrower">
@@ -269,7 +268,7 @@ export function PledgeDrawer({
         <Kv label="Stage">{app.stage}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={pledge.error} onReload={reloadRecord} />
       {pledge.isError && !conflict && !renderedInline && <ErrorBanner error={pledge.error} />}
 

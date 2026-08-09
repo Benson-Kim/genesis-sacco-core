@@ -1,7 +1,6 @@
 /*
  * Structural scale tokens as CSS custom properties — kept in sync with
- * scale.ts by the design-system test suite (issue #8 rules; see scale.ts
- * for the governing math). Color custom properties live in tokens.css and
+ * scale.ts by the design-system test suite (rules; see scale.ts for the governing math). Color custom properties live in tokens.css and
  * stay verbatim-prototype.
  */
 :root {

@@ -5,14 +5,18 @@
  * password, then verify the 6-digit code. Server enforces attempts/TTL/
  * rate limits (P3); this component only shapes the flow.
  */
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, newIdempotencyKey } from "@genesis/api-client";
-import { Button, Field, Input } from "@genesis/design-system";
+import { Button } from "@genesis/design-system";
+import { FormField } from "@/modules/forms/FormField";
+import { KENYA_PHONE_MESSAGE, normalizeKenyaMsisdn } from "@/lib/phone";
 import { requestOtp, verifyOtp } from "../api";
-import { OTP_LENGTH, emailSchema, otpCodeSchema } from "../schemas";
+import { OTP_LENGTH, classifyIdentifier, otpCodeSchema, signInEmailSchema } from "../schemas";
 import styles from "./LoginGate.module.css";
+
+const EMAIL_BLUR_MESSAGE = "Enter your registered email address.";
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -33,16 +37,45 @@ function errorMessage(error: unknown): string {
 export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
   const router = useRouter();
   const [stage, setStage] = useState<"request" | "verify">("request");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [digits, setDigits] = useState<string[]>(Array.from({ length: OTP_LENGTH }, () => ""));
   const [formError, setFormError] = useState<string | null>(null);
+  // Sign-in identifier — live AS-YOU-TYPE classification (email vs
+  // phone) with the matching validation rule, a courtesy mirror of the
+  // server's one-rule classifier; the server stays the truth at the
+  // wire. The message shows on blur and clears the moment the value is
+  // corrected while typing.
+  const [identifierError, setIdentifierError] = useState<string | null>(null);
+  // DEV-ONLY (REMOVE BEFORE STAGING): the server sends
+  // dev_otp only behind its fail-closed flag; null renders NOTHING.
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+
+  const identifierKind = classifyIdentifier(identifier);
+
+  /** null when valid; the matching rule's message when not. */
+  function identifierMessage(value: string): string | null {
+    if (classifyIdentifier(value) === "phone") {
+      return normalizeKenyaMsisdn(value) !== null ? null : KENYA_PHONE_MESSAGE;
+    }
+    return signInEmailSchema.safeParse(value.trim()).success ? null : EMAIL_BLUR_MESSAGE;
+  }
+
+  function validateIdentifierBlur(value: string) {
+    setIdentifierError(identifierMessage(value));
+  }
+
+  /** The declared wire value: normalized E.164 for a phone, trimmed email otherwise. */
+  function wireIdentifier(): string {
+    return normalizeKenyaMsisdn(identifier) ?? identifier.trim();
+  }
 
   const request = useMutation({
     mutationFn: requestOtp,
-    onSuccess: () => {
+    onSuccess: (result) => {
       setDigits(Array.from({ length: OTP_LENGTH }, () => ""));
       setStage("verify");
       setFormError(null);
+      setDevOtp(result.devOtp);
     },
     onError: (error) => setFormError(errorMessage(error)),
   });
@@ -56,13 +89,16 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
   function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (request.isPending) return;
-    const parsed = emailSchema.safeParse(email.trim());
-    if (!parsed.success) {
-      setFormError("Enter your registered email address.");
+    // Invalid submits are refused locally with ZERO wire calls; the
+    // inline message renders through the shared FormField wiring.
+    const message = identifierMessage(identifier);
+    if (message !== null) {
+      setIdentifierError(message);
       return;
     }
+    setIdentifierError(null);
     setFormError(null);
-    request.mutate(parsed.data);
+    request.mutate(wireIdentifier());
   }
 
   function submitVerify(event: FormEvent<HTMLFormElement>) {
@@ -75,9 +111,9 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
     }
     setFormError(null);
     // One Idempotency-Key per submission: a double-submit of the same code
-    // replays the stored response instead of a second effect (gate 1.4).
+    // replays the stored response instead of a second effect (concurrency safety).
     verify.mutate({
-      email: email.trim(),
+      identifier: wireIdentifier(),
       code: parsed.data,
       idempotencyKey: newIdempotencyKey(),
     });
@@ -97,6 +133,19 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
     }
   }
 
+  //  item 12 — sanitized full-code paste: digits are harvested from
+  // the clipboard (non-digits stripped), fanned out from box 1, and
+  // focus lands on the next empty box. A digit-free paste is inert —
+  // hostile clipboard content never enters any box.
+  function onDigitPaste(event: ClipboardEvent<HTMLInputElement>) {
+    event.preventDefault();
+    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, OTP_LENGTH);
+    if (pasted === "") return;
+    setDigits(Array.from({ length: OTP_LENGTH }, (_, i) => pasted[i] ?? ""));
+    const focusIndex = Math.min(pasted.length, OTP_LENGTH - 1);
+    document.getElementById(`otp-${focusIndex}`)?.focus();
+  }
+
   const brand = (
     <div className={styles.brand}>
       <div className={styles.mark}>G</div>
@@ -114,20 +163,35 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
           {brand}
           <div className={styles.title}>Staff sign in</div>
           <div className={styles.subtitle}>
-            We&apos;ll send a one-time password to your registered email.
+            We&apos;ll send a one-time password to your registered email or phone.
           </div>
           {notice !== undefined && notice !== "" && (
             <div className={styles.notice}>{notice}</div>
           )}
-          <Field label="Email" htmlFor="login-email">
-            <Input
-              id="login-email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </Field>
+          <FormField
+            id="login-identifier"
+            label="Email or phone"
+            error={identifierError ?? undefined}
+          >
+            {(control) => (
+              <input
+                {...control}
+                className={styles.input}
+                type="text"
+                inputMode={identifierKind === "phone" ? "tel" : "email"}
+                autoComplete="username"
+                value={identifier}
+                onChange={(event) => {
+                  setIdentifier(event.target.value);
+                  // Live re-classification happens every keystroke; a
+                  // showing message clears the moment the value is
+                  // corrected under its matching rule.
+                  if (identifierError !== null) validateIdentifierBlur(event.target.value);
+                }}
+                onBlur={(event) => validateIdentifierBlur(event.target.value)}
+              />
+            )}
+          </FormField>
           {formError !== null && <div className={styles.error}>{formError}</div>}
           <Button variant="primary" type="submit" className={styles.wide} disabled={request.isPending}>
             {request.isPending ? "Sending…" : "Send OTP"}
@@ -139,8 +203,15 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
           {brand}
           <div className={styles.title}>Verify OTP</div>
           <div className={styles.subtitle}>
-            Enter the 6-digit code sent to <b>{email}</b>
+            Enter the 6-digit code sent to <b>{identifier.trim()}</b>
           </div>
+          {/* DEV-ONLY (item 11): renders ONLY when the server's
+              fail-closed dev flag returned a code. REMOVE BEFORE STAGING. */}
+          {devOtp !== null && (
+            <div className={styles.notice} data-testid="dev-otp-display">
+              Dev mode — OTP for testers: <b>{devOtp}</b>
+            </div>
+          )}
           <div className={styles.otpRow}>
             {digits.map((digit, index) => (
               <input
@@ -153,6 +224,7 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
                 value={digit}
                 onChange={(event) => setDigit(index, event.target.value)}
                 onKeyDown={(event) => onDigitKeyDown(index, event)}
+                onPaste={onDigitPaste}
               />
             ))}
           </div>
@@ -167,7 +239,7 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
               className={styles.linkStrong}
               onClick={() => {
                 if (!request.isPending) {
-                  request.mutate(email.trim());
+                  request.mutate(wireIdentifier());
                 }
               }}
             >
@@ -175,7 +247,7 @@ export function LoginGate({ notice }: Readonly<{ notice?: string }>) {
             </button>{" "}
             ·{" "}
             <button type="button" className={styles.link} onClick={() => setStage("request")}>
-              Change email
+              Change email or phone
             </button>
           </div>
         </form>

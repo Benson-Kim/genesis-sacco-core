@@ -1,37 +1,37 @@
-"""member exit & settlement: snapshot columns, exit votes, exit fee (P12)
+"""member exit & settlement: snapshot columns, exit votes, exit fee
 
 Revision ID: 0010
 Revises: 0009
 Create Date: 2026-07-29
 
 Additive only (expand phase). The member_exits table itself exists
-since 0001 (reuse-first, gate 1.1) with the snapshot amount columns
+since 0001 (reuse-first, reuse-first) with the snapshot amount columns
 and the requested/approved/settled/rejected status CHECK; this
-migration adds what the P12 workflow needs on top:
+migration adds what the workflow needs on top:
 
   * member_exits workflow columns — reason, requested_by, decided_at,
     settled_at, settlement_transaction_id. The settlement transaction
     FK links the terminal posting to its approved snapshot.
   * uq_member_exits_open — at most ONE open (requested/approved)
     settlement per member, enforced at the database level: concurrent
-    double-submits collapse to exactly one row (gate 1.4). The partial
+    double-submits collapse to exactly one row (concurrency safety). The partial
     index also serves the open-settlement lookup by member.
   * idx_exits_created_keyset — the exits listing paginates on
     (created_at, id) DESC; leading with tenant_id matches the RLS
-    predicate (gate 1.3: index shipped with the query).
+    predicate (scalability: index shipped with the query).
   * idx_exits_status_created_keyset — the same listing with a status
     filter: (tenant_id, status, created_at DESC, id DESC) so the
-    filtered keyset page is index-backed too (gate 1.3; the 0001
-    idx_exits_status cannot serve the keyset ORDER BY).
+    filtered keyset page is index-backed too (scalability; the 0001 idx_exits_status cannot serve
+    the keyset ORDER BY).
   * exit_votes — committee approval reusing the P9 voting shape:
     UNIQUE (tenant_id, exit_id, voter_id) makes double-voting
-    impossible at the database level (gate 1.4); RLS matches 0001.
+    impossible at the database level (concurrency safety); RLS matches 0001.
     exit_id is ON DELETE RESTRICT: votes are governance evidence and
     must be non-erasable — deleting a decided exit must fail loudly,
     never silently erase its vote trail.
   * tenant_settings.exit_fee — the exit fee comes exclusively from
-    tenant configuration (0009 pattern; the P11 caller-rate lesson:
-    money parameters never travel in request bodies). Tenants without
+    tenant configuration (0009 pattern; the caller-rate lesson: money parameters never travel in
+    request bodies). Tenants without
     a tenant_settings row charge no exit fee (documented default 0).
 
 net_payable deliberately keeps no CHECK >= 0: the application rejects

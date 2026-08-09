@@ -1,9 +1,7 @@
 "use client";
 
 /**
- * Export queue-run dialog (P15 module 8 — `POST /jobs/exports`,
- * reports:view: the operations mirror of the worker loop, the P11
- * interest-run precedent adapted to a non-money job).
+ * Export queue-run dialog (module 8 — `POST /jobs/exports`, reports:view: the operations mirror of the worker loop, the interest-run precedent adapted to a non-money job).
  *
  * - The contract defines NO request body: nothing tunable can even be
  *   sent — each queued job renders server-side in its own snapshot
@@ -16,8 +14,7 @@
  *   No typed ConfirmDangerModal: draining the queue moves no money and
  *   destroys nothing.
  * - The POST has an EMPTY body, so the key material carries an intent
- *   counter bumped on every success (review F-R2, mirroring
- *   RequestExportDrawer's T2 defence): a SECOND explicit drain — "Run
+ *   counter bumped on every success (review, mirroring RequestExportDrawer's T2 defence): a SECOND explicit drain — "Run
  *   again" in the same mount, or a fresh dialog — always carries a NEW
  *   key BY CONSTRUCTION. Without it, a backend idempotency store would
  *   dedup the repeat and replay the FIRST drain's completed/failed
@@ -25,7 +22,7 @@
  *   class). Pure retries of a failed attempt still REUSE the key.
  * - Errors render the least-disclosure ErrorBanner; a 409 (concurrent
  *   identical run holding the idempotency claim) is a CREATE-style
- *   conflict with no record to reload (!56 F-B4 precedent) — the
+ *   conflict with no record to reload (F-precedent) — the
  *   epoch rotates the key for the NEXT explicit attempt only; nothing
  *   is retried or replayed automatically.
  */
@@ -42,10 +39,10 @@ import styles from "./Reports.module.css";
 
 export function RunQueueDialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const [result, setResult] = useState<ExportCycle | null>(null);
-  // Freshness component (!60 F3 class): rotate the key ONLY after an
+  // Freshness component (class): rotate the key ONLY after an
   // acknowledged conflict; pure 5xx retries keep the SAME key.
   const [conflictEpoch, setConflictEpoch] = useState(0);
-  // Per-drain intent counter (review F-R2 — the W59-3/T2 class): the
+  // Per-drain intent counter (review — the W59-3/T2 class): the
   // wire body is EMPTY, so without this a repeated explicit drain would
   // present the SAME key and a backend idempotency store would replay
   // the FIRST drain's counts instead of draining again. Bumped on every
@@ -115,7 +112,7 @@ export function RunQueueDialog({ onClose }: Readonly<{ onClose: () => void }>) {
               type="button"
               variant="primary"
               onClick={() => {
-                // A NEW drain intent (mirrors "Request another", F-R2):
+                // A NEW drain intent (mirrors "Request another"):
                 // the bumped intent counter already rotated the key, so
                 // this second explicit drain can never be deduped into
                 // the first drain's stored response.

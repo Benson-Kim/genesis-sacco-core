@@ -1,20 +1,19 @@
 "use client";
 
 /**
- * Exit-settlement dialog (P15 module 7 — the TERMINAL money movement
- * of the member lifecycle): `POST /member-exits/{id}/settlement`
+ * Exit-settlement dialog (module 7 — the TERMINAL money movement of the member lifecycle): `POST /member-exits/{id}/settlement`
  * (members:approve) atomically posts the committee-APPROVED snapshot —
  * ledger postings, zeroed balances, guarantee release and terminal
- * member transition in ONE server transaction (P7/P12).
+ * member transition in ONE server transaction (P7/).
  *
  * - The dialog fetches the exit FRESH (record class, staleTime 0) and
  *   offers the action ONLY while the status is `approved` — the UI
- *   never offers what the API forbids (gate 1.6).
+ *   never offers what the API forbids (least disclosure).
  * - SEPARATION OF DUTIES (blocker (f)): the settle affordance mounts
- *   ONLY inside MakerCheckerPanel — the P12 contract bans the
+ *   ONLY inside MakerCheckerPanel — the contract bans the
  *   initiator from posting their own settlement (403, keyed on the
  *   persisted requested_by). The maker identity is the CONTRACT's
- *   requested_by first (issue #30 / !66 follow-up — server truth),
+ *   requested_by first (/ follow-up — server truth),
  *   with the per-tab registry as the fallback witness for
  *   unattributed (NULL) rows; controls are structurally withheld for
  *   the maker (no override prop exists); the server enforces
@@ -22,14 +21,13 @@
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase,
  *   pending short-circuit + disabled controls, `retry: 0`, one
  *   Idempotency-Key per logical intent — key material folds the fresh
- *   record VERSION (also PINNED in the wire body — the P12
- *   approved-snapshot rule), the chosen channel and a post-409 reload
+ *   record VERSION (also PINNED in the wire body — the approved-snapshot rule), the chosen channel and a post-409 reload
  *   epoch. After a posted settlement the affordance is SPENT — the
  *   result panel replaces the action.
  * - A 409 (snapshot drift: any component moved since approval — the
  *   server re-verifies under the full lock set and posts NOTHING)
  *   renders the shared ConflictBanner's explicit reload-and-re-enter
- *   flow with an INFORMATIONAL notice + announce() (!60 F5). The P12
+ *   flow with an INFORMATIONAL notice + announce(). The
  *   remedy for drift is voiding and re-requesting — stated to the
  *   operator; NOTHING is replayed.
  * - The body carries the pinned version and the CASH channel ONLY; no
@@ -74,7 +72,7 @@ export function SettleExitDialog({
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<SettlementResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload — a re-attempt after the
   // acknowledged drift is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -100,7 +98,7 @@ export function SettleExitDialog({
   });
 
   const settle = useMutation({
-    // STRUCTURAL freshness guard (review F-M1): the TERMINAL money
+    // STRUCTURAL freshness guard (review): the TERMINAL money
     // write refuses to fire without the loaded fresh record — the
     // pinned version is read from the fresh detail data or the
     // mutation rejects before anything reaches the wire. No sentinel
@@ -119,7 +117,7 @@ export function SettleExitDialog({
         chosen,
         idempotencyKeyFor(
           keySlot.current,
-          // Key material = intent + FRESHNESS (W59-2, the !60 F3
+          // Key material = intent + FRESHNESS (W59-2, the F3
           // class): the version of the fresh (staleTime 0) exit read —
           // ALSO pinned in the wire body — anchors the key to the
           // snapshot the operator acted on; the reload epoch rotates it
@@ -179,7 +177,7 @@ export function SettleExitDialog({
   const conflict = settle.isError && isConflict(settle.error);
   const settleable = record.status === "approved" && result === null;
 
-  // F-M3: resolve the confirmation banner's channel label through the
+  // resolve the confirmation banner's channel label through the
   // SHARED cash-channel vocabulary (cashChannelSchema + CHANNEL_LABELS)
   // instead of a hardcoded two-value check — a future cash channel can
   // never render as its raw enum value here. The raw draft only shows
@@ -187,7 +185,7 @@ export function SettleExitDialog({
   const parsedChannel = cashChannelSchema.safeParse(channel);
   const channelLabel = parsedChannel.success ? CHANNEL_LABELS[parsedChannel.data] : channel;
 
-  // SERVER TRUTH FIRST (issue #30 follow-up on !66/0036): requested_by
+  // SERVER TRUTH FIRST (follow-up on /0036): requested_by
   // is the contract's initiator attribution; the per-tab witness is
   // only the fallback for unattributed (NULL) rows — nothing invented.
   const witnessedMakerId = exitMakerOf(record.id);
@@ -197,7 +195,7 @@ export function SettleExitDialog({
     record.requested_by !== null
       ? record.requested_by === ownId
         ? "You initiated this exit request (server attribution)."
-        : // Least disclosure (FM-D): the bare staff UUID via the
+        : // Least disclosure: the bare staff UUID via the
           // short-id convention — never a name or email.
           `Initiating officer ${record.requested_by.slice(0, 8)} (server attribution).`
       : witnessedMakerId === EXIT_MAKER_UNKNOWN
@@ -207,7 +205,7 @@ export function SettleExitDialog({
           : "Initiating officer (witnessed by this tab).";
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record (a snapshot
+    // Explicit reload flow: refetch the record (a snapshot
     // component drifted since approval, or the status moved) and the
     // register; the stale posting is NEVER replayed.
     void queryClient.refetchQueries({ queryKey: ["exits", "detail", exitId] });
@@ -222,7 +220,7 @@ export function SettleExitDialog({
 
   function armConfirmation() {
     if (settle.isPending) return;
-    // F-M1: the typed confirmation cannot even ARM without the loaded
+    // the typed confirmation cannot even ARM without the loaded
     // fresh record (belt to the mutationFn's structural braces).
     if (detail.data === undefined) return;
     const parsed = cashChannelSchema.safeParse(channel);
@@ -244,7 +242,7 @@ export function SettleExitDialog({
       // terminal money write.
       dismissOnOverlay={false}
     >
-      {/* Informational, NOT success styling (W59-4, the !60 F5 class). */}
+      {/* Informational, NOT success styling (W59-4, the F5 class). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
       <div className={styles.detailGrid}>
@@ -269,7 +267,7 @@ export function SettleExitDialog({
         <Kv label="Pinned record version">{record.version}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={settle.error} onReload={reloadRecord} />
       {settle.isError && !conflict && <ErrorBanner error={settle.error} />}
 

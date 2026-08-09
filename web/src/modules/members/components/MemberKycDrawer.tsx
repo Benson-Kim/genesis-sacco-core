@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * Member KYC drawer (issue #31 batch 3 — the register's row
- * drill-down): the P13.12 profile and required-documents surfaces for
+ * Member KYC drawer (the register's row drill-down): the profile and required-documents surfaces for
  * one member.
  *
  * - Reads under members:view (the server access-AUDITS every profile
- *   read — review K1); the edit affordance mounts only with
+ *   read); the edit affordance mounts only with
  *   members:edit; starting the wizard only with members:create. Pure
- *   UX — the server enforces every call (gate 1.6).
+ *   UX — the server enforces every call (least disclosure).
  * - The profile is a RECORD read (staleTime 0): the version an edit
  *   pins is the freshest available; a stale submission is a 409 into
  *   the shared ConflictBanner (explicit reload-and-re-enter: the form
@@ -102,8 +101,8 @@ export function MemberKycDrawer({
     retry: false,
   });
 
-  // Advisory financial aggregates (#31 batch 3): the DETAIL read
-  // carries four decimal strings rendered VERBATIM below (P15 blocker
+  // Advisory financial aggregates: the DETAIL read
+  // carries four decimal strings rendered VERBATIM below (blocker
   // (a): no summing, no derived figures, ever). Record class: money
   // figures are never served stale.
   const detailQuery = useQuery({
@@ -113,9 +112,9 @@ export function MemberKycDrawer({
     retry: false,
   });
 
-  // Branch attribution (#31 ledger (j).2): the FRESH detail read's
+  // Branch attribution: the FRESH detail read's
   // nullable branch_id — NULL is the honest "unassigned" state (the
-  // 0016 column is written only by the batch-4 assignment route;
+  // 0016 column is written only by the assignment route;
   // attribution is never invented). Resolving the branch NAME is a
   // settings:view read (GET /branches/{id}): without that grant this
   // drawer fetches NOTHING and renders the short id (the created_by
@@ -214,7 +213,7 @@ export function MemberKycDrawer({
         <Pill>{TYPE_LABELS[member.type]}</Pill>
       </div>
 
-      {/* Branch attribution (#31 ledger (j).2): the fresh detail
+      {/* Branch attribution: the fresh detail
           read's nullable branch_id, rendered honestly — NULL is the
           real "unassigned" state, never an invented default. The name
           resolves only under settings:view; otherwise the SHORT id
@@ -242,13 +241,13 @@ export function MemberKycDrawer({
         </div>
       )}
 
-      {/* Dividend payout PREFERENCE (#31 ledger (c)): the fresh
+      {/* Dividend payout PREFERENCE: the fresh
           detail read's nullable dividend_payout, the server's own
           code-owned vocabulary token rendered VERBATIM — never
           re-labelled, never money math. NULL is the honest "not set"
           state (a preference is never invented). Stored preference
-          ONLY: the P13.11 distribution engine does not consume it
-          (batch-8 fence). */}
+          ONLY: the distribution engine does not consume it
+          (fence). */}
       {detailQuery.data !== undefined && (
         <div className={styles.summaryPanel}>
           <div className={styles.panelSubTitle}>Dividend payout</div>
@@ -387,7 +386,7 @@ export function MemberKycDrawer({
               </label>
             </div>
           )}
-          {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+          {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
           <ConflictBanner error={update.error} onReload={reloadAfterConflict} />
           {update.isError && !isConflict(update.error) && <ErrorBanner error={update.error} />}
           <div className={styles.actions}>

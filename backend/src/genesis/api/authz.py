@@ -1,4 +1,4 @@
-"""Deny-by-default authorization (gate 1.6).
+"""Deny-by-default authorization (least disclosure).
 
 Every business route MUST carry a RequirePermission dependency; a CI test
 walks the route table and fails if any operation lacks one.
@@ -50,11 +50,11 @@ class RequirePermission:
                 session, ctx.tenant_id, ctx.user_id, ctx.role_id, self.module, self.action
             )
         if access is None or not access.is_active:
-            # Review F3: a suspended (or vanished) user is refused
+            # a suspended (or vanished) user is refused
             # immediately — the access token's remaining lifetime never
             # bridges a committed suspension. 401, not 403: the session
             # is dead, not under-privileged. Only the error category
-            # leaves the server (least disclosure, gate 1.6).
+            # leaves the server (least disclosure, least disclosure).
             raise UnauthenticatedError("user is not active")
         if not access.allowed:
             raise ForbiddenError(f"{self.module.value}:{self.action.value}")
@@ -62,19 +62,19 @@ class RequirePermission:
 
 
 class RequireMemberPrincipal:
-    """FastAPI dependency for /member routes (P14.5 FM1/FM2).
+    """FastAPI dependency for /member routes (/).
 
     Two fences, both deny-by-default:
       * PRINCIPAL KIND — decode_member_access_token refuses a staff
-        token with a 403 (FM1): a staff RequirePermission grant can
+        token with a 403: a staff RequirePermission grant can
         never satisfy the member gate, in either direction.
       * LIVE LINK — the credential->member link is re-verified against
         the database ON EVERY REQUEST (live_credential_by_id, the ONE
         implementation): a revoked link, a re-pointed credential, or
         an exited member dies within one request, exactly like the
-        RequirePermission suspension re-check (review F3). 401, not
+        RequirePermission suspension re-check. 401, not
         403 — the session is dead, not under-privileged; only the
-        error category leaves the server (least disclosure, gate 1.6).
+        error category leaves the server (least disclosure, least disclosure).
 
     Money-relevant member actions (consent/release) ADDITIONALLY
     re-verify the link INSIDE their transaction under the guarantee
@@ -94,16 +94,16 @@ class RequireMemberPrincipal:
 class RequireAnyPermission(RequirePermission):
     """Grant when the role holds ANY of the listed module x action pairs.
 
-    Still deny-by-default (gate 1.6): an explicit, code-owned list of
+    Still deny-by-default (least disclosure): an explicit, code-owned list of
     grants is checked server-side in one tenant session; an empty
     result is a 403 naming the required permissions, never data. The
     subclass relationship keeps the P4 spec-walk test structural — a
     route carrying this dependency IS carrying a RequirePermission
     check. First use: /products discovery, which application creators
-    need for the prototype's new-application form without holding
-    settings:view (external Codex review, re-derived — the original
-    opened a second DB session per request and duplicated the check
-    inline in the router).
+    need for the new-application form without holding settings:view
+    (re-derived from an external review — the original opened a second
+    DB session per request and duplicated the check inline in the
+    router).
     """
 
     def __init__(self, *grants: tuple[Module, Action]) -> None:
@@ -121,7 +121,7 @@ class RequireAnyPermission(RequirePermission):
                     session, ctx.tenant_id, ctx.user_id, ctx.role_id, module, action
                 )
                 if access is None or not access.is_active:
-                    # Review F3: same immediate refusal as the base class.
+                    # same immediate refusal as the base class.
                     raise UnauthenticatedError("user is not active")
                 if access.allowed:
                     return ctx

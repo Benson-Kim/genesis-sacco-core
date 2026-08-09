@@ -1,6 +1,6 @@
-"""RBAC use-cases: seeding, queries, and audited updates (gates 1.5, 1.6).
+"""RBAC use-cases: seeding, queries, and audited updates (the house gates).
 
-Tenant-predicate exemption (documented per issue #17, gate 1.6 v1.1):
+Tenant-predicate exemption (documented per, least disclosure v1.1):
 role/permission queries here filter by role_id — an unguessable UUID
 taken from the authenticated caller's JWT (or resolved via a name
 lookup inside the tenant session), never from request input that could
@@ -57,7 +57,7 @@ _ACTION_QUERIES: dict[Action, TextClause] = {
 }
 
 # Column names are code-owned literals chosen by Action, never caller
-# input, so the f-string assembly below is injection-safe (v1.1 rule 6).
+# input, so the f-string assembly below is injection-safe.
 _ACTION_COLUMNS: dict[Action, str] = {
     Action.VIEW: "can_view",
     Action.CREATE: "can_create",
@@ -78,7 +78,7 @@ _ACCESS_QUERIES: dict[Action, TextClause] = {
 
 @dataclass(frozen=True)
 class ActorAccess:
-    """Per-request authorization facts, fetched in one round-trip (F3)."""
+    """Per-request authorization facts, fetched in one round-trip."""
 
     is_active: bool
     allowed: bool
@@ -94,14 +94,14 @@ async def actor_access(
 ) -> ActorAccess | None:
     """Permission check + users.status verification, one round-trip.
 
-    Review F3: stateless access tokens outlive a suspension by up to 15
+    stateless access tokens outlive a suspension by up to 15
     minutes, so authorization must also verify the actor's COMMITTED
     status. RequirePermission already pays a DB round-trip per request;
     the status rides along in the same query. Returns None when the
     user row is gone (refused as unauthenticated by the caller). Deny
-    by default: a missing permission row is `allowed=False` (gate 1.6).
+    by default: a missing permission row is `allowed=False` (least disclosure).
     The users lookup carries an explicit bound tenant predicate on top
-    of forced RLS (v1.1 rule 4); role_id keeps the documented issue #17
+    of forced RLS; role_id keeps the documented
     exemption (unguessable, JWT-scoped).
     """
     row = (
@@ -166,7 +166,7 @@ async def seed_permissions(session: AsyncSession, tenant_id: uuid.UUID) -> dict[
 async def has_permission(
     session: AsyncSession, role_id: uuid.UUID, module: Module, action: Action
 ) -> bool:
-    """Deny by default: a missing row means no access (gate 1.6)."""
+    """Deny by default: a missing row means no access (least disclosure)."""
     row = (
         await session.execute(
             _ACTION_QUERIES[action],
@@ -219,17 +219,49 @@ async def update_permission(
     can_edit: bool,
     can_approve: bool,
 ) -> ModulePermissions:
-    """Audited permission change under a row lock (gates 1.4, 1.5)."""
-    row = (
+    """Audited permission change under a row lock (the house gates).
+
+     item 2 (permission-matrix save bug): a missing permission row is
+    NOT an error — RBAC treats it as deny-by-default (has_permission /
+    actor_access read a missing row as all-false), and tenants whose
+    rows predate a later-added Module member (corrections @, member_identity @) legitimately have
+    such holes. The old
+    update-only path 404ed on them deterministically, which is exactly
+    the user-reported "save failed 3 times". The write now MATERIALIZES
+    the deny-by-default row first (insert-or-skip on the
+    (tenant_id, role_id, module) unique anchor — race-safe: concurrent
+    writers serialize on the re-taken FOR UPDATE) and audits the real
+    transition from the zero map. A truly unknown role stays a 404.
+    """
+    lock_query = text(
+        "SELECT id, can_view, can_create, can_edit, can_approve FROM permissions "
+        "WHERE role_id = CAST(:rid AS uuid) AND module = :module FOR UPDATE"
+    )
+    lock_params = {"rid": str(role_id), "module": module.value}
+    row = (await session.execute(lock_query, lock_params)).first()
+    if row is None:
+        role_exists = (
+            await session.execute(
+                text("SELECT 1 FROM roles WHERE id = CAST(:rid AS uuid)"),
+                {"rid": str(role_id)},
+            )
+        ).first()
+        if role_exists is None:
+            raise NotFoundError("role not found")
         await session.execute(
             text(
-                "SELECT id, can_view, can_create, can_edit, can_approve FROM permissions "
-                "WHERE role_id = CAST(:rid AS uuid) AND module = :module FOR UPDATE"
+                "INSERT INTO permissions (tenant_id, role_id, module, "
+                "can_view, can_create, can_edit, can_approve) VALUES "
+                "(CAST(:tid AS uuid), CAST(:rid AS uuid), :module, "
+                "false, false, false, false) "
+                "ON CONFLICT (tenant_id, role_id, module) DO NOTHING"
             ),
-            {"rid": str(role_id), "module": module.value},
+            {"tid": str(tenant_id), "rid": str(role_id), "module": module.value},
         )
-    ).first()
+        row = (await session.execute(lock_query, lock_params)).first()
     if row is None:
+        # Defensive: the row must exist after materialization; anything
+        # else is refused honestly rather than half-written.
         raise NotFoundError("permission row not found")
     before = {
         "can_view": bool(row[1]),

@@ -1,45 +1,45 @@
-"""collections & recovery worklist tables (P13.16)
+"""collections & recovery worklist tables
 
 Revision ID: 0026
 Revises: 0025
 Create Date: 2026-08-01
 
-Additive revision backing BUILD_PROMPTS P13.16 (+ hardening addenda
+Additive revision backing the build plan (+ hardening addenda
 A1-A7): the minimal recovery workflow behind the prototype's "Initiate
-recovery" action and the P18 arrears worklist. NO money moves in this
+recovery" action and the arrears worklist. NO money moves in this
 prompt — neither table carries an amount, balance or rate column.
 
 Sequencing (v1.2 rules 12/14): this revision claims 0026 with
-down_revision '0025' (the P13.15 track's claim) and merges AFTER it —
-declared in MR !47 at branch time, the !44-after-!40 precedent.
+down_revision '0025' (the track's claim) and merges AFTER it —
+declared in at branch time, the -after- precedent.
 
   * recovery_cases — one workflow row per recovery effort on a loan.
-    - status machine (gate 1.4): open -> (closed_cured |
+    - status machine (concurrency safety): open -> (closed_cured |
       closed_written_off), enforced by the single transition function
       in genesis.domain.recovery; the DB CHECK mirrors the state set.
-    - ONE-OPEN-CASE INVARIANT AT THE DB (addendum A3): the partial
+    - ONE-OPEN-CASE INVARIANT AT THE DB (review addendum): the partial
       UNIQUE index uq_recovery_cases_one_open on (tenant_id, loan_id)
       WHERE status = 'open' is claimed atomically with
-      INSERT ... ON CONFLICT DO NOTHING checked by rowcount (v1.1 rule
+      INSERT... ON CONFLICT DO NOTHING checked by rowcount (v1.1 rule
       5) — a concurrent double-open lands exactly one row; a second
       case for the same loan becomes representable only after the
       first closes (re-entry into NPL after a cure gets a NEW case,
       history preserved).
-    - FM1 DB backstop (open-on-performing unrepresentable):
+    - DB backstop (open-on-performing unrepresentable):
       classification_at_open is CHECK-restricted to the NPL classes
       and days_past_due_at_open must EXCEED 90 — the exact NPL
       boundary of domain/lending.classify (substandard starts at
       dpd > 90). Both are copied from the loan row read under its
       FOR UPDATE lock at open time; they are forensic workflow
       snapshots, not balances.
-    - NAMED CONTRACT — CLASSIFICATION-LADDER MIRROR (review N1): the
+    - NAMED CONTRACT — CLASSIFICATION-LADDER MIRROR: the
       CHECKs above hardcode ('substandard', 'doubtful', 'loss') and
       dpd > 90 in the DATABASE while domain/lending.classify owns the
       thresholds in CODE; the NPL_CLASSES<->classify pin test covers
       the code side only and can never see a stranded DB CHECK. The
       ladder is FIXED today, so the mirror holds by construction —
       but if classification bands ever become tenant-configurable
-      (the P13.7 direction), a SUCCESSOR migration MUST relax or
+      (the direction), a SUCCESSOR migration MUST relax or
       regenerate these CHECKs in the same MR that changes the ladder.
       Changing the ladder without that successor migration is a
       rejected MR: it would make legitimately-classified loans
@@ -52,15 +52,15 @@ declared in MR !47 at branch time, the !44-after-!40 precedent.
       closed-without-timestamp (or open-with-timestamp) row
       unrepresentable.
     - version column: assignment is an optimistic-locked mutation
-      (409 on stale, gate 1.4).
+      (409 on stale, concurrency safety).
 
-  * recovery_case_notes — APPEND-ONLY case history (addendum A2):
+  * recovery_case_notes — APPEND-ONLY case history (review addendum):
     notes are rows, never an UPDATE-in-place of a notes blob; the API
     ships no edit/delete route, so the collections trail stays
     forensic evidence like audit_log. Assignment changes are audited
     with before/after into audit_log (itself append-only).
 
-  * Indexes shipped with the queries that need them (gate 1.3):
+  * Indexes shipped with the queries that need them (scalability):
     - idx_loans_dpd_worklist (tenant_id, days_past_due DESC, id DESC)
       serves the keyset worklist ORDER BY l.days_past_due DESC,
       l.id DESC (loan id is the stable tiebreak — valid because the
@@ -74,7 +74,7 @@ declared in MR !47 at branch time, the !44-after-!40 precedent.
     - idx_recovery_cases_open_scan (tenant_id, id) WHERE status =
       'open' serves the arrears job's cure-close keyset scan.
     - every FK is indexed (loan_id, assignee_id, opened_by; case_id,
-      author_id) per gate 1.3/1.5.
+      author_id) per scalability/1.5.
 
   * RLS enabled AND FORCED with the 0001 tenant_isolation policy
     shape (ADR-0002); both tables join TENANT_TABLES and the leakage
@@ -82,7 +82,7 @@ declared in MR !47 at branch time, the !44-after-!40 precedent.
 
 Downgrade drops both tables and the worklist index. The loud-refusal
 rule (the 0017/0020 precedent) does NOT bind here, documented per the
-P13.16 execution instruction: it protects money-bearing history
+ execution instruction: it protects money-bearing history
 (ledger postings, write-off/correction figures, dividend snapshots).
 recovery_cases and recovery_case_notes hold workflow state and staff
 notes only — no amounts, no balances, no postings; by construction

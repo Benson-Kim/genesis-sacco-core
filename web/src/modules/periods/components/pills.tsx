@@ -3,9 +3,9 @@ import { Pill } from "@genesis/design-system";
 import { PERIOD_STATUS_LABELS, type PeriodStatus } from "../schemas";
 
 /**
- * Period close-state pill (issue #31 batch 4). One copy for the
- * register and the context note (gate 1.1). Never color alone: the
- * pill text carries the meaning (issue #8).
+ * Period close-state pill. One copy for the
+ * register and the context note (reuse-first). Never color alone: the
+ * pill text carries the meaning.
  */
 export function periodStatusPill(status: PeriodStatus): ReactNode {
   switch (status) {

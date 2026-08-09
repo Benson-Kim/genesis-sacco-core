@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * Per-type KYC section form fields (issue #31 batch 3), rendered from
+ * Per-type KYC section form fields, rendered from
  * the specs in kycSchemas.ts — one copy shared by the registration
- * wizard and the drawer's edit form (gate 1.1). Every field goes
- * through the shared FormField primitive (persistent label,
- * aria-describedby/aria-invalid, inline client+server errors — P15
- * blocker (f)).
+ * wizard and the drawer's edit form (reuse-first). Every field goes
+ * through the shared FormField primitive (persistent label, aria-describedby/aria-invalid, inline client+server errors — blocker (f)).
  */
 import { FormField } from "@/modules/forms/FormField";
 import type { FieldErrors } from "@/modules/forms/form-errors";
@@ -20,12 +18,20 @@ function inputProps(spec: KycFieldSpec): Record<string, unknown> {
     case "date":
       return { type: "date" };
     case "email":
-      return { type: "email", maxLength: spec.maxLength };
+      //  item 12 inputmode sweep: email keyboard on touch devices.
+      return { type: "email", inputMode: "email" as const, maxLength: spec.maxLength };
     case "int":
       return { inputMode: "numeric" as const, maxLength: 10 };
     case "amount":
       return { inputMode: "decimal" as const, maxLength: 19 };
     default:
+      //  item 12: the KYC field specs mirror the backend domain
+      // verbatim (no dedicated phone KIND), so the telephone keyboard
+      // rides on the spec KEY — a rendering hint only, zero schema
+      // change.
+      if (spec.key === "phone") {
+        return { type: "tel", inputMode: "tel" as const, maxLength: spec.maxLength };
+      }
       return { maxLength: spec.maxLength };
   }
 }

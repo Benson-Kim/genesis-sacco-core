@@ -1,20 +1,19 @@
-"""bad-debt recovery receipts for written-off loans (issue #21)
+"""bad-debt recovery receipts for written-off loans
 
 Revision ID: 0030
 Revises: 0029
 Create Date: 2026-08-02
 
-Expand-only revision backing issue #21 (the P13.15 A4 follow-up:
-WRITE-OFF IS NOT FORGIVENESS). The 0025 write-once ``loan_write_offs``
+Expand-only revision backing (the follow-up: WRITE-OFF IS NOT FORGIVENESS). The 0025 write-once
+``loan_write_offs``
 snapshot persists the legal claim on the member after the WO- posting
 derecognises the receivable; this revision makes cash received against
 that surviving claim representable:
 
   * transactions.type CHECK expanded (expand-only, the 0020/0025
     precedent) with 'loan_recovery' — the RC- bad-debt recovery
-    receipt: DR cash / CR income.bad_debt_recoveries (the accounting
-    treatment named on issue #21: recovery INCOME, never a reversal of
-    the write-off posting and never a resurrection of the receivable).
+    receipt: DR cash / CR income.bad_debt_recoveries (the accounting treatment named on: recovery
+    INCOME, never a reversal of the write-off posting and never a resurrection of the receivable).
 
   * loan_recoveries — one APPEND-ONLY row per recovery receipt, bound
     to the surviving snapshot claim (write_off_id) so partial
@@ -23,7 +22,7 @@ that surviving claim representable:
       receipts are money history; UPDATE and DELETE raise via the
       0001 forbid_row_mutation() function, even through manual SQL on
       the app role. The recovered total is therefore always
-      reconstructed by summing the append-only rows (v1.1 rule 2) —
+      reconstructed by summing the append-only rows —
       no mutable recovered_total column exists anywhere.
     - OVER-RECOVERY UNREPRESENTABLE (the DB backstop behind the
       service guard): the constraint trigger below re-checks, after
@@ -33,23 +32,23 @@ that surviving claim representable:
       claim to recover against). The application service serialises
       concurrent receipts on the loan_write_offs row FOR UPDATE; this
       trigger is the collusion-resistant backstop for direct SQL.
-    - recovery_case_id records the P13.16 linkage EXPLICITLY (issue
-      #21 item 2): the closed_written_off recovery case the receipt
+    - recovery_case_id records the linkage EXPLICITLY (item 2): the closed_written_off recovery case
+    the receipt
       was collected under, when one exists. Nullable — a write-off
       posted without a recovery case recovers with a NULL linkage.
-    - every FK indexed (gate 1.3/1.5); the (tenant_id, write_off_id,
+    - every FK indexed (scalability/1.5); the (tenant_id, write_off_id,
       created_at, id) index serves both the per-write-off receipts
       keyset page and the recovered-total SUM.
     - RLS enabled AND FORCED with the 0001 tenant_isolation policy
       shape (ADR-0002); the table joins TENANT_TABLES and the leakage
       suite in this MR.
 
-GUARANTEE DISPOSITION (issue #21 item 3, the documented policy
-decision): guarantees behind a written-off loan back the SURVIVING
-claim and stay untouched (the P13.15 A4 posture). They are released
+GUARANTEE DISPOSITION (item 3, the documented policy decision): guarantees behind a written-off loan
+back the SURVIVING
+claim and stay untouched (the A4 posture). They are released
 ONLY by the receipt that recovers the claim IN FULL — full recovery
-discharges the sureties exactly like genuine closure does (the P10
-release hook, reused in the same transaction). No schema is needed for
+discharges the sureties exactly like genuine closure does (the release hook, reused in the same
+transaction). No schema is needed for
 this; it is recorded here because this revision is the recovery
 branch's home.
 

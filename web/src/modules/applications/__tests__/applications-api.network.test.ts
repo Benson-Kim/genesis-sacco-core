@@ -332,4 +332,13 @@ test("issue #30 A2/S2 accept/reject matrix: amount/max_eligible assert the CANON
   // contract violation on both.
   expect(withField("amount", "-1.00")).toBe(false);
   expect(withField("max_eligible", "-1.00")).toBe(false);
+
+  // KEY EXACTNESS (the !70 hygiene flag, #31 batch 11): dropping the
+  // max_eligible key entirely is a contract violation — ApplicationOut
+  // always serializes it (string on the single read, null on listings),
+  // so the field is nullable, NOT optional (falsifiable: soften the
+  // schema back to .optional() and this leg fails).
+  const missing: Record<string, unknown> = { ...applicationOut };
+  delete missing["max_eligible"];
+  expect(appSchemas.applicationSchema.safeParse(missing).success).toBe(false);
 });

@@ -1,6 +1,5 @@
 /**
- * Session-scoped store registry (W58-2 — the !60 F2 class, closed
- * structurally).
+ * Session-scoped store registry (W58-2 — the F2 class, closed structurally).
  *
  * WHY THIS EXISTS: several modules keep small per-tab in-memory
  * registries of state THIS TAB witnessed (the applications
@@ -8,7 +7,7 @@
  * committee voted registry). Any such store MUST die with the session:
  * if it survives an in-tab operator switch, the next operator inherits
  * the previous operator's witnessed attributions and armed affordances
- * — an attribution and least-privilege failure (!60 F2). The first two
+ * — an attribution and least-privilege failure. The first two
  * instances of this class were fixed by hand-wiring each clear function
  * into both teardown paths; this registry makes the wiring structural:
  * a per-tab store registers its clear function ONCE, at module scope,

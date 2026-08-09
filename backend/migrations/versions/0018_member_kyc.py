@@ -1,10 +1,10 @@
-"""member KYC profiles & documents (P13.12)
+"""member KYC profiles & documents
 
 Revision ID: 0018
 Revises: 0017
 Create Date: 2026-08-01
 
-EXPAND-ONLY revision backing BUILD_PROMPTS P13.12 (GAP_ANALYSIS §2.3):
+EXPAND-ONLY revision backing the build plan (GAP_ANALYSIS):
 the prototype's type-specific registration data and per-type document
 checklist, previously not persisted at all.
 
@@ -12,10 +12,10 @@ checklist, previously not persisted at all.
      only purpose is to let the new tables carry a composite FK
      (member_id, member_type) -> members (id, type): the copied
      member_type column that the per-type CHECKs below validate against
-     can never drift from the member row it belongs to (gate 1.5 —
-     consistency in the DATABASE, not just the app).
+     can never drift from the member row it belongs to (data integrity — consistency in the
+     DATABASE, not just the app).
 
-     The FK deliberately carries no ON UPDATE action (review K3):
+     The FK deliberately carries no ON UPDATE action:
      members.type is immutable in the P8 service — no application path
      updates it (update_member writes name/phone/email, the status
      paths write status, and no request body accepts a type field), so
@@ -27,7 +27,7 @@ checklist, previously not persisted at all.
      instead of silently detaching the per-type CHECKs.
 
   2. member_profiles — one row per member (UNIQUE (tenant_id,
-     member_id) is the atomic-claim key, v1.1 rule 5) holding:
+     member_id) is the atomic-claim key) holding:
        * member_type (composite-FK-synced, see 1) with a CHECK that the
          per-type JSONB profile carries EXACTLY the prototype's
          sections (Person bio/contact/employment/next-of-kin; Company
@@ -38,21 +38,19 @@ checklist, previously not persisted at all.
          validation is domain-owned (domain/member_kyc.py); this CHECK
          is the raw-SQL backstop.
        * category — the prototype "Member category" field ("Ordinary");
-         free vocabulary owned by clients (the P12 exit-reason
-         precedent), blank refused.
+         free vocabulary owned by clients (the exit-reason precedent), blank refused.
        * dpa_consent_at — the DPA-2019 consent flag captured at
          registration, timestamped, and IMMUTABLE once set: the
          consent-guard trigger below refuses ANY change to a non-null
          value and refuses DELETE of a row carrying consent, so not
          even raw SQL through the app role can rewrite consent
-         evidence (P13.12 requirement: DB-enforced, not just
-         application-enforced).
-       * version for optimistic locking (gate 1.4).
+         evidence (requirement: DB-enforced, not just application-enforced).
+       * version for optimistic locking (concurrency safety).
 
   3. member_documents — the per-type document checklist as metadata
      rows (type, status, expiry). Binary content is deliberately NOT
      stored: upload is deferred behind a storage-adapter decision
-     (ADR-0003); metadata-only is the recorded P13.12 fallback.
+     (ADR-0003); metadata-only is the recorded fallback.
        * doc_type is CHECKed per member_type against the code-owned
          checklists (prototype docsFor): a logbook can never attach to
          a person, a passport photo never to a vehicle.
@@ -60,8 +58,8 @@ checklist, previously not persisted at all.
          rejected -> received on resubmission) — the transition map is
          domain-owned; the CHECK pins the value set.
        * UNIQUE (tenant_id, member_id, doc_type) is both the atomic
-         checklist claim (v1.1 rule 5) AND the keyset-listing index
-         (gate 1.3): the documents page orders by doc_type within one
+         checklist claim AND the keyset-listing index
+         (scalability): the documents page orders by doc_type within one
          member, so the constraint's index serves every page
          (EXPLAIN-asserted in tests/test_p1312_explain.py).
 

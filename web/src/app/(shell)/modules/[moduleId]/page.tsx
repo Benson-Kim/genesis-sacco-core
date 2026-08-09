@@ -10,7 +10,7 @@ export function generateStaticParams() {
 
 /**
  * Placeholder route per RBAC module, wrapped in the /me/permissions route
- * guard. The real screens are built in P15 on top of this scaffold.
+ * guard. The real screens are built in on top of this scaffold.
  */
 export default async function ModulePage({
   params,
@@ -26,8 +26,8 @@ export default async function ModulePage({
       <Card className={styles.placeholder}>
         <h2 className={styles.title}>{MODULE_LABELS[moduleId]}</h2>
         <p className={styles.body}>
-          This module is scaffolded (route, guard, navigation). Its screens are
-          delivered in P15 — Web admin features.
+          This module is scaffolded (route, guard, navigation). Its screens
+          are on the way.
         </p>
       </Card>
     </RequireModule>

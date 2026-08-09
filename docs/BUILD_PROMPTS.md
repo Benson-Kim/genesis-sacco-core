@@ -12,10 +12,11 @@ Prompt format: ROLE / DEPENDS / PROMPT (give verbatim to the executor) / EXIT.
 
 ## STATUS REGISTER (authoritative — update in the same MR as the work)
 
-Evidence-based as of main @ `34f4ace` (2026-08-06), post-!70–!78
-merges (alembic head on main **0038** as-merged; ONE in-flight claim —
-0039 is the #31 batch-8 MR's (!79), `INCOMING` per this register's own
-convention, never as-built; see the registry deltas below). Legend: ✅ DONE (merged to main, EXIT met) · 🔄 IN PROGRESS
+Evidence-based as of main @ `cf1744e0` (2026-08-07), post-!79–!83
+merges + the batch-10 merge `a507c62` (alembic head on main **0041**
+as-merged — 0039 member dividend payout preference / 0040
+share-transfer maker-checker / 0041 members numeric member_no index;
+NO in-flight migration claim; see the registry deltas below). Legend: ✅ DONE (merged to main, EXIT met) · 🔄 IN PROGRESS
 (open MR cited) · ❌ TODO (no evidence on main). A prompt may not be
 marked ✅ without citing its evidence (migration number, merged MR,
 or test/artifact present on main).
@@ -58,7 +59,7 @@ or test/artifact present on main).
 | P-DIAG.5 | ✅ DONE | sequence-committee-voting / -outbox-dispatch / -snapshot-bind-reverify |
 | P14 | ✅ DONE | !13 merged 2026-08-03; web:* jobs green (incl. spec/client drift + permanent stale-client negative proof) |
 | P14.5 | ✅ DONE | 0035 member identity (!65); test_member_auth / test_member_identity FM1–FM5 + test_idempotency cross-actor MISS; combined-state pipeline 2732748398 green incl. migrate-check up→down→up (823 passed, cov 89.03%) |
-| P15 | 🔄 IN PROGRESS | module batches 1–7 DELIVERED & MERGED, one MR per batch — batch 1 !73 (squash `fc9312a` / merge `4cf3ca3`), batch 2 !72 (`3ca038d` / `9b44170`), batch 3 !74 (`58c7e7a` / `99d2f0c`), batch 4 !75 (`1fb3a2b` / `4ec2cee`), batch 5 !76 (`ad593d5` / `fbbfe42`), batch 6 !77 (`b28e3c0` / `eeb8113`), batch 7 !78 (`b4fb116` / `34f4ace`) — every sha verified in the main git log 2026-08-06; batch 8 (contract follow-ups + adversarial hardening) IN PROGRESS on !79, branch `duo/feature/31-batch8-contract-followups` (carries the in-flight 0039 claim, `INCOMING`) |
+| P15 | 🔄 IN PROGRESS | module batches 1–7 DELIVERED & MERGED, one MR per batch — batch 1 !73 (squash `fc9312a` / merge `4cf3ca3`), batch 2 !72 (`3ca038d` / `9b44170`), batch 3 !74 (`58c7e7a` / `99d2f0c`), batch 4 !75 (`1fb3a2b` / `4ec2cee`), batch 5 !76 (`ad593d5` / `fbbfe42`), batch 6 !77 (`b28e3c0` / `eeb8113`), batch 7 !78 (`b4fb116` / `34f4ace`), batch 8 !79 (`e6f6936` / `66d22cf`, migration 0039), batch 10 — share-transfer maker-checker safeguards + history register, migration 0040 — merged as `a507c62` (squash `adfa0a5`; its MR record did not survive the 2026-08-07 re-import — rule 16: git-log shas are the citation), batch-7 remediation !83 N1–N3 (`b2a7eba` / `961be8b`, migration 0041) — every sha verified in the main git log 2026-08-07; batch 9 !81 — DA-72.2 Kv promotion 29→1 to the design system (`180b229` / `23dfec7`) — and the !82 docs pack (CLAUDE.md + .claude, `5399568` / `cf1744e0`) merged alongside; batch 11 (hygiene round: Kv residuals (o), the !70 nullable flag, this register refresh) IN PROGRESS on !84, branch `duo/feature/31-batch11-hygiene-round` (claims NO migration) |
 | P16 | ❌ TODO | no mobile/ tree |
 | P17 | ❌ TODO | depends P16, P14.5 |
 | P18 | ❌ TODO | depends P16 |
@@ -69,16 +70,16 @@ or test/artifact present on main).
 | P23 | ❌ TODO | — |
 | P24 | ❌ TODO | — |
 
-**Provenance note (rule 16, 2026-08-06):** this repository has been
-re-imported/moved multiple times — most recently to
-`sircle6711932/sacco` (verified 2026-08-06: a transfer, project id
-unchanged, so the 2026-08-06 provenance-pass pipeline ids still
-resolve). Pipeline ids recorded in this register BEFORE a move may no
-longer resolve at the current project id (e.g. the P14.5 row's
-2732748398 now 404s); the git-log evidence (migration numbers, merge/
-squash shas) remains authoritative, and fresh pipeline re-citations
-live in the issue **#31** re-citation tables rather than being
-rewritten here.
+**Provenance note (rule 16, 2026-08-07):** this repository has been
+re-imported/moved multiple times — most recently RE-IMPORTED to
+`urus-group4/sacco`, project id **85226474** (2026-08-07 ~21:00 UTC).
+Pipeline ids recorded in this register or in merged MR descriptions
+BEFORE the re-import are pre-import history and no longer resolve at
+the current project id (e.g. the !79/!81/!83 descriptions' 2740608692 /
+2740658037 / 2740175038); the git-log evidence (migration numbers,
+merge/squash shas) remains authoritative, and fresh pipeline
+re-citations live in the issue **#31** re-citation tables rather than
+being rewritten here.
 
 **P-DIAG drift flip (rule 11, 2026-08-02 — MR !55, docs-only):** the
 P-DIAG.1–.5 rows above remain ✅ with their diagrams reconciled to
@@ -183,6 +184,19 @@ batch-8 MR's (!79) in-flight claim**
 (`0039_member_dividend_payout.py`, `down_revision = '0038'`, declared
 in that MR's description at branch time per rule 14) — `INCOMING`,
 never as-built until !79 merges. The next free number is **0040**.
+
+Registry delta update (2026-08-07, the batch-11 sync): **0039, 0040
+and 0041 are on main** — 0039 via the #31 batch-8 MR !79 (merged
+2026-08-07, merge `66d22cf`, squash `e6f6936`), 0040
+(`0040_share_transfer_maker_checker`, `down_revision = '0039'`) via
+the #31 batch-10 merge `a507c62` (squash `adfa0a5`; no MR record
+resolves at the current project id after the re-import — rule 16:
+git-log evidence) and 0041 (`0041_members_numeric_member_no_index`,
+`down_revision = '0040'`) via the #31 batch-7-remediation MR !83
+(merged 2026-08-07, merge `961be8b`, squash `b2a7eba`); alembic head
+on main is **0041**, re-verified against main's `migrations/versions/`
+at `cf1744e0`. No in-flight claim exists (the open !84, #31 batch 11,
+claims NO migration). The next free number is **0042**.
 
 ### Post-P13 hardening follow-up batch (issues #21/#24/#23) — status
 

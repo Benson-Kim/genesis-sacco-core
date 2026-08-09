@@ -2,18 +2,17 @@ import { z } from "zod";
 import { isoTimestampSchema, moneySchema, signedMoneySchema } from "@/lib/schemas";
 
 /**
- * Zod-validated response boundary for the Member exit module (P15
- * module 7 — the P12 exit & settlement API). Shapes mirror the
+ * Zod-validated response boundary for the Member exit module (module 7 — the exit & settlement API). Shapes mirror the
  * generated client types (components["schemas"]["ExitOut"],
  * ExitStatementOut, ExitVoteResultOut, SettlementOut) — the
  * drift-checked OpenAPI snapshot remains the contract; these schemas
  * only assert it at runtime.
  *
- * MONEY RULE (P15 blocker (a)) — the most money-critical surface of
+ * MONEY RULE — the most money-critical surface of
  * the batch order (terminal settlement: share refunds, loan offsets,
  * fee deductions): every settlement figure (shares_amount,
  * deposits_amount, loan_balance, fees, net_payable, equity) is a
- * SERVER-computed decimal STRING snapshotted under the P12 lock set.
+ * SERVER-computed decimal STRING snapshotted under the lock set.
  * They render verbatim via fmtKes and are NEVER coerced, combined,
  * netted or re-derived client-side — the client does not even verify
  * that net_payable equals its components (that re-verification is the
@@ -39,8 +38,7 @@ export const EXIT_STATUS_LABELS: Record<ExitStatus, string> = {
 };
 
 /** The terminal states: every write affordance is structurally
- * WITHDRAWN for them (the server enforces the transition matrix
- * regardless — gate 1.6). */
+ * WITHDRAWN for them (the server enforces the transition matrix regardless — least disclosure). */
 export const TERMINAL_EXIT_STATUSES: readonly ExitStatus[] = ["settled", "rejected"];
 
 export function isTerminalExitStatus(status: ExitStatus): boolean {
@@ -48,10 +46,8 @@ export function isTerminalExitStatus(status: ExitStatus): boolean {
 }
 
 /**
- * ISO-8601 datetime SHAPE for the exit timestamps (the !63 F-R4
- * lesson) and canonical SERVER money decimal SHAPE (review F-M2):
- * SHARED shapes from `@/lib/schemas` — the single copy (gate 1.1,
- * issue #30 A2/S2); this module was their reference implementation.
+ * ISO-8601 datetime SHAPE for the exit timestamps (an earlier review lesson) and canonical SERVER money decimal SHAPE (review):
+ * SHARED shapes from `@/lib/schemas` — the single copy (reuse-first); this module was their reference implementation.
  *
  * The sign: shares_amount, deposits_amount, loan_balance and fees
  * carry DB CHECK (>= 0) constraints (migrations 0001/0010) and equity
@@ -65,7 +61,7 @@ const timestampSchema = isoTimestampSchema;
 
 /** One exit request with its settlement SNAPSHOT (ExitOut). Every
  * money field is a decimal string in the CANONICAL server shape
- * (F-M2) — a numeric value or a garbage string is a contract
+ *  — a numeric value or a garbage string is a contract
  * violation and is REJECTED. Extra keys are STRIPPED at this
  * boundary. */
 export const exitSchema = z.object({
@@ -73,15 +69,14 @@ export const exitSchema = z.object({
   member_id: z.string(),
   status: exitStatusSchema,
   reason: z.string().nullable(),
-  /** Initiator attribution (issue #30 R4, migration 0036 — the !66
-   * follow-up): the staff principal who requested the exit, as the
-   * BARE user UUID only. Least disclosure (!66 FM-D): never a name or
+  /** Initiator attribution (migration 0036 — the follow-up): the staff principal who requested the exit, as the
+   * BARE user UUID only. Least disclosure: never a name or
    * email — resolving the id stays behind access_control:view
    * server-side, and this client NEVER fetches a directory record for
    * it. NULL is an honest "unattributed" (pre-0036 rows without
-   * unambiguous audit history — FM-B: an actor is never invented). */
+   * unambiguous audit history —: an actor is never invented). */
   requested_by: z.string().nullable(),
-  /** Snapshot components, server-computed under the P12 lock set. */
+  /** Snapshot components, server-computed under the lock set. */
   shares_amount: moneySchema,
   deposits_amount: moneySchema,
   loan_balance: moneySchema,
@@ -98,8 +93,7 @@ export const exitSchema = z.object({
 
 export type ExitRecord = z.infer<typeof exitSchema>;
 
-/** Committee tally after an exit vote (ExitVoteResultOut — the P9
- * voting machinery reused by P12): COUNTS + decision + the record's
+/** Committee tally after an exit vote (ExitVoteResultOut — the P9 voting machinery reused by): COUNTS + decision + the record's
  * resulting status only; the server never discloses who voted which
  * way through this endpoint. `decision` and `status` REJECT unknown
  * vocabulary (W58-4 posture). */
@@ -130,15 +124,15 @@ export type SettlementResult = z.infer<typeof settlementResultSchema>;
 const statementMemberStatusSchema = z.enum(["active", "arrears", "dormant", "exited"]);
 
 /**
- * The canonical P12 exit-statement document (ExitStatementOut,
+ * The canonical exit-statement document (ExitStatementOut,
  * `GET /member-exits/{id}/statement`) — a financial DOCUMENT: every
  * figure and line renders VERBATIM; nothing is recomputed, summed or
  * netted client-side (equity is the SERVER's shares+deposits figure —
  * the client never re-derives it from the components). The CSV/PDF
  * export of this document ships via the reports module
- * (`member_exit_statement`, P13 blocker (k)) — no download affordance
+ * (`member_exit_statement`, blocker (k)) — no download affordance
  * is duplicated here, so no filename is ever derived from a server
- * string (the !63 F-R1 class cannot arise).
+ * string (the class cannot arise).
  */
 export const exitStatementSchema = z.object({
   exit_id: z.string(),
@@ -148,11 +142,10 @@ export const exitStatementSchema = z.object({
   member_status: statementMemberStatusSchema,
   exit_status: exitStatusSchema,
   reason: z.string().nullable(),
-  /** Initiator attribution on the canonical DOCUMENT (issue #30 R4,
-   * !66 follow-up): the same bare staff UUID as ExitOut.requested_by,
+  /** Initiator attribution on the canonical DOCUMENT (follow-up): the same bare staff UUID as ExitOut.requested_by,
    * rendered verbatim via the short-id convention — never resolved to
-   * a name/email (FM-D); NULL stays the honest unattributed line
-   * (FM-B). */
+   * a name/email; NULL stays the honest unattributed line
+   * */
   requested_by: z.string().nullable(),
   shares_amount: moneySchema,
   deposits_amount: moneySchema,
@@ -170,9 +163,8 @@ export const exitStatementSchema = z.object({
 export type ExitStatement = z.infer<typeof exitStatementSchema>;
 
 /**
- * Client-side pre-validation of the exit-request form (the server
- * re-validates and is the enforcer — gate 1.6). NO money field exists
- * anywhere in this input: the P12 contract computes every settlement
+ * Client-side pre-validation of the exit-request form (the server re-validates and is the enforcer — least disclosure). NO money field exists
+ * anywhere in this input: the contract computes every settlement
  * figure server-side under locks and the exit fee comes exclusively
  * from tenant configuration (`extra="forbid"` server-side) — nothing
  * money-shaped can even be sent.
@@ -186,13 +178,9 @@ export const exitRequestEntrySchema = z.object({
 export type ExitRequestEntry = z.infer<typeof exitRequestEntrySchema>;
 
 /**
- * Advisory exit-eligibility facts (ExitEligibilityOut,
- * `GET /member-exits/eligibility/{member_id}` — P15 batch 5, U6: the
- * prototype's vExit() criteria rows, surfaced BEFORE a request is
- * submitted).
+ * Advisory exit-eligibility facts (ExitEligibilityOut, `GET /member-exits/eligibility/{member_id}` —,: the prototype's vExit() criteria rows, surfaced BEFORE a request is submitted).
  *
- * COUNTS AND BOOLEANS ONLY — the contract carries NO amount (least
- * disclosure, gate 1.6), so no money shape exists at this boundary and
+ * COUNTS AND BOOLEANS ONLY — the contract carries NO amount (least disclosure, least disclosure), so no money shape exists at this boundary and
  * nothing here may ever feed fmtKes. KEY-EXACT and REQUIRED: no field
  * in this contract is nullable — a missing key is a contract violation
  * and is REJECTED, never defaulted (nullable-not-optional posture; here
@@ -215,7 +203,7 @@ export const exitEligibilitySchema = z.object({
   live_guarantees_count: z.number().int().nonnegative(),
   open_applications_count: z.number().int().nonnegative(),
   /** Informational, NOT a blocker — active loans net within the
-   * settlement (the P10 early-settlement rule). */
+   * settlement (the early-settlement rule). */
   active_loans_count: z.number().int().nonnegative(),
   unresolved_writeoff_claim: z.boolean(),
   advisory_eligible: z.boolean(),

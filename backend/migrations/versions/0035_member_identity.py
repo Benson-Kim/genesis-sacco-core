@@ -1,31 +1,31 @@
-"""member identity: credential link table + principal columns (P14.5)
+"""member identity: credential link table + principal columns
 
 Revision ID: 0035
 Revises: 0034
 Create Date: 2026-08-04
 
-Additive revision backing BUILD_PROMPTS P14.5 (member identity &
+Additive revision backing the build plan (member identity &
 member-facing auth), claimed as 0035 with down_revision '0034' in the
-MR description at branch time (v1.2 rule 14; head 0034 re-verified
-against main at branch time).
+MR description at branch time (the migration-declaration rule; head 0034 re-verified against
+main at branch time).
 
   * member_credentials — the explicit, audited member <-> credential
-    link that RETIRES the !29 interim users.email <-> members.email
-    identity bridge (!29 F3/F4). One row per issued credential;
+    link that RETIRES the interim users.email <-> members.email
+    identity bridge. One row per issued credential;
     revocations are recorded, never deleted (identity history stays
     forensic like audit_log).
-    - THE LINK IS THE AUTHORITY (P14.5 FM2): member authentication and
+    - THE LINK IS THE AUTHORITY: member authentication and
       every member-principal authorization resolve through this table;
       rewriting users.email or members.email redirects nothing.
-    - Atomic claims (v1.1 rule 5): partial UNIQUE
+    - Atomic claims: partial UNIQUE
       uq_member_credentials_email_active (tenant_id, email) WHERE
-      status = 'active' is claimed with INSERT ... ON CONFLICT DO
+      status = 'active' is claimed with INSERT... ON CONFLICT DO
       NOTHING checked by rowcount — a concurrent double-link of the
       same email lands exactly one row. One active credential per
       member is enforced by uq_member_credentials_member_active,
-      checked under the member row lock (link mutations lock the
-      member row — chain ROOT, lock-order.md §3).
-    - FM3 (link takeover): there is NO self-service mutation path;
+      checked under the member row lock (link mutations lock the member row — chain ROOT,
+      lock-order.md).
+    - (link takeover): there is NO self-service mutation path;
       creating/revoking a link is an audited admin mutation
       (member_identity:* permissions). Moving an email to another
       member requires revoke + create — two audited mutations.
@@ -34,26 +34,25 @@ against main at branch time).
       tests/test_p145_explain.py -> backend/perf/explain_p145.txt.
 
   * otp_challenges / refresh_tokens — the P3 machinery EXPANDED to a
-    second principal, not forked (gate 1.1): nullable
+    second principal, not forked (reuse-first): nullable
     member_credential_id, user_id relaxed to nullable, and an
     exactly-one-principal XOR CHECK. Existing staff rows satisfy the
     CHECK unchanged (user set, credential NULL).
 
-  * guarantees — consent becomes an act of a principal (P14.5 FM4):
+  * guarantees — consent becomes an act of a principal:
     - consented_by_credential_id: the member principal that consented
       (the P9 consent contract, now first-class);
     - consent_attested_by + consent_reference: the explicit
-      STAFF-ATTESTED OVERRIDE (its own audit category
-      guarantee.consent_override and its own permission
-      member_identity:approve — the !29 substitution-consent lesson);
+      STAFF-ATTESTED OVERRIDE (its own audit category guarantee.consent_override and its own
+      permission member_identity:approve — the substitution-consent lesson);
       ck_guarantees_attested_consent_reference makes an attestation
       without cited evidence unrepresentable.
     - guarantee_consent_requires_principal (constraint trigger, the
       0028/0031/0034 DDL-guard precedent): any row ENTERING status
       'active' (INSERT or UPDATE) without a member principal OR a
       staff attestation is refused AT THE DATABASE — a consent written
-      without a principal fails the DB constraint (FM4, falsifiable by
-      dropping the trigger). Rows already active (pre-P14.5 history)
+      without a principal fails the DB constraint (falsifiable by dropping the trigger). Rows
+      already active (earlier history)
       are untouched: the trigger guards transitions, never rewrites.
 
   * RLS enabled AND FORCED with the 0001 tenant_isolation policy shape

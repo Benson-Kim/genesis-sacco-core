@@ -19,7 +19,7 @@
     gap: 6px;
 }
 
-/* Persistent label (issue #8 — never placeholder-as-label). */
+/* Persistent label (never placeholder-as-label). */
 .filterLabel {
     font-size: 11px;
     text-transform: uppercase;
@@ -36,7 +36,7 @@
     background: var(--card);
 }
 
-/* Segmented control per issue #8 (≤5 options — no hidden dropdown). */
+/* Segmented control per (≤5 options — no hidden dropdown). */
 .segmentButton {
     border: none;
     background: transparent;
@@ -97,24 +97,6 @@
     color: var(--sub);
 }
 
-.input,
-.select {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.input:focus-visible,
-.select:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
-}
-
 .actions {
     display: flex;
     justify-content: flex-end;
@@ -122,7 +104,7 @@
     margin-top: 16px;
 }
 
-/* --- KYC surfaces (issue #31 batch 3) ------------------------------- */
+/* --- KYC surfaces ------------------------------- */
 /* Component-level form/list layout only; page-level grids come from the
    shared modules/layout/grid.module.css — no private page grid here. */
 

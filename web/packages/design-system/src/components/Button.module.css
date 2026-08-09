@@ -1,4 +1,4 @@
-/* Mirrors prototype .btn / .btn.p / .btn.g */
+/* Mirrors prototype.btn /.btn.p /.btn.g */
 .btn {
   border: 1.5px solid var(--line);
   background: var(--card);
@@ -9,9 +9,9 @@
   font-size: 14px;
   cursor: pointer;
   font-family: inherit;
-  /* 44px minimum interactive target (issue #8). */
+  /* 44px minimum interactive target. */
   min-height: var(--touch-target-min);
-  /* Labels never wrap to a second line (issue #8). */
+  /* Labels never wrap to a second line. */
   white-space: nowrap;
 }
 

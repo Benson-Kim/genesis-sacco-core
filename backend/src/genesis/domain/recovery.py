@@ -1,22 +1,22 @@
-"""Recovery-case domain: status machine (P13.16, gate 1.4; addendum A1).
+"""Recovery-case domain: status machine (concurrency safety; addendum).
 
 Zero I/O. Exactly one transition function is the gatekeeper for every
 case status change (the members/loans/users 1.4 pattern): the only
 writer is application/recovery, and every path — staff disposition or
-job auto-close — must pass through :func:`transition`. Illegal moves
+job auto-close — must pass through:func:`transition`. Illegal moves
 raise.
 
-Assignment and notes are NON-STATE mutations (addendum A1): they never
+Assignment and notes are NON-STATE mutations (review addendum): they never
 touch ``status`` and therefore never pass through this map — assignment
 is an optimistic-locked column write, notes are append-only rows.
 
-Issue #23 (the !47 review N2 dispositions) widens the machine — the
+Issue (the dispositions) widens the machine — the
 0033 migration regenerates the mirroring DB CHECKs in the same MR per
 0026's named-contract discipline:
 
   * LIVE postures beyond ``open``: ``irrecoverable_pending_write_off``
-    (the officer concluded recovery is impossible; the committee
-    write-off has not yet landed on the loan — P13.15/!46 linkage) and
+    (the officer concluded recovery is impossible; the committee write-off has not yet landed on the
+    loan — / linkage) and
     ``disputed`` (the member contests the arrears; the case pauses
     without pretending to be workable). Both are entered from ``open``
     and can return to ``open`` — a posture change is an auditable
@@ -25,7 +25,7 @@ Issue #23 (the !47 review N2 dispositions) widens the machine — the
   * ``closed_restructured`` — terminal: the loan was restructured and
     the case's premise no longer holds (staff-attested).
   * Every terminal state stays terminal: a cured-then-re-defaulting
-    loan gets a NEW case (history preserved, addendum A6), never a
+    loan gets a NEW case (history preserved, review addendum), never a
     reopened one. Loan facts close from ANY live posture: the arrears
     job's auto-close pass moves a paused case to ``closed_cured`` /
     ``closed_written_off`` when the loan cures or is written off —
@@ -35,7 +35,7 @@ Issue #23 (the !47 review N2 dispositions) widens the machine — the
 WHICH targets a STAFF disposition may set is application policy
 (``STAFF_DISPOSITION_TARGETS`` — cure/write-off closes are job-only,
 loan-fact outcomes); the legality of the move itself has exactly one
-owner: :func:`transition`.
+owner:func:`transition`.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ LIVE_STATUSES: frozenset[RecoveryCaseStatus] = frozenset(
 
 #: Terminal outcomes; ``closed_at`` is set iff the case is here (0033
 #: ck_recovery_cases_closed_at) and the ONE post-closure outcome note
-#: (issue #23 N3) is accepted only here.
+#:  is accepted only here.
 TERMINAL_STATUSES: frozenset[RecoveryCaseStatus] = frozenset(
     {
         RecoveryCaseStatus.CLOSED_CURED,
@@ -74,7 +74,7 @@ TERMINAL_STATUSES: frozenset[RecoveryCaseStatus] = frozenset(
     }
 )
 
-#: The two live PAUSE postures (!53 review F2): a staff disposition
+#: The two live PAUSE postures: a staff disposition
 #: INTO either must carry a contemporaneous reason, captured into the
 #: audit payload by the application service — workflow metadata only,
 #: never a money parameter.
@@ -85,7 +85,7 @@ PAUSE_STATUSES: frozenset[RecoveryCaseStatus] = frozenset(
     }
 )
 
-#: Targets a STAFF disposition may request (application policy, FM2):
+#: Targets a STAFF disposition may request (application policy):
 #: the two pauses, the resume, and the restructure close.
 #: ``closed_cured`` / ``closed_written_off`` are deliberately absent —
 #: they are LOAN-FACT outcomes only the arrears job's auto-close pass
@@ -101,7 +101,7 @@ STAFF_DISPOSITION_TARGETS: frozenset[RecoveryCaseStatus] = frozenset(
 
 
 class InvalidRecoveryTransitionError(Exception):
-    """Raised when a case status transition is not allowed (gate 1.4)."""
+    """Raised when a case status transition is not allowed (concurrency safety)."""
 
 
 _ALLOWED: dict[RecoveryCaseStatus, frozenset[RecoveryCaseStatus]] = {
@@ -137,9 +137,9 @@ _ALLOWED: dict[RecoveryCaseStatus, frozenset[RecoveryCaseStatus]] = {
 
 
 def transition(current: RecoveryCaseStatus, target: RecoveryCaseStatus) -> RecoveryCaseStatus:
-    """Validate a case transition; raise on any illegal move (gate 1.4).
+    """Validate a case transition; raise on any illegal move (concurrency safety).
 
-    Self-transitions are illegal (the P13.5 precedent): a no-op close
+    Self-transitions are illegal (the precedent): a no-op close
     would bump versions and emit audit/outbox noise without a state
     change — idempotent re-runs are achieved by scanning only LIVE
     cases whose loan facts warrant a close, never by tolerating

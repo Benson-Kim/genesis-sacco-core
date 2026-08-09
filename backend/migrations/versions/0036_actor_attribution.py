@@ -1,28 +1,27 @@
-"""actor attribution: created_by on loan_applications and transactions (issue #30)
+"""actor attribution: created_by on loan_applications and transactions
 
 Revision ID: 0036
 Revises: 0035
 Create Date: 2026-08-04
 
-Additive revision backing the issue-#30 audit contract follow-ups
-(closing-summary risk 4; Hat 1 findings R3/R4), claimed as 0036 with
-down_revision '0035' in MR !66's description and the BUILD_PROMPTS
-registry at branch time (v1.2 rule 14; head 0034 + the single in-flight
-0035 claim (!65) verified — declared merge order: !65 first, then !66).
+Additive revision backing the audit contract follow-ups
+(closing-summary risk 4; Hat 1), claimed as 0036 with
+down_revision '0035' in its MR description and the build plan
+registry at branch time (the migration-declaration rule; head 0034 + the single in-flight 0035
+claim verified — declared merge order: first, then).
 
   * loan_applications.created_by — the acting principal that INSERTed
     the application, recorded at creation from then on. Powers the R4
-    disbursement separation-of-duties check (the initiator of a loan
-    application cannot post its disbursement — the P12 self-settle
-    mirror) and rides the ApplicationOut read model as the bare staff
+    disbursement separation-of-duties check (the initiator of a loan application cannot post its
+    disbursement — the self-settle mirror) and rides the ApplicationOut read model as the bare staff
     UUID (least disclosure; resolving it stays behind access_control).
 
   * transactions.created_by — the acting principal of every ledger
-    posting, recorded at INSERT in ledger._post (R3/Hat 2 A3). NULL for
+    posting, recorded at INSERT in ledger._post (R3/Hat 2). NULL for
     system/job postings (interest accrual, dormancy sweeps) — a NULL
     actor is an honest "posted by the system", never a fabricated
     principal. The 0004 append-only triggers pin the column immutable
-    the moment the row commits (FM-C): attribution can never be
+    the moment the row commits: attribution can never be
     rewritten after the fact.
 
   * Backfill — ONLY from each row's own in-transaction audit record
@@ -32,17 +31,16 @@ registry at branch time (v1.2 rule 14; head 0034 + the single in-flight
     on (tenant_id, entity, entity_id) via idx_audit_entity (0001), and
     ONLY where exactly one distinct non-NULL actor exists for the row
     (HAVING count(DISTINCT actor_id) = 1) — an ambiguous or actorless
-    history stays NULL. Attribution is never invented (FM-B).
+    history stays NULL. Attribution is never invented.
     transactions is fenced append-only (0004), so its backfill runs
-    between ALTER TABLE ... DISABLE/ENABLE TRIGGER inside this single
+    between ALTER TABLE... DISABLE/ENABLE TRIGGER inside this single
     migration transaction — the fence is provably back in force at
-    commit (FM-C; DDL and DML are transactional in PostgreSQL, so a
-    failure anywhere rolls back BOTH the backfill and the trigger
-    toggle). Migrations run as the schema owner, so forced RLS does not
+    commit (FM-C; DDL and DML are transactional in PostgreSQL, so a failure anywhere rolls back BOTH
+    the backfill and the trigger toggle). Migrations run as the schema owner, so forced RLS does not
     fence the backfill (the 0011 precedent); the tenant equality in
     each join keeps attribution tenant-correct regardless.
 
-  * NO new indexes (v1.1 rule; EXPLAIN posture documented in !66): no
+  * NO new indexes (v1.1 rule; EXPLAIN posture documented in): no
     read path filters or orders by created_by — the SoD check reads the
     column under the application row lock already taken by PK, the read
     models only ADD the column to their SELECT lists (existing keyset
@@ -57,7 +55,7 @@ registry at branch time (v1.2 rule 14; head 0034 + the single in-flight
 Downgrade REFUSES LOUDLY (the 0017/0020/0035 precedent) when any
 recorded attribution exists: silently dropping WHO initiated an
 application or posted a ledger transaction would recreate the very
-R3/R4 audit gap this revision closes, as data loss. On a clean
+ audit gap this revision closes, as data loss. On a clean
 expansion (migrate-check's up -> down -> up) it reverses exactly.
 """
 

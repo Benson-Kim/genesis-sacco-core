@@ -2,18 +2,15 @@ import { z } from "zod";
 import { isoTimestampSchema } from "@/lib/schemas";
 
 /**
- * Zod-validated response boundary for the Recovery module (P15
- * follow-on batch 1, issue #31 — the P13.16 collections & recovery
- * worklist API). Shapes mirror the generated client types
+ * Zod-validated response boundary for the Recovery module (follow-on, — the collections & recovery worklist API). Shapes mirror the generated client types
  * (components["schemas"]["CaseOut"], WorklistRowOut, WorklistOut,
  * NoteOut, NotesOut) — the drift-checked OpenAPI snapshot remains the
  * contract; these schemas only assert it at runtime.
  *
- * MONEY (blocker (a)) — deliberately ABSENT: the P13.16 contract is
- * LEAST DISCLOSURE by design (addendum A5): the worklist and case
+ * MONEY (blocker (a)) — deliberately ABSENT: the contract is
+ * LEAST DISCLOSURE by design (addendum): the worklist and case
  * records expose workflow fields, days-past-due and the classification
- * pill only — NO balance, penalty or provision figures (those live
- * behind the P10 loan-detail endpoints, for the entitled). No money
+ * pill only — NO balance, penalty or provision figures (those live behind the loan-detail endpoints, for the entitled). No money
  * schema exists in this module because no money field exists on the
  * wire; a money-shaped addition here would be a contract violation,
  * not an improvement.
@@ -21,7 +18,7 @@ import { isoTimestampSchema } from "@/lib/schemas";
  * TIMESTAMPS: every SLA timestamp (opened_at / first_assigned_at /
  * closed_at) is SERVER-written (addendum A7 — request bodies are
  * extra="forbid" and carry no time fields) and feeds fmtDateTime;
- * garbage is REJECTED at this boundary (the !63 F-R4 lesson).
+ * garbage is REJECTED at this boundary (an earlier review lesson).
  */
 
 /** Mirrors the backend RecoveryCaseStatus enum (domain/recovery.py /
@@ -62,9 +59,7 @@ export function isLiveCaseStatus(status: CaseStatus): boolean {
 }
 
 /**
- * DECLARED worklist filter vocabularies (issue #31 ledger (a).3 — the
- * human-authorized read-contract expansion; until it, the worklist
- * declared NO filter params and no filter UI existed). Code-owned
+ * DECLARED worklist filter vocabularies (the human-authorized read-contract expansion; until it, the worklist declared NO filter params and no filter UI existed). Code-owned
  * values ONLY, mirroring the contract's declared params exactly:
  * `status` narrows to one LIVE posture — exactly the backend
  * WorklistStatusParam Literal (the jest suite pins this array to
@@ -86,20 +81,18 @@ export type WorklistStatusFilter = (typeof WORKLIST_STATUS_FILTERS)[number];
 
 export type WorklistClass = z.infer<typeof worklistClassSchema>;
 
-/** The two staff PAUSE targets (!53 F2 — a reason is REQUIRED on the
- * record for both). */
+/** The two staff PAUSE targets (a reason is REQUIRED on the record for both). */
 export const PAUSE_TARGETS = ["disputed", "irrecoverable_pending_write_off"] as const;
 export type PauseTarget = (typeof PAUSE_TARGETS)[number];
 
 /**
- * The STAFF-settable disposition targets (issue #23 N2 — the code-owned
- * set): pause as disputed / irrecoverable-pending-write-off (reason
+ * The STAFF-settable disposition targets (the code-owned set): pause as disputed / irrecoverable-pending-write-off (reason
  * required), resume to open, or close as restructured (THE outcome
  * note required, written atomically). closed_cured and
  * closed_written_off are deliberately ABSENT: loan facts close those
  * (the nightly arrears pass) — the officer can never hand-declare a
  * cure or a write-off, and this client never offers what the API
- * refuses (409, FM2).
+ * refuses (409).
  */
 export const STAFF_DISPOSITION_TARGETS = [
   "disputed",
@@ -128,7 +121,7 @@ export const WORKLIST_CLASSES = ["normal", "watch", "substandard", "doubtful", "
 export const worklistClassSchema = z.enum(WORKLIST_CLASSES);
 
 /**
- * One recovery case (CaseOut). ATTRIBUTION (the !70 pattern):
+ * One recovery case (CaseOut). ATTRIBUTION (the pattern):
  * opened_by is REQUIRED server truth; assignee_id is nullable (never
  * optional). Both render under LEAST DISCLOSURE as the bare staff UUID
  * via the short-id convention — never a name or email; this client
@@ -151,9 +144,9 @@ export const caseSchema = z.object({
 
 export type CaseRecord = z.infer<typeof caseSchema>;
 
-/** One worklist row (WorklistRowOut — least disclosure, addendum A5):
+/** One worklist row (WorklistRowOut — least disclosure, addendum):
  * workflow fields, days-past-due and the classification pill only —
- * NO balances (the P10 loan screens carry those, for the entitled). */
+ * NO balances (the loan screens carry those, for the entitled). */
 export const worklistRowSchema = z.object({
   case_id: z.string(),
   loan_id: z.string(),
@@ -161,7 +154,7 @@ export const worklistRowSchema = z.object({
   days_past_due: z.number().int(),
   classification: worklistClassSchema,
   assignee_id: z.string().nullable(),
-  /** Addendum A4: TRUE when the assignee was suspended AFTER
+  /** Addendum: TRUE when the assignee was suspended AFTER
    * assignment — the case stays visible, flagged, never orphaned. */
   assignee_unassignable: z.boolean(),
   opened_at: isoTimestampSchema,
@@ -171,10 +164,10 @@ export const worklistRowSchema = z.object({
 
 export type WorklistRow = z.infer<typeof worklistRowSchema>;
 
-/** One case note (NoteOut — append-only, addendum A2: no edit/delete
+/** One case note (NoteOut — append-only, addendum: no edit/delete
  * route exists; the file is evidence). author_id is REQUIRED server
  * truth, rendered under least disclosure. is_outcome marks THE single
- * post-closure outcome note (issue #23 N3). */
+ * post-closure outcome note. */
 export const noteSchema = z.object({
   id: z.string(),
   author_id: z.string(),
@@ -186,8 +179,7 @@ export const noteSchema = z.object({
 export type CaseNote = z.infer<typeof noteSchema>;
 
 /**
- * Client-side pre-validation of the entry forms (the server
- * re-validates and is the enforcer — gate 1.6). NO money field exists
+ * Client-side pre-validation of the entry forms (the server re-validates and is the enforcer — least disclosure). NO money field exists
  * anywhere in this module's inputs, and NO timestamp can even be sent
  * (addendum A7).
  */
@@ -216,7 +208,7 @@ export const noteEntrySchema = z.object({
     .max(2000, "Keep the note under 2000 characters."),
 });
 
-/** Target-paired disposition entry (!53 F1/F2): the reason is required
+/** Target-paired disposition entry: the reason is required
  * for the two pause targets, the note for the restructure close;
  * resume carries neither. The server re-validates the pairing (422 on
  * mismatch) and the move's legality (409 via the single gatekeeper). */

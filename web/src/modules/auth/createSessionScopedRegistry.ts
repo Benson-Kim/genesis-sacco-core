@@ -1,9 +1,7 @@
 /**
- * Shared per-tab session-scoped registry primitive (issue #30 finding
- * S3 — the deferred consolidation assigned to the first issue-#31
- * batch landing after the corrections and dividends consoles).
+ * Shared per-tab session-scoped registry primitive (the deferred consolidation assigned to the first issue- batch landing after the corrections and dividends consoles).
  *
- * WHY ONE COPY (gate 1.1): the "per-tab witnessed map, torn down with
+ * WHY ONE COPY (reuse-first): the "per-tab witnessed map, torn down with
  * the session" idea existed as near-identical per-module copies (the
  * applications, exits and corrections maker registries and voted
  * registries). Each copy re-implemented the same three obligations:
@@ -11,7 +9,7 @@
  *  1. module-scope registration with the session-scoped store
  *     registry, so BOTH teardown paths — the query-path 401 dual-cache
  *     teardown (`app/providers.tsx`) and explicit sign-out
- *     (`modules/auth/api.ts`) — clear it (W58-2, the !60 F2 class);
+ *     (`modules/auth/api.ts`) — clear it (W58-2, the F2 class);
  *  2. plain synchronous reads for the SoD fallback witness consumed by
  *     MakerCheckerPanel-bearing screens;
  *  3. a `useSyncExternalStore`-backed reactive read so a spent
@@ -26,7 +24,7 @@
  * Behaviour contract (identical to the copies this replaces):
  * - per-tab and in-memory — it cannot see acts by another operator or
  *   in another tab; the ENFORCED invariants remain server-side
- *   regardless (gate 1.6);
+ *   regardless (least disclosure);
  * - `clear` is registered at construction: a registry cannot exist
  *   without dying on session teardown (teardown by construction);
  * - `get` NEVER invents a value — an unwitnessed key is `undefined`;

@@ -3,9 +3,8 @@ import { api } from "@/lib/api";
 import { dashboardSummarySchema, type DashboardSummary } from "./schemas";
 
 /**
- * Dashboard summary over the GENERATED client (no hand-written fetch —
- * MASTER_PROMPT §2.3). Ungranted slices arrive omitted; the server is
- * the authorizer of every figure (gate 1.6).
+ * Dashboard summary over the GENERATED client (no hand-written fetch — the house doctrine). Ungranted slices arrive omitted; the server is
+ * the authorizer of every figure (least disclosure).
  */
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
     const { data, error, response } = await api.GET("/dashboard/summary");

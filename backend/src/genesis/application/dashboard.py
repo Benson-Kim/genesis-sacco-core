@@ -1,37 +1,36 @@
-"""Dashboard aggregates (P13.9): the remaining prototype dashboard figures.
+"""Dashboard aggregates: the remaining prototype dashboard figures.
 
 GET /dashboard/summary serves: total deposits + total share capital,
 active-member count and members-by-type, the monthly deposits-vs-
 disbursements series, applications-pipeline counts per stage, guarantor
-aggregates (live guarantees, total pledged, per-guarantor free capacity
-via live_pledged_total — gate 1.1, no second capacity implementation),
-and the P10 loan-book slice via loans_service.portfolio_summary (reuse,
+aggregates (live guarantees, total pledged, per-guarantor free capacity via live_pledged_total —
+reuse-first, no second capacity implementation),
+and the loan-book slice via loans_service.portfolio_summary (reuse,
 never a fork).
 
 Every figure is a SQL aggregate — never a Python loop over result rows
 (the only loops here run over the code-owned month keys and the
 config-capped guarantor list). Every read carries an explicit bound
-tenant_id predicate on top of forced RLS (v1.1 rule 4; issue #17), all
+tenant_id predicate on top of forced RLS, all
 values travel as bound parameters (rule 6), and the window/list bounds
-are server-resolved from settings with hard caps (rule 1; gate 1.3).
+are server-resolved from settings with hard caps (rule 1; scalability).
 
 Consistency model (documented as ADVISORY, in contrast to the binding
 gates): this module takes NO row locks — no FOR UPDATE, no FOR SHARE,
 no advisory locks — and adds no lock-graph edges. The router reads all
-slices from ONE REPEATABLE READ snapshot (tenant_snapshot_session, the
-P13 blocker-h precedent), so the composite is internally consistent as
+slices from ONE REPEATABLE READ snapshot (tenant_snapshot_session, the blocker-h precedent), so the
+composite is internally consistent as
 of one MVCC snapshot but may be stale the instant it is returned. The
 binding figures stay where they are computed under the documented lock
 chains: pledge capacity under the P9 guarantor deposit-account lock,
-withdrawable funds under the P11 account lock, settlement quotes under
-the P12 chain. No caching or memoization layer exists here by design
+withdrawable funds under the account lock, settlement quotes under
+the chain. No caching or memoization layer exists here by design
 (a tenant-shared cache is a recurring cross-tenant-poisoning incident
 class); every response is a fresh point-in-time read.
 
-Month bucketing convention (failure mode FM4): transactions.occurred_at
-is timestamptz written in UTC (application.ledger._post stamps
-datetime.now(UTC); the P11 deposit-interest and P13.11 dividend jobs
-pin period-end postings to the period's last day in UTC, e.g.
+Month bucketing convention (failure mode): transactions.occurred_at
+is timestamptz written in UTC (application.ledger._post stamps datetime.now(UTC); the
+deposit-interest and dividend jobs pin period-end postings to the period's last day in UTC, e.g.
 datetime.combine(fy.end, time.max, UTC)). The series therefore buckets
 by UTC calendar month — date_trunc('month', occurred_at AT TIME ZONE
 'UTC') — exactly matching the NPL-trend month cutoffs
@@ -41,8 +40,8 @@ as_of.astimezone(UTC)). A leg at
 land in different buckets; the FY-end pinned postings land inside the
 FY-end month.
 
-Ledger-drift posture (failure mode FM3/FM1): deposit and share-capital
-totals aggregate the account balance columns — the documented P8/P11
+Ledger-drift posture (failure mode /): deposit and share-capital
+totals aggregate the account balance columns — the documented P8/
 source of truth, maintained under the account row lock in the SAME
 transaction as their balanced ledger postings. The monthly series is
 reconstructed from the transactions ledger itself (reversal rows carry
@@ -74,20 +73,20 @@ from genesis.domain.money import to_cents
 from genesis.domain.rbac import Module
 from genesis.settings import get_settings
 
-#: Hard caps on the server-resolved bounds (gate 1.3): even a
+#: Hard caps on the server-resolved bounds (scalability): even a
 #: misconfigured environment can never widen a scan past these.
 MAX_SERIES_MONTHS = 24
 MAX_GUARANTOR_ROWS = 100
-#: Per-KPI trend window (#31 batch 8, ledger (k)): the same
+#: Per-KPI trend window: the same
 #: server-resolved dashboard_series_months drives it, additionally
 #: hard-capped here — the route accepts NO parameters, so nothing is
 #: caller-tunable beyond this documented bound.
 KPI_TREND_MAX_MONTHS = 12
 
-# --- SQL (module-level so the P13.9 EXPLAIN capture asserts each plan) ---
+# --- SQL (module-level so the EXPLAIN capture asserts each plan) ---
 
 #: Total member deposits: SUM over the balance column maintained by the
-#: P8/P11 account services (see module docstring for the drift posture).
+#: P8/ account services (see module docstring for the drift posture).
 #: Served by the deposit_accounts (tenant_id, member_id) UNIQUE index.
 DEPOSIT_TOTAL_SQL = (
     "SELECT COALESCE(SUM(balance), 0) FROM deposit_accounts WHERE tenant_id = CAST(:tid AS uuid)"
@@ -134,7 +133,7 @@ PIPELINE_SQL = (
 )
 
 #: Live-guarantee totals over the SAME status set the enforcement path
-#: uses (LIVE_GUARANTEE_STATUSES via live_guarantee_params — FM5).
+#: uses (LIVE_GUARANTEE_STATUSES via live_guarantee_params).
 #: Served by idx_guarantees_guarantor (0001).
 GUARANTEE_TOTALS_SQL = (
     "SELECT COUNT(*), COALESCE(SUM(amount), 0), COUNT(DISTINCT guarantor_member_id) "
@@ -144,7 +143,7 @@ GUARANTEE_TOTALS_SQL = (
 
 #: Candidate guarantors for the per-guarantor slice, biggest exposure
 #: first, hard-capped. The grouped SUM only ORDERS the candidates; the
-#: reported pledged figure comes from live_pledged_total (gate 1.1).
+#: reported pledged figure comes from live_pledged_total (reuse-first).
 #: LEFT JOIN: a member without a deposit account reports balance 0.
 TOP_GUARANTORS_SQL = (
     "SELECT g.guarantor_member_id, m.member_no, m.name, "
@@ -159,22 +158,22 @@ TOP_GUARANTORS_SQL = (
 )
 
 #: Active-member count AS OF a past cutoff, reconstructed from
-#: STATUS-TRANSITION FACTS (#31 batch 8, ledger (k)) — never from the
+#: STATUS-TRANSITION FACTS — never from the
 #: mutable members.status column alone, which only knows the present:
-#: a member counts as active at :d_next when they existed
-#: (created_at < :d_next — members are created ACTIVE, the P8
+#: a member counts as active at:d_next when they existed
+#: (created_at <:d_next — members are created ACTIVE, the P8
 #: invariant application/members.create_member hardcodes) and their
 #: LATEST immutable 'member.status' audit fact before the cutoff (the
 #: single action every status writer records: manual transitions,
-#: the P12 exit settlement, the P13.13 dormancy job and the deposit
+#: the exit settlement, the dormancy job and the deposit
 #: reactivation) lands them on 'active' — or no transition fact
 #: exists yet. audit_log is append-only (0001 trigger), so these
-#: facts cannot be rewritten (§1.5 — the snapshot-basis exploit class
+#: facts cannot be rewritten (the snapshot-basis exploit class
 #: does not apply to a fact log). The correlated probe is served by
 #: idx_audit_entity (tenant_id, entity, entity_id — 0001); the
 #: driving member scan by the tenant-leading members indexes (0001).
 #: Every value is a bound parameter; explicit tenant predicates on
-#: BOTH relations double the RLS fence (gate 1.6).
+#: BOTH relations double the RLS fence (least disclosure).
 MEMBERS_ACTIVE_AT_SQL = (
     "SELECT COUNT(*) FROM members m "
     "WHERE m.tenant_id = CAST(:tid AS uuid) "
@@ -231,7 +230,7 @@ class GuarantorCapacity:
     member_id: uuid.UUID
     member_no: str
     name: str
-    #: Authoritative live pledge total — live_pledged_total (gate 1.1).
+    #: Authoritative live pledge total — live_pledged_total (reuse-first).
     pledged_total: Decimal
     #: Advisory: deposit balance minus pledged_total, read WITHOUT the
     #: P9 locks. The pledge endpoint recomputes under the lock chain.
@@ -246,23 +245,23 @@ class GuarantorAggregates:
     guarantors: tuple[GuarantorCapacity, ...]
 
 
-# --- Per-KPI trend series (#31 batch 8, ledger (k)) -----------------------
+# --- Per-KPI trend series -----------------------
 #
-# The contract follow-up recorded by the human review of !76 / #32: the
+# The contract follow-up recorded by the human review of /: the
 # PAR-30 and members KPI cards shipped WITHOUT sparklines because the
 # contract carried trend series only for the monthly deposit /
 # disbursement flows. This slice serves bounded per-KPI monthly series,
-# SERVER-computed end-to-end (the #32 route-(a) precedent):
+# SERVER-computed end-to-end (the route-(a) precedent):
 #
 #   * PAR-30 points are RECOMPUTED from posting-history truth per
 #     month-end cutoff — reconstruct_month (the single reconstruction
-#     statement, gate 1.1) at the code-owned PAR_DPD_DAYS threshold
+#     statement, reuse-first) at the code-owned PAR_DPD_DAYS threshold
 #     from domain/lending classify(). NEVER from the mutable
 #     loans.days_past_due/classification snapshot columns at past
-#     cutoffs, and NEVER from portfolio_month_snapshots (§1.5
+#     cutoffs, and NEVER from portfolio_month_snapshots (
 #     snapshot-basis exploit class; the stored snapshots also carry no
 #     PAR-30 figure). The ratio is computed HERE in Decimal
-#     (to_cents(par_balance * 100 / gross) — the same formula the P10
+#     (to_cents(par_balance * 100 / gross) — the same formula the
 #     portfolio_summary and the NPL-trend export apply); the client
 #     renders it verbatim.
 #   * Members points derive from STATUS-TRANSITION FACTS
@@ -275,7 +274,7 @@ class GuarantorAggregates:
 # loop over result rows), the same per-cutoff pattern the NPL-trend
 # export has always run, inside the same REPEATABLE READ snapshot as
 # every sibling slice. Advisory read path; no locks (the documented
-# P13.9 posture).
+#  posture).
 
 
 @dataclass(frozen=True)
@@ -299,7 +298,7 @@ class MembersTrendPoint:
 class KpiTrends:
     """Per-KPI series; each follows its KPI card's parent grant
     (par30 <- loan_book:view, members <- members:view) and is None
-    (omitted) when ungranted — deny by default, gate 1.6."""
+    (omitted) when ungranted — deny by default, least disclosure."""
 
     par30: tuple[Par30TrendPoint, ...] | None
     members: tuple[MembersTrendPoint, ...] | None
@@ -350,14 +349,14 @@ async def _members_trend(
     )
 
 
-# --- Chart-series read model (issue #32 / #31 batch 5, U3+X4) -------------
+# --- Chart-series read model -------------
 #
-# The RECORDED #32 design decision, route (a): chart geometry is a
+# The RECORDED design decision, route (a): chart geometry is a
 # SERVER-computed read model. Every percentage below is derived HERE,
-# in Decimal arithmetic, from figures this module (or the reused P10
+# in Decimal arithmetic, from figures this module (or the reused
 # portfolio summary) already computed inside the same REPEATABLE READ
 # snapshot — the client renders the integers as visual scale ONLY and
-# never performs money math (P15 blocker (a) stays absolute in web/).
+# never performs money math (the money rule stays absolute in web/).
 #
 # Honesty rules:
 #   * The sibling slices (monthly_flows, loan_book) remain the figures
@@ -459,7 +458,7 @@ def flows_chart(monthly: tuple[MonthlyFlow, ...]) -> FlowsChart:
 
 
 def portfolio_chart(loan_book: loans_service.PortfolioSummary) -> PortfolioChart:
-    """Donut + classification-bar geometry over the P10 summary.
+    """Donut + classification-bar geometry over the summary.
 
     npl_pct is the NPL share of the outstanding book; performing_pct is
     its exact complement (they always sum to 100 on a non-empty book).
@@ -487,8 +486,8 @@ def dashboard_charts(
     loan_book: loans_service.PortfolioSummary | None,
 ) -> DashboardCharts | None:
     """Assemble the charts slice from the granted parent slices; None
-    when neither parent is granted (the slice is then omitted from the
-    response entirely — deny-by-default, gate 1.6)."""
+    when neither parent is granted (the slice is then omitted from the response entirely —
+    deny-by-default, least disclosure)."""
     flows = flows_chart(monthly) if monthly is not None else None
     portfolio = portfolio_chart(loan_book) if loan_book is not None else None
     if flows is None and portfolio is None:
@@ -506,9 +505,9 @@ class DashboardSummary:
     guarantors: GuarantorAggregates | None
     loan_book: loans_service.PortfolioSummary | None
     #: Chart geometry derived from monthly_flows / loan_book (issue
-    #: #32); None when neither parent slice is granted.
+    #: ); None when neither parent slice is granted.
     charts: DashboardCharts | None
-    #: Per-KPI trend series (#31 batch 8, ledger (k)); None when
+    #: Per-KPI trend series; None when
     #: neither parent grant is present.
     kpi_trends: KpiTrends | None
 
@@ -596,8 +595,8 @@ async def _guarantor_aggregates(
     guarantors: list[GuarantorCapacity] = []
     # Bounded by the config cap (never by table size). The pledged
     # figure for each listed guarantor is the SINGLE capacity
-    # implementation the P9 pledge and P11 withdrawal paths call
-    # (gate 1.1; FM5) — the grouped SUM above only picked candidates.
+    # implementation the P9 pledge and withdrawal paths call
+    # (reuse-first) — the grouped SUM above only picked candidates.
     for row in top:
         member_id = uuid.UUID(str(row[0]))
         pledged = await live_pledged_total(session, tenant_id, member_id)
@@ -635,14 +634,14 @@ async def dashboard_summary(
     zeroed — a zeroed slice would still disclose its shape. Slice map:
 
       * transactions:view — deposit/share totals + monthly flow series
-      * members:view      — active-member count + members-by-type
+      * members:view — active-member count + members-by-type
       * applications:view — pipeline counts + guarantor aggregates
         (guarantees are P9 applications-module data)
-      * loan_book:view    — the P10 portfolio summary (reused verbatim)
+      * loan_book:view — the portfolio summary (reused verbatim)
 
     months / guarantor_cap default from server settings and are clamped
     to hard caps; the router passes neither, so no caller input reaches
-    them (v1.1 rule 1).
+    them.
     """
     settings = get_settings()
     months = min(max(months or settings.dashboard_series_months, 1), MAX_SERIES_MONTHS)
@@ -657,7 +656,7 @@ async def dashboard_summary(
     if Module.TRANSACTIONS in granted:
         deposits = await _deposit_totals(session, tenant_id)
         monthly = await _monthly_flows(session, tenant_id, now, months)
-    # Per-KPI trend window (#31 batch 8, ledger (k)): the same
+    # Per-KPI trend window: the same
     # server-resolved series setting, additionally hard-capped at
     # KPI_TREND_MAX_MONTHS — nothing caller-tunable (the route passes
     # no widths).
@@ -682,7 +681,7 @@ async def dashboard_summary(
         guarantors=guarantors,
         loan_book=loan_book,
         # Pure derivation from the two granted parents above — same
-        # snapshot, no extra SQL (issue #32 route (a)).
+        # snapshot, no extra SQL (route (a)).
         charts=dashboard_charts(monthly, loan_book),
         kpi_trends=(
             KpiTrends(par30=par30_trend, members=members_trend)

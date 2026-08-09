@@ -60,6 +60,7 @@ const txnOut = {
   occurred_at: "2026-08-01T09:00:00+00:00",
   is_reversal: false,
   created_by: TELLER_ID,
+  external_ref: "SGH3KLM9QT",
 };
 
 function json(status: number, body: unknown): Response {
@@ -263,6 +264,7 @@ test("GET /transactions: every register filter is a SERVER-side query parameter"
       channel: "bank",
       direction: "debit",
       ref: "WD-0221",
+      search: "wanjiku",
       date_from: "2026-07-01",
       date_to: "2026-07-31",
     },
@@ -274,6 +276,7 @@ test("GET /transactions: every register filter is a SERVER-side query parameter"
   expect(url.searchParams.get("channel")).toBe("bank");
   expect(url.searchParams.get("direction")).toBe("debit");
   expect(url.searchParams.get("ref")).toBe("WD-0221");
+  expect(url.searchParams.get("search")).toBe("wanjiku");
   expect(url.searchParams.get("date_from")).toBe("2026-07-01");
   expect(url.searchParams.get("date_to")).toBe("2026-07-31");
   expect(url.searchParams.has("offset")).toBe(false);
@@ -283,7 +286,7 @@ test("GET /transactions: every register filter is a SERVER-side query parameter"
 test("POST deposits: the amount travels as a decimal STRING byte-identically; idempotency as a header; EXTRA response keys are STRIPPED", async () => {
   const result = await txnApi.postDeposit(
     MEMBER_ID,
-    { amount: "50000.10", channel: "mpesa" },
+    { amount: "50000.10", channel: "mpesa", external_ref: "SGH3KLM9QT" },
     "key-dep-1",
   );
   expect(calls).toHaveLength(1);
@@ -299,8 +302,9 @@ test("POST deposits: the amount travels as a decimal STRING byte-identically; id
   expect(typeof body["amount"]).toBe("string");
   expect(call.body).toContain('"amount":"50000.10"');
   expect(body["channel"]).toBe("mpesa");
+  expect(body["external_ref"]).toBe("SGH3KLM9QT");
   // Nothing beyond the MoneyBody contract can even be sent.
-  expect(Object.keys(body).sort()).toEqual(["amount", "channel"]);
+  expect(Object.keys(body).sort()).toEqual(["amount", "channel", "external_ref"]);
 
   // The SERVER's figures come back verbatim; the stubbed internal
   // ledger field can never reach a screen (stripped at the boundary).
@@ -312,7 +316,11 @@ test("POST deposits: the amount travels as a decimal STRING byte-identically; id
 test("a stale withdrawal (overdraw under the row lock) surfaces as ONE 409 ApiError — no transport-level retry, no replay", async () => {
   withdrawalStatus = 409;
   const thrown = await txnApi
-    .postWithdrawal(MEMBER_ID, { amount: "8000.00", channel: "bank" }, "key-wd-stale")
+    .postWithdrawal(
+      MEMBER_ID,
+      { amount: "8000.00", channel: "bank", external_ref: "SLIP-90" },
+      "key-wd-stale",
+    )
     .catch((error: unknown) => error);
   expect(thrown).toBeInstanceOf(ApiError);
   expect((thrown as InstanceType<typeof ApiError>).status).toBe(409);
@@ -322,7 +330,7 @@ test("a stale withdrawal (overdraw under the row lock) surfaces as ONE 409 ApiEr
 test("POST share-topups + withdrawals ride their own routes with the same MoneyBody shape", async () => {
   const topup = await txnApi.postShareTopup(
     MEMBER_ID,
-    { amount: "2500.10", channel: "bank" },
+    { amount: "2500.10", channel: "bank", external_ref: "SLIP-91" },
     "key-sh-1",
   );
   expect(new URL(calls[0]!.url).pathname).toBe(`/members/${MEMBER_ID}/share-topups`);
@@ -332,7 +340,7 @@ test("POST share-topups + withdrawals ride their own routes with the same MoneyB
 
   const withdrawal = await txnApi.postWithdrawal(
     MEMBER_ID,
-    { amount: "8000.00", channel: "bank" },
+    { amount: "8000.00", channel: "bank", external_ref: "SLIP-92" },
     "key-wd-1",
   );
   expect(new URL(calls[1]!.url).pathname).toBe(`/members/${MEMBER_ID}/withdrawals`);

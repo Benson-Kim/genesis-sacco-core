@@ -1,9 +1,9 @@
 /**
  * RBAC module identifiers — must match the backend `Module` enum
  * (backend/src/genesis/domain/rbac.py), itself seeded from the prototype
- * `modulesRB` (P4). `corrections` is the P13.15 extension: the fraud
+ * `modulesRB` (P4). `corrections` is the extension: the fraud
  * channel carries its OWN permission strings, never generic
- * transactions:edit (A3 maker-checker). `member_identity` (P14.5) is
+ * transactions:edit (maker-checker). `member_identity` is
  * deliberately absent here: it gates member-facing auth substrate
  * routes and has no console surface.
  */

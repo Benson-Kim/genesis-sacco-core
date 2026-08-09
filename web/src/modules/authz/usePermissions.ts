@@ -17,7 +17,7 @@ async function fetchMyPermissions(): Promise<MyPermissions> {
 
 /**
  * Permissions of the signed-in user. The UI hides what the API forbids,
- * but the API remains the enforcer on every call (gate 1.6).
+ * but the API remains the enforcer on every call (least disclosure).
  */
 export function usePermissions() {
   return useQuery({

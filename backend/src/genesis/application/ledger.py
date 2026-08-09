@@ -1,13 +1,13 @@
-"""Double-entry ledger posting services (MASTER_PROMPT P7, gates 1.4, 1.5).
+"""Double-entry ledger posting services (P7, the house gates).
 
 This module owns the application-service layer for all ledger operations:
 
-  * Reference generation — pg_advisory_xact_lock + UNIQUE + retry (gate 1.4)
+  * Reference generation — pg_advisory_xact_lock + UNIQUE + retry (concurrency safety)
   * Atomic posting — transactions + ledger_entries written together
-  * Audit logging — every posting written in-transaction (gate 1.5)
-  * Outbox events — side-effects via transactional outbox only (gate 1.2)
+  * Audit logging — every posting written in-transaction (data integrity)
+  * Outbox events — side-effects via transactional outbox only (reliability)
   * Disbursement — one atomic transaction: approval check + posting +
-    schedule generation + outbox event (gate 1.5)
+    schedule generation + outbox event (data integrity)
 
 No I/O in the domain layer; all DB access lives here.
 """
@@ -23,6 +23,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from sqlalchemy import CursorResult, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application.accounting_periods import assert_open_period
@@ -68,7 +69,7 @@ from genesis.domain.money import to_cents
 from genesis.errors import ConflictError, ForbiddenError, NotFoundError
 
 # ---------------------------------------------------------------------------
-# Reference generation (gate 1.4)
+# Reference generation (concurrency safety)
 # ---------------------------------------------------------------------------
 
 #: Advisory lock namespace — fits in PostgreSQL int4 (signed 32-bit).
@@ -101,7 +102,7 @@ async def _next_ref(
 
     Uses pg_advisory_xact_lock to serialise concurrent callers within the
     same transaction scope, then increments the per-tenant/per-prefix
-    counter atomically (gate 1.4).  The UNIQUE constraint on
+    counter atomically (concurrency safety).  The UNIQUE constraint on
     (tenant_id, txn_ref) in the transactions table is the final safety net.
     """
     lock_key = _advisory_key(tenant_id, prefix)
@@ -149,6 +150,7 @@ async def _post(
     *,
     occurred_at: datetime | None = None,
     reversal_of_id: uuid.UUID | None = None,
+    external_ref: str | None = None,
 ) -> PostingResult:
     """Write one transaction + its ledger lines atomically.
 
@@ -161,7 +163,7 @@ async def _post(
     prefix = ref_prefix(spec.txn_type, spec.channel)
     ts = occurred_at or datetime.now(UTC)
 
-    # Issue #12 (gates 1.4-1.6): EVERY posting validates occurred_at
+    # EVERY posting validates occurred_at
     # server-side before anything is written — never future-dated,
     # never inside a closed accounting period (409). The shared
     # advisory barrier inside serialises against a concurrent period
@@ -174,39 +176,55 @@ async def _post(
     txn_ref = await _next_ref(session, tenant_id, prefix)
     txn_id = uuid.uuid4()
 
-    # created_by records the acting principal at INSERT (issue #30 R3,
+    # created_by records the acting principal at INSERT (see
     # migration 0036): NULL for system/job postings — an absent actor
     # is recorded as absent, never fabricated. The 0004 append-only
     # triggers pin the attribution immutable the moment the row
     # commits: it can never be rewritten after the fact.
-    await session.execute(
-        text(
-            "INSERT INTO transactions "
-            "(id, tenant_id, txn_ref, member_id, type, amount, channel, "
-            " occurred_at, reversal_of_id, created_by) "
-            "VALUES "
-            "(CAST(:id AS uuid), CAST(:tid AS uuid), :ref, "
-            " CAST(:mid AS uuid), :type, :amount, :channel, :ts, "
-            " CAST(:rev_of AS uuid), CAST(:actor AS uuid))"
-        ),
-        {
-            "id": str(txn_id),
-            "tid": str(tenant_id),
-            "ref": txn_ref,
-            "mid": str(member_id) if member_id else None,
-            "type": spec.txn_type.value,
-            "amount": str(spec.amount),
-            "channel": spec.channel.value,
-            "ts": ts,
-            "rev_of": str(reversal_of_id) if reversal_of_id else None,
-            "actor": str(actor_id) if actor_id else None,
-        },
-    )
+    # external_ref (migration 0043): the operator-entered
+    # external receipt reference on external-channel teller postings;
+    # NULL for every system posting and every legacy path. The partial
+    # UNIQUE uq_txns_external_ref makes the per-tenant per-channel
+    # dedupe claim ATOMIC at this INSERT (never SELECT-then-INSERT,
+    # v1.1 rule 5): a duplicate reference is a 409, sanitized — the
+    # submitted value is never echoed (least disclosure).
+    try:
+        await session.execute(
+            text(
+                "INSERT INTO transactions "
+                "(id, tenant_id, txn_ref, member_id, type, amount, channel, "
+                " occurred_at, reversal_of_id, created_by, external_ref) "
+                "VALUES "
+                "(CAST(:id AS uuid), CAST(:tid AS uuid), :ref, "
+                " CAST(:mid AS uuid), :type, :amount, :channel, :ts, "
+                " CAST(:rev_of AS uuid), CAST(:actor AS uuid), :ext_ref)"
+            ),
+            {
+                "id": str(txn_id),
+                "tid": str(tenant_id),
+                "ref": txn_ref,
+                "mid": str(member_id) if member_id else None,
+                "type": spec.txn_type.value,
+                "amount": str(spec.amount),
+                "channel": spec.channel.value,
+                "ts": ts,
+                "rev_of": str(reversal_of_id) if reversal_of_id else None,
+                "actor": str(actor_id) if actor_id else None,
+                "ext_ref": external_ref,
+            },
+        )
+    except IntegrityError as exc:
+        # Constraint name from the 0043 migration — code-owned literal.
+        if "uq_txns_external_ref" in str(exc.orig):
+            raise ConflictError(
+                "an external transaction with this reference was already recorded"
+            ) from exc
+        raise
 
     # Insert all ledger lines.
     await _insert_lines(session, tenant_id, txn_id, spec.lines)
 
-    # Audit log (gate 1.5) via the shared in-transaction writer.
+    # Audit log (data integrity) via the shared in-transaction writer.
     await record_audit(
         session,
         tenant_id,
@@ -265,10 +283,19 @@ async def post_deposit(
     channel: Channel,
     actor_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
+    external_ref: str | None = None,
 ) -> PostingResult:
     """Post a member deposit and enqueue a notification event."""
     spec = build_deposit_posting(amount, channel)
-    result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
+    result = await _post(
+        session,
+        tenant_id,
+        member_id,
+        spec,
+        actor_id,
+        occurred_at=occurred_at,
+        external_ref=external_ref,
+    )
     await enqueue_event(
         session,
         tenant_id,
@@ -292,10 +319,19 @@ async def post_withdrawal(
     channel: Channel,
     actor_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
+    external_ref: str | None = None,
 ) -> PostingResult:
     """Post a member withdrawal."""
     spec = build_withdrawal_posting(amount, channel)
-    result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
+    result = await _post(
+        session,
+        tenant_id,
+        member_id,
+        spec,
+        actor_id,
+        occurred_at=occurred_at,
+        external_ref=external_ref,
+    )
     await enqueue_event(
         session,
         tenant_id,
@@ -319,10 +355,19 @@ async def post_share_topup(
     channel: Channel,
     actor_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
+    external_ref: str | None = None,
 ) -> PostingResult:
     """Post a share top-up."""
     spec = build_share_topup_posting(amount, channel)
-    result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
+    result = await _post(
+        session,
+        tenant_id,
+        member_id,
+        spec,
+        actor_id,
+        occurred_at=occurred_at,
+        external_ref=external_ref,
+    )
     await enqueue_event(
         session,
         tenant_id,
@@ -361,7 +406,7 @@ async def post_repayment(
     spec = build_repayment_posting(amount, channel)
     result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
     # Record in repayments table (rounded spec.amount so the auxiliary
-    # row can never disagree with the ledger legs — gate 1.5).
+    # row can never disagree with the ledger legs — data integrity).
     await session.execute(
         text(
             "INSERT INTO repayments (id, tenant_id, loan_id, transaction_id, amount) "
@@ -404,8 +449,8 @@ async def _assert_loan_owned_by_member(
     trusted the caller's (member_id, loan_id) pair, so a coding error
     upstream could credit member A's cash against member B's loan. The
     P10 servicing path derives member_id FROM the loan so it cannot
-    mismatch; this guard makes the primitive itself safe (gate 1.5).
-    Explicit tenant predicate on top of RLS (gate 1.6 v1.1). Least
+    mismatch; this guard makes the primitive itself safe (data integrity).
+    Explicit tenant predicate on top of RLS (defence in depth). Least
     disclosure: the error names ids the caller already supplied,
     never balances.
     """
@@ -545,17 +590,23 @@ async def post_dividend_distribution(
     rebate: Decimal,
     actor_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
+    credit_account: Account | None = None,
 ) -> PostingResult:
-    """Post one member's dividend + rebate payout (DV- ref, P13.11).
+    """Post one member's dividend + rebate payout (DV- ref).
 
-    DR expense.dividends / CR member.shares and DR expense.rebates /
-    CR member.deposits — the dividend capitalises into share capital
-    so it compounds into the next financial year's basis (gate 1.5).
-    Runs in the caller's transaction; the P13.11 distribution job owns
-    the atomic unit (claim + posting + balance updates + audit).
-    Payload carries ids and amounts only — never names (gate 1.6).
+    Default (credit_account=None): DR expense.dividends /
+    CR member.shares and DR expense.rebates / CR member.deposits — the
+    dividend capitalises into share capital so it compounds into the
+    next financial year's basis (data integrity). Since the payout-routing decision the
+    distribution engine may pass a CODE-OWNED retention destination
+    (member.deposits or member.shares — validated by the domain
+    builder, never caller-supplied) that both member-side credit legs
+    route to instead. Runs in the caller's transaction; the
+    distribution job owns the atomic unit (claim + posting + balance
+    updates + audit). Payload carries ids and amounts only — never
+    names (least disclosure).
     """
-    spec = build_dividend_distribution_posting(dividend, rebate)
+    spec = build_dividend_distribution_posting(dividend, rebate, credit_account=credit_account)
     result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
     await enqueue_event(
         session,
@@ -583,7 +634,7 @@ async def post_unclaimed_dividend(
     actor_id: uuid.UUID | None = None,
     occurred_at: datetime | None = None,
 ) -> PostingResult:
-    """Park a mid-run-exited member's entitlement as a payable (issue #19 P3).
+    """Park a mid-run-exited member's entitlement as a payable.
 
     DV- ref: DR expense.dividends / expense.rebates, CR
     liability.unclaimed_dividends — the member's accounts are never
@@ -591,11 +642,11 @@ async def post_unclaimed_dividend(
     transaction stays member-attributed so the payable is traceable to
     the member it is owed to; it carries no member-account legs, so no
     ledger-reconstructed basis anywhere changes. Runs in the caller's
-    transaction; the P13.11 distribution job owns the atomic unit
+    transaction; the distribution job owns the atomic unit
     (claim + posting + audit). The outbox event is the ALERT surface
-    (gate 1.2): operators watch dividend.unclaimed via
+    (reliability): operators watch dividend.unclaimed via
     ledger.dividend_unclaimed exactly like the other posting events.
-    Payload carries ids and amounts only — never names (gate 1.6).
+    Payload carries ids and amounts only — never names (least disclosure).
     """
     spec = build_unclaimed_dividend_posting(dividend, rebate)
     result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
@@ -630,10 +681,10 @@ async def post_share_transfer(
     Two member-attributed transactions through the clearing account
     (see genesis.domain.ledger for why one netted posting would blind
     the ledger-reconstructed share basis); the clearing account nets
-    to zero inside this one transaction. The caller (the issue-#31 (l)
+    to zero inside this one transaction. The caller (the transfer-approval
     checker phase, dividends.approve_share_transfer) owns the atomic
     unit and the row locks. One outbox event describes the whole
-    transfer (gates 1.2, 1.5).
+    transfer (the house gates).
     """
     out_spec = build_share_transfer_out_posting(amount)
     in_spec = build_share_transfer_in_posting(amount)
@@ -670,13 +721,13 @@ async def post_fee(
     *,
     fee_type: str,
 ) -> PostingResult:
-    """Post a misc fee received from a member (P13.15): FE- ref.
+    """Post a misc fee received from a member: FE- ref.
 
-    ``amount`` is resolved server-side from P13.7 tenant configuration
+    ``amount`` is resolved server-side from tenant configuration
     by the corrections service (v1.1 rule 1) — no request body ever
     carries it. occurred_at is server-resolved NOW inside _post, so the
-    P12.5 open-period gate applies (A2). Payload carries ids and
-    amounts only — never names (gate 1.6).
+    open-period gate applies (A2). Payload carries ids and
+    amounts only — never names (least disclosure).
     """
     spec = build_fee_posting(amount, channel)
     result = await _post(session, tenant_id, member_id, spec, actor_id)
@@ -704,10 +755,10 @@ async def post_loan_write_off(
     amount: Decimal,
     actor_id: uuid.UUID | None = None,
 ) -> PostingResult:
-    """Post the write-off provisioning posting (P13.15): WO- ref.
+    """Post the write-off provisioning posting: WO- ref.
 
     DR expense.loan_writeoffs / CR loans.receivable for the written-off
-    principal balance. Runs in the caller's transaction; the P13.15
+    principal balance. Runs in the caller's transaction; the
     write-off executor owns the atomic unit (snapshot re-verify +
     terminal transition + this posting + audit + outbox). occurred_at
     is server-resolved NOW inside _post (A2 — the open-period gate
@@ -741,16 +792,16 @@ async def post_loan_recovery(
     *,
     write_off_id: uuid.UUID,
 ) -> PostingResult:
-    """Post a bad-debt recovery receipt (issue #21): RC- ref.
+    """Post a bad-debt recovery receipt: RC- ref.
 
     DR cash / CR income.bad_debt_recoveries. Runs in the caller's
     transaction; the corrections recovery service owns the atomic unit
     (claim re-verification under the write-off row lock + the
     append-only loan_recoveries row + audit + outbox) and has already
     verified the receipt against the outstanding claim. occurred_at is
-    server-resolved NOW inside _post, so the P12.5 open-period gate
-    applies (the P13.15 A2 rule). Payload carries ids and amounts only
-    — never names (gate 1.6).
+    server-resolved NOW inside _post, so the open-period gate
+    applies (the A2 rule). Payload carries ids and amounts only
+    — never names (least disclosure).
     """
     spec = build_loan_recovery_posting(amount, channel)
     result = await _post(session, tenant_id, member_id, spec, actor_id)
@@ -791,8 +842,8 @@ async def post_exit_settlement(
     One balanced posting: the member's equity is debited, the netted
     loan payoff, exit fee and net cash refund are credited. Runs in the
     caller's transaction; the P12 settlement service owns the full
-    atomic unit (gate 1.5). Payload carries ids and amounts only —
-    never names or contact details (gate 1.6).
+    atomic unit (data integrity). Payload carries ids and amounts only —
+    never names or contact details (least disclosure).
     """
     spec = build_exit_settlement_posting(
         shares=shares,
@@ -829,7 +880,7 @@ async def post_reversal(
     *,
     allow_repayment_correction: bool = False,
 ) -> PostingResult:
-    """Post a reversing entry for a previous transaction (gate 1.5).
+    """Post a reversing entry for a previous transaction (data integrity).
 
     Fetches the original lines, builds the mirror image, and posts it as a
     new transaction linked via reversal_of_id.  The original is never
@@ -845,7 +896,7 @@ async def post_reversal(
         repayments history row, so a generic reversal would leave the
         repayment standing as a paid amount against a restored ledger
         balance. Repayment corrections need the dedicated adjustment
-        service (BUILD_PROMPTS P13.15) that undoes the allocation
+        service (corrections) that undoes the allocation
         component-by-component in one transaction. That service — and
         ONLY that service — passes ``allow_repayment_correction=True``
         while holding the loan row lock, after claiming the
@@ -862,7 +913,7 @@ async def post_reversal(
         await session.execute(
             text(
                 # Explicit tenant predicate on the row-lock read, on top
-                # of RLS (defence in depth, gate 1.6 v1.1; issue #17).
+                # of RLS (defence in depth).
                 "SELECT member_id, type, amount, channel, reversal_of_id "
                 "FROM transactions WHERE id = CAST(:id AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
@@ -897,7 +948,7 @@ async def post_reversal(
         repayment_row = (
             await session.execute(
                 text(
-                    # Explicit tenant predicate on top of RLS (gate 1.6 v1.1).
+                    # Explicit tenant predicate on top of RLS (defence in depth).
                     "SELECT 1 FROM repayments "
                     "WHERE transaction_id = CAST(:id AS uuid) "
                     "AND tenant_id = CAST(:tid AS uuid) LIMIT 1"
@@ -976,7 +1027,7 @@ async def post_reversal(
 
 
 # ---------------------------------------------------------------------------
-# Disbursement — atomic application-service transaction (gate 1.5)
+# Disbursement — atomic application-service transaction (data integrity)
 # ---------------------------------------------------------------------------
 
 
@@ -998,20 +1049,20 @@ async def disburse_loan(
 ) -> DisbursementResult:
     """Atomic disbursement: approval check + posting + schedule + outbox.
 
-    All steps run in the caller's transaction (gate 1.5).  If any step
+    All steps run in the caller's transaction (data integrity).  If any step
     fails the whole transaction rolls back — no partial success.
 
     Steps:
       1. Lock the application row; refuse the application's initiator
-         (user-level separation of duties, issue #30 R4 — the P12
+         (user-level separation of duties — the P12
          self-settle mirror, 403); verify stage == approved.
       2. Verify the deposit-multiplier eligibility under the deposit
-         account row lock (issue #15), then refuse any unconsented
+         account row lock, then refuse any unconsented
          (pledged) guarantee — collateral is never activated without
          the guarantor's recorded consent (external Codex review,
          re-derived); transition stage to disbursed.
       3. Create the loan record; link the application's consented
-         (active) guarantees to it (issue #15).
+         (active) guarantees to it.
       4. Post the disbursement ledger entry.
       5. Generate and persist the amortisation schedule.
       6. Enqueue the outbox event.
@@ -1023,7 +1074,7 @@ async def disburse_loan(
         await session.execute(
             text(
                 # Explicit tenant predicate on the row-lock read, on top
-                # of RLS (defence in depth, gate 1.6 v1.1; issue #17).
+                # of RLS (defence in depth).
                 "SELECT id, member_id, product_id, amount, term_months, "
                 "rate_pct, stage, version, created_by, recommended_by "
                 "FROM loan_applications "
@@ -1055,7 +1106,7 @@ async def disburse_loan(
     term_months = int(term_months)
     created_by = uuid.UUID(str(created_by_raw)) if created_by_raw is not None else None
 
-    # Step 1b: user-level separation of duties (issue #30 R4, the
+    # Step 1b: user-level separation of duties (the
     # mirror of the P12 self-settle ban): the initiator of a loan
     # application can never post its disbursement — between committee
     # ratification and cash-out a DIFFERENT principal must act, exactly
@@ -1065,11 +1116,11 @@ async def disburse_loan(
     # (pre-0036 rows without unambiguous audit history, or
     # system-created rows) is not principal-comparable — for those the
     # P9 committee quorum remains the approval control, unchanged.
-    # Least disclosure (gate 1.6): the refusal names no identity.
+    # Least disclosure: the refusal names no identity.
     if created_by is not None and actor_id == created_by:
         raise ForbiddenError("the initiator of a loan application cannot post its disbursement")
 
-    # Step 1c: recommender separation of duties (issue #30 close-out,
+    # Step 1c: recommender separation of duties (per
     # migration 0037 — the consistent extension of step 1b): the
     # principal who moved the application INTO committee shepherded it
     # toward cash exactly like the initiator did, so the same
@@ -1091,7 +1142,7 @@ async def disburse_loan(
         raise ConflictError(f"cannot disburse application in stage '{stage_str}'") from exc
 
     # Step 2b: product deposit-multiplier eligibility under the full
-    # lock set (issue #15, gate 1.4): principal <= deposits x
+    # lock set (concurrency safety): principal <= deposits x
     # multiplier + live guarantees, re-verified at the money-moving
     # moment. The deposit-account row lock is the same serialisation
     # point P9 pledging and P11 withdrawals take, so a concurrent
@@ -1099,14 +1150,14 @@ async def disburse_loan(
     # side waits and then observes the other's committed effect.
     # Guarantee amounts for this application only change under the
     # application row lock (pledging locks it FOR UPDATE), which step 1
-    # already holds. Least disclosure (gate 1.6): the rejection never
+    # already holds. Least disclosure: the rejection never
     # echoes balances, the multiplier, or the shortfall.
     product = await get_product(session, tenant_id, product_id)
     deposit_row = (
         await session.execute(
             text(
                 # Explicit tenant predicate on the row-lock read, on
-                # top of RLS (defence in depth, gate 1.6 v1.1).
+                # top of RLS (defence in depth).
                 "SELECT balance FROM deposit_accounts "
                 "WHERE member_id = CAST(:m AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
@@ -1131,7 +1182,7 @@ async def disburse_loan(
     # blocks disbursement — the resolution paths are consent
     # (guarantees.consent_guarantee_as_member / the staff-attested
     # consent_guarantee_override) or release/substitution
-    # (BUILD_PROMPTS P13.14). Read under the application row lock
+    # (the guarantee-release policy). Read under the application row lock
     # held since step 1 (pledging locks the application FOR UPDATE,
     # so the set cannot change underneath us). Least disclosure:
     # neither amounts nor guarantor identities are echoed.
@@ -1164,7 +1215,7 @@ async def disburse_loan(
     if update_result.rowcount != 1:
         # Version moved between our SELECT ... FOR UPDATE and this UPDATE
         # (should not happen while the row lock is held, but the optimistic
-        # check is the contract for editable aggregates — gate 1.4).
+        # check is the contract for editable aggregates — concurrency safety).
         raise ConflictError(
             f"stale version for loan application {application_id}; retry the disbursement"
         )
@@ -1195,15 +1246,15 @@ async def disburse_loan(
         },
     )
 
-    # Step 3b: link every consented guarantee to the loan (issue #15,
-    # gate 1.5): active guarantees carry application_id with loan_id
+    # Step 3b: link every consented guarantee to the loan (
+    # data integrity): active guarantees carry application_id with loan_id
     # NULL until this moment; from disbursement on, the guarantee
     # lifecycle follows the loan, so the P10 release-on-closure hook
     # and the P12 exit sweep always find them. Step 2c already proved
     # no 'pledged' row remains, so the filter is exactly the consented
     # set. Runs inside the same atomic disbursement transaction (P7
     # contract). Explicit tenant predicate on the write, on top of RLS
-    # (gate 1.6 v1.1).
+    # (defence in depth).
     linked = cast(
         CursorResult[Any],
         await session.execute(

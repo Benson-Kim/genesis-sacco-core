@@ -1,4 +1,4 @@
-"""Member-facing authentication use-cases (P14.5).
+"""Member-facing authentication use-cases.
 
 The MEMBER principal authenticates through the SAME P3 machinery as
 staff — one `domain/otp.py` policy (6 digits, at most 5 attempts,
@@ -7,17 +7,17 @@ staff — one `domain/otp.py` policy (6 digits, at most 5 attempts,
 `member_credential_id` principal column), the same rotating
 refresh-token families with reuse revocation, and the same outbox
 delivery stub — a parallel OTP implementation is a rejected MR
-(gate 1.1). What differs is the PRINCIPAL: challenges and refresh
+(reuse-first). What differs is the PRINCIPAL: challenges and refresh
 families hang off a `member_credentials` link row, and issued tokens
 carry the MEMBER audience so they can never satisfy a staff
-RequirePermission gate (FM1).
+RequirePermission gate.
 
 Lock posture (docs/diagrams/lock-order.md — no new lock-graph edges):
 verify locks the newest challenge row ALONE and rotation locks the
 refresh-token row ALONE (both existing disjoint-subgraph single-node
 nodes; annotations extended by this MR). Unlike the staff path, NO
-user/member row is locked first: credential revocation (the analogue
-of P13.5 suspension) does not write challenge/token rows — instead the
+user/member row is locked first: credential revocation (the analogue of suspension) does not write
+challenge/token rows — instead the
 credential's live status is re-checked at every use (OTP verify,
 refresh rotation, and the per-request member gate), so a revoked link
 dies at its next use without any cross-table lock ordering to defend.
@@ -25,7 +25,7 @@ dies at its next use without any cross-table lock ordering to defend.
 Tenant predicates: unlike the staff pre-auth lookups (whose exemption
 is documented in application/auth.py), every query here carries an
 explicit bound tenant_id predicate on top of forced RLS — the tenant
-is already known from the x-tenant-id header (gate 1.6 v1.1 rule 4).
+is already known from the x-tenant-id header (least disclosure).
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from datetime import timedelta
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Deliberate reuse of the P3 internals (gate 1.1): these helpers are
+# Deliberate reuse of the P3 internals (reuse-first): these helpers are
 # package-private to application/, shared by both principals so the
 # hashing, TTLs and family-revocation semantics can never diverge.
 from genesis.application.auth import (
@@ -85,7 +85,7 @@ _LOGIN_STATUSES: tuple[str, str, str] = (
 #: served by the partial UNIQUE uq_member_credentials_email_active
 #: (0035; EXPLAIN pinned in tests/test_p145_explain.py). Module-level
 #: so the plan capture asserts the exact SQL. Every value is a bound
-#: parameter (v1.1 rule 6).
+#: parameter.
 LIVE_CREDENTIAL_BY_EMAIL_SQL = (
     "SELECT mc.id, mc.member_id FROM member_credentials mc "
     "JOIN members m ON m.id = mc.member_id AND m.tenant_id = mc.tenant_id "
@@ -117,10 +117,10 @@ async def _live_credential_by_email(
 async def live_credential_by_id(
     session: AsyncSession, tenant_id: uuid.UUID, credential_id: uuid.UUID
 ) -> _LiveCredential | None:
-    """Use-time re-check of the link (FM2): the LINK row, not any email,
+    """Use-time re-check of the link: the LINK row, not any email,
     decides whether the principal is still live.
 
-    Public on purpose (gate 1.1 — ONE implementation): refresh
+    Public on purpose (reuse-first — ONE implementation): refresh
     rotation, the per-request member gate (api/authz.py) and the
     member consent/release transactions (application/guarantees.py)
     all re-verify the link through this exact query."""
@@ -152,7 +152,7 @@ async def request_member_otp(session: AsyncSession, tenant_id: uuid.UUID, email:
 
     Never reveals whether a credential exists (the request_otp
     contract); delivery rides the outbox stub — the code never appears
-    in a response or a log (gates 1.2, 1.6).
+    in a response or a log (the house gates).
     """
     credential = await _live_credential_by_email(session, tenant_id, email)
     if credential is None:
@@ -189,7 +189,7 @@ async def request_member_otp(session: AsyncSession, tenant_id: uuid.UUID, email:
 async def verify_member_otp(
     session: AsyncSession, tenant_id: uuid.UUID, email: str, code: str
 ) -> TokenPair | AuthFailure:
-    """Verify the newest member challenge under its row lock (gate 1.4).
+    """Verify the newest member challenge under its row lock (concurrency safety).
 
     The SAME single gatekeeper as staff (domain/otp.evaluate_challenge:
     consumed/locked/expired/constant-time mismatch) decides acceptance;
@@ -235,7 +235,7 @@ async def verify_member_otp(
         )
     if result is not OtpResult.OK:
         # Returned, not raised: the increment must commit so the
-        # lockout engages after OTP_MAX_ATTEMPTS failures (gate 1.6).
+        # lockout engages after OTP_MAX_ATTEMPTS failures (least disclosure).
         return AuthFailure(f"otp {result.value}")
     await session.execute(
         text(

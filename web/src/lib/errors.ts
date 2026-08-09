@@ -1,8 +1,7 @@
 import { ApiError } from "@genesis/api-client";
 
 /**
- * Least-disclosure operator-facing message per status (salvaged from the
- * P13.5 frontend branch — gate 1.6): no capability-probing hints, no
+ * Least-disclosure operator-facing message per status (salvaged from the frontend branch — least disclosure): no capability-probing hints, no
  * server internals, no data echo. 401/403/409/422 stay DISTINCT; the
  * correlation id is the only reference surfaced.
  */

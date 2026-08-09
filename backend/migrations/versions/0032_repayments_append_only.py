@@ -1,22 +1,22 @@
-"""append-only trigger discipline for repayments rows (issue #24, N4)
+"""append-only trigger discipline for repayments rows
 
 Revision ID: 0032
 Revises: 0031
 Create Date: 2026-08-02
 
-Expand-only revision backing issue #24 (the !46 maintainer-review N4
-follow-up). `repayments` rows had no append-only trigger — unlike
+Expand-only revision backing (the maintainer- follow-up). `repayments` rows had no append-only
+trigger — unlike
 ledger_entries (0004/0014) and the 0025/0030 correction tables. With
 negative correction rows representable since 0025 (amount <> 0), a
 manual SQL UPDATE flipping a row's sign was a FORENSIC HOLE: the
 servicing history could be edited without any trigger firing while the
-ledger legs stayed unchanged — exactly the divergence class the P13.15
-FM8 reconstruction self-check catches, but only at adjustment time.
+ledger legs stayed unchanged — exactly the divergence class the
+ reconstruction self-check catches, but only at adjustment time.
 
 This revision extends the 0004/0014 trigger discipline to repayments:
 BEFORE UPDATE and BEFORE DELETE raise via the 0001
 ``forbid_row_mutation()`` function (reused — the 0004/0030 precedent).
-Corrections REMAIN negative-linked NEW rows, never edits (gate 1.5):
+Corrections REMAIN negative-linked NEW rows, never edits (data integrity):
 grep-verified at authoring, no code path anywhere issues an UPDATE or
 DELETE against repayments — the only writers are the INSERTs in
 application/ledger.py (post_repayment / post_allocated_repayment) and

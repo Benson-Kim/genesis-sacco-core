@@ -9,8 +9,8 @@ import {
 
 /**
  * Corrections lifecycle status pills. One copy for the workbench and
- * the drawers (gate 1.1). Never color alone: the pill text carries the
- * meaning (issue #8). The write-off CLASSIFICATION pill is the loans
+ * the drawers (reuse-first). Never color alone: the pill text carries the
+ * meaning. The write-off CLASSIFICATION pill is the loans
  * module's loanClassPill — reused, not re-drawn.
  */
 export function adjustmentStatusPill(status: AdjustmentStatus): ReactNode {

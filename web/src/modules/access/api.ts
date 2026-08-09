@@ -1,15 +1,12 @@
 /**
- * Access-control API layer — roles and per-role permissions matrix (P15;
- * salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238,
- * adapted: the permission mutation now carries a caller-supplied
- * Idempotency-Key per this branch's gate-1.4 convention).
+ * Access-control API layer — roles and per-role permissions matrix (salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238, adapted: the permission mutation now carries a caller-supplied Idempotency-Key per this branch's gate-1.4 convention).
  *
  * Endpoints:
- *   GET  /access/roles                          — list all roles
- *   GET  /access/roles/{role_id}/permissions    — all module permissions for a role
- *   PUT  /access/roles/{role_id}/permissions/{module} — set one module's bits
+ *   GET /access/roles — list all roles
+ *   GET /access/roles/{role_id}/permissions — all module permissions for a role
+ *   PUT /access/roles/{role_id}/permissions/{module} — set one module's bits
  *
- * Permission changes are audit-logged server-side (gate 1.5).
+ * Permission changes are audit-logged server-side (data integrity).
  */
 import { toApiError } from "@genesis/api-client";
 import { api } from "@/lib/api";

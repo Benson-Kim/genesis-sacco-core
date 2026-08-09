@@ -24,7 +24,6 @@ import asyncio
 import os
 import re
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -368,25 +367,35 @@ def test_db_check_value_set_equals_the_code_owned_enum_exactly() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The regulatory/accounting fence (batch 8) — falsifiable
+# The routing map (#31 batch 12) — the fence's falsifiable successor
 # ---------------------------------------------------------------------------
 
 
-def test_distribution_engine_does_not_consume_the_preference() -> None:
-    """PREFERENCE ONLY: routing dividend money by the stored preference
-    is a SEPARATE, separately-authorized batch. This guard pins the
-    fence falsifiably — the moment any dividends module (application
-    or domain) references the column, this fails and forces that batch
-    to retire the fence deliberately, with its own authorization
-    recorded on #31."""
+def test_payout_routing_map_is_total_over_the_enum() -> None:
+    """FM7 (#31 batch 12): the batch-8 preference-only fence was retired
+    DELIBERATELY under the maintainer authorization recorded on #31
+    (2026-08-07 — '(c) AUTHORIZED as BATCH 12'). Its successor guard:
+    every DividendPayout token is EITHER routed by the code-owned
+    PAYOUT_CREDIT_ROUTING map OR explicitly recorded as an
+    unimplementable fallback token (external channels, issue #10) —
+    set-equal, disjoint. A future enum token fails this test until a
+    deliberate routing decision is recorded, so a preference can never
+    silently take the default path by omission. Routed destinations
+    are restricted to the member retention accounts: routing to a cash
+    account would fake an external payment (never allowed here)."""
 
-    import genesis.application.dividends as dividends_app
-    import genesis.domain.dividends as dividends_domain
+    from genesis.application.dividends import PAYOUT_CREDIT_ROUTING, PAYOUT_FALLBACK_TOKENS
+    from genesis.domain.ledger import Account
 
-    for module in (dividends_app, dividends_domain):
-        source = Path(str(module.__file__)).read_text(encoding="utf-8")
-        assert "dividend_payout" not in source, (
-            f"{module.__name__} references members.dividend_payout — the batch-8 "
-            "fence says the distribution engine must NOT consume the stored "
-            "preference; routing by preference needs its own authorized batch"
-        )
+    routed = set(PAYOUT_CREDIT_ROUTING)
+    fallback = set(PAYOUT_FALLBACK_TOKENS)
+    assert routed & fallback == set(), "a token cannot be both routed and fallback"
+    assert routed | fallback == set(DividendPayout), (
+        "every DividendPayout token needs a deliberate routing decision: "
+        "either a PAYOUT_CREDIT_ROUTING destination or an explicit "
+        "PAYOUT_FALLBACK_TOKENS entry (never a silent default)"
+    )
+    assert set(PAYOUT_CREDIT_ROUTING.values()) <= {
+        Account.MEMBER_DEPOSITS,
+        Account.MEMBER_SHARES,
+    }, "dividend routing may only target member retention accounts"

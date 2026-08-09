@@ -4,20 +4,20 @@ Revision ID: 0024
 Revises: 0023
 Create Date: 2026-08-01
 
-Claimed as 0024 with down_revision 0023 per v1.2 rule 14. At branch
+Claimed as 0024 with down_revision 0023 per the migration-declaration rule. At branch
 time main's migration head was 0022 (0001-0022 linear) and **0023 was
-the open claim of !40 (P13.10)** — this MR therefore merges AFTER !40
-and its pipeline can only be green on the combined state (sequencing
-declared in the MR description; re-verified per rule 12 before ready).
+the open claim of ** — this MR therefore merges AFTER
+and its pipeline can only be green on the combined state (sequencing declared in the MR description;
+re-verified per the house rules before ready).
 NO new tables: no TENANT_TABLES / ENTITY_MODULES / RLS delta. Three
-expand-only objects backing P13.17(e):
+expand-only objects backing (e):
 
   * idx_outbox_dispatched_purge — partial index over
     (dispatched_at) WHERE status = 'dispatched', the driving index for
     the retention-purge DELETE and the purgeable-tenant registry
-    (gate 1.3: shipped in the same MR as the queries it serves,
-    infrastructure/outbox_worker.py:purge_dispatched /
-    list_purgeable_tenants). idx_outbox_pending (0001) cannot serve
+    (scalability: shipped in the same MR as the queries it serves,
+    infrastructure/outbox_worker.py:purge_dispatched / list_purgeable_tenants). idx_outbox_pending
+    (0001) cannot serve
     this predicate — it is partial over status = 'pending'.
 
   * outbox_due_tenant_ids() — SECURITY DEFINER registry (the exact
@@ -37,7 +37,7 @@ expand-only objects backing P13.17(e):
 Both functions join tenants ON status = 'active' — parity with 0003:
 suspended tenants are neither dispatched nor purged.
 
-SECURITY (review finding R6): every SECURITY DEFINER function here is
+SECURITY (review): every SECURITY DEFINER function here is
 created with `SET search_path = public, pg_temp`. A definer-rights
 function with a mutable search_path is a PostgreSQL privilege-
 escalation vector — a caller-controlled search_path could shadow
@@ -50,7 +50,7 @@ downgrade restores active_tenant_ids() to its original 0003 definition
 (no SET clause) so 0024's downgrade leaves the database exactly at the
 0023 state.
 
-SECURITY (review finding R7): PostgreSQL grants EXECUTE on every
+SECURITY (review): PostgreSQL grants EXECUTE on every
 function to PUBLIC by default, so all three SECURITY DEFINER
 registries — active_tenant_ids() (0003), outbox_due_tenant_ids() and
 outbox_purgeable_tenant_ids(timestamptz) (0024) — were callable by ANY
@@ -74,7 +74,7 @@ explicit PUBLIC grant is semantically identical to the NULL-proacl
 default it replaces); the two 0024 functions are dropped outright,
 which removes their ACLs with them.
 
-Lock posture (honest per the !40 R5 disposition): CREATE INDEX
+Lock posture (honest per the R5 disposition): CREATE INDEX
 (non-CONCURRENT) takes a SHARE lock on outbox_events, blocking event
 INSERTs (i.e. every mutating request) for the duration of the build.
 That matches this project's accepted maintenance-window migration

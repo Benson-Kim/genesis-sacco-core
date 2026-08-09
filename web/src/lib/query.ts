@@ -1,14 +1,14 @@
 /**
- * TanStack Query conventions (P15 Phase B — one copy, gate 1.1).
+ * TanStack Query conventions (one copy, reuse-first).
  *
  * KEY SHAPES (every screen follows these — greppable, collision-free):
- *   [entity, "list", filters?]   — keyset lists (filters object included
+ *   [entity, "list", filters?] — keyset lists (filters object included
  *                                  when the screen filters server-side)
- *   [entity, "detail", id]       — single records backing drawers/edits
- *   ["access", "roles"]          — reference data (roles)
+ *   [entity, "detail", id] — single records backing drawers/edits
+ *   ["access", "roles"] — reference data (roles)
  *   ["access", "permissions", roleId]
- *   ["me", "permissions"]        — the signed-in grant matrix
- *   ["dashboard", "summary"]     — composite read models
+ *   ["me", "permissions"] — the signed-in grant matrix
+ *   ["dashboard", "summary"] — composite read models
  *
  * STALE TIMES per entity class (why each value):
  *   - reference: roles/products change rarely; refetching them on every

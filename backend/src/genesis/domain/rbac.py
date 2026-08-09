@@ -1,7 +1,7 @@
 """RBAC matrix mirrored verbatim from the prototype `seedPerms()` (P4).
 
 7 roles x 7 prototype modules x view/create/edit/approve, deny-by-
-default, plus the P13.15 `corrections` module (dedicated permission
+default, plus the `corrections` module (dedicated permission
 strings for the fraud channel — see _CORRECTIONS_GRANTS). Pure data:
 enforcement lives in the API authz dependency and the permissions table.
 """
@@ -19,13 +19,13 @@ class Module(enum.StrEnum):
     REPORTS = "reports"
     SETTINGS = "settings"
     ACCESS_CONTROL = "access_control"
-    # P13.15 extension of the prototype matrix: corrections are the
+    #  extension of the prototype matrix: corrections are the
     # fraud channel, so repayment adjustments, misc fees and loan
     # write-offs carry their OWN permission strings — never generic
-    # transactions:edit (A3 maker-checker). Deliberately NARROW grants
+    # transactions:edit (maker-checker). Deliberately NARROW grants
     # (see _CORRECTIONS_GRANTS), not the generic non-admin defaults.
     CORRECTIONS = "corrections"
-    # P14.5: member identity is the authorization substrate for
+    # member identity is the authorization substrate for
     # member-visible money actions (credential links; the staff-attested
     # consent override), so it carries its OWN permission strings —
     # never generic members:edit. Deliberately NARROW grants (see
@@ -58,10 +58,10 @@ ROLE_NAMES: tuple[str, ...] = (
     AUDITOR,
 )
 
-#: Assurance functions (the !47 B2 segregation-of-duties principle,
+#: Assurance functions (the B2 segregation-of-duties principle,
 #: three lines of defense): roles whose FUNCTION is reviewing the
 #: trail are excluded from acting inside the processes they audit —
-#: collections assignability (P13.16) and the issue-#24 maker-checker
+#: collections assignability and the issue- maker-checker
 #: CHECKER actions — even where their RBAC grants would otherwise
 #: allow it (the Auditor views everything BY DESIGN, so the permission
 #: matrix alone can never express this exclusion). Identified by role
@@ -75,7 +75,7 @@ _ADMIN_MODULES = frozenset({Module.SETTINGS, Module.ACCESS_CONTROL})
 
 RoleMatrix = dict[Module, dict[Action, bool]]
 
-#: P13.15 (A3 maker-checker): explicit, narrow grants for the
+#:  (maker-checker): explicit, narrow grants for the
 #: corrections module — (view, create, edit, approve) per role. The
 #: MAKER (Accountant, corrections:create) posts adjustments and fees;
 #: the CHECKERS (Branch Manager / Credit Committee, corrections:
@@ -90,9 +90,9 @@ _CORRECTIONS_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
     AUDITOR: (True, False, False, False),
 }
 
-#: P14.5: explicit, narrow grants for the member_identity module —
+#: explicit, narrow grants for the member_identity module —
 #: (view, create, edit, approve) per role. Credential link mutations
-#: (member_identity:create / :edit) and the staff-attested consent
+#: (member_identity:create /:edit) and the staff-attested consent
 #: override (member_identity:approve) are identity-of-record powers:
 #: only the roles that administer identity hold them (System Admin,
 #: Branch Manager); the Auditor reviews. Roles absent here hold

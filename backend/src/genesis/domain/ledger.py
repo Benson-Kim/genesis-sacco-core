@@ -2,21 +2,20 @@
 """Double-entry ledger domain: pure types, account chart, and posting rules.
 
 Zero I/O — no imports from application, infrastructure, or api layers.
-Money rounding comes from genesis.domain.money (gate 1.1: reuse-first).
+Money rounding comes from genesis.domain.money (reuse-first).
 
 Every posting is a balanced set of LedgerLine pairs (DR == CR).
 Corrections are reversing entries only — UPDATE/DELETE are forbidden by
-DB trigger (gate 1.5).
+DB trigger (data integrity).
 
-Reference prefixes (gate 1.4):
-  MP-  M-Pesa deposit
-  BK-  Bank-channel deposit (addition to the MASTER_PROMPT base set: bank
-       deposits are cash inflows, so reusing WD-/INT- would misclassify
-       them; BK- keeps deposit references channel-distinguishable)
-  LN-  Loan disbursement
-  RP-  Loan repayment
-  SH-  Share top-up
-  WD-  Withdrawal (any channel) / exit settlement
+Reference prefixes (concurrency safety):
+  MP- M-Pesa deposit
+  BK- Bank-channel deposit (addition to the house doctrine base set: bank deposits are cash inflows,
+  so reusing WD-/INT- would misclassify them; BK- keeps deposit references channel-distinguishable)
+  LN- Loan disbursement
+  RP- Loan repayment
+  SH- Share top-up
+  WD- Withdrawal (any channel) / exit settlement
   INT- Interest posting (loan accrual and deposit interest)
 
 Deposits are only valid on the MPESA and BANK channels; ACCRUAL/INTERNAL
@@ -49,11 +48,11 @@ class TxnType(enum.StrEnum):
     DIVIDEND_POSTING = "dividend_posting"
     SHARE_TRANSFER_OUT = "share_transfer_out"
     SHARE_TRANSFER_IN = "share_transfer_in"
-    # P13.15: misc fee (FE-) and the write-off provisioning posting
+    # misc fee (FE-) and the write-off provisioning posting
     # (WO-); values match the 0025 transactions.type CHECK.
     FEE = "fee"
     LOAN_WRITE_OFF = "loan_write_off"
-    # Issue #21 (P13.15 A4 follow-up): bad-debt recovery receipt (RC-)
+    # Issue (follow-up): bad-debt recovery receipt (RC-)
     # against a written-off loan's surviving claim; value matches the
     # 0030 transactions.type CHECK.
     LOAN_RECOVERY = "loan_recovery"
@@ -86,11 +85,11 @@ class Account(enum.StrEnum):
     # Liability accounts
     MEMBER_DEPOSITS = "member.deposits"
     MEMBER_SHARES = "member.shares"
-    # Unclaimed dividends payable (issue #19 P3): the record-date
+    # Unclaimed dividends payable (P3): the record-date
     # entitlement of a member who EXITED between declaration and
     # distribution is parked here as an explicit, reportable liability
     # — never credited to member accounts, never a silent shortfall.
-    # Resolved only through the P13.15 correction paths (reversing
+    # Resolved only through the correction paths (reversing
     # entries), never UPDATE/DELETE.
     UNCLAIMED_DIVIDENDS = "liability.unclaimed_dividends"
 
@@ -98,7 +97,7 @@ class Account(enum.StrEnum):
     INTEREST_INCOME = "income.interest"
     PENALTY_INCOME = "income.penalties"
     FEE_INCOME = "income.fees"
-    # Issue #21: cash recovered against a written-off loan's surviving
+    # Issue: cash recovered against a written-off loan's surviving
     # claim is recognised as bad-debt recovery INCOME (the accounting
     # treatment named on the issue) — never a reversal of the WO-
     # posting and never a resurrection of loans.receivable. The claim
@@ -110,14 +109,14 @@ class Account(enum.StrEnum):
     INTEREST_EXPENSE = "interest.expense"
     DIVIDEND_EXPENSE = "expense.dividends"
     REBATE_EXPENSE = "expense.rebates"
-    # P13.15: bad-debt expense recognised when a committee-approved
+    # bad-debt expense recognised when a committee-approved
     # write-off derecognises loans.receivable. Provisions are loan-row
     # bookkeeping (loans.provision_pct), never ledger balances, so the
     # write-off charge posts directly to expense (documented in
     # build_write_off_posting).
     WRITE_OFF_EXPENSE = "expense.loan_writeoffs"
 
-    # Clearing account for member-to-member share transfers (P13.11):
+    # Clearing account for member-to-member share transfers:
     # the OUT and IN legs post as two member-attributed transactions
     # so each member's ledger-reconstructed share history stays exact
     # (the ADB basis keys legs to members via transactions.member_id);
@@ -166,7 +165,7 @@ class PostingSpec:
             raise ValueError("PostingSpec must have at least one line")
 
     def assert_balanced(self) -> None:
-        """Raise if DR total != CR total (gate 1.5)."""
+        """Raise if DR total != CR total (data integrity)."""
         dr = sum((ln.amount for ln in self.lines if ln.side is Side.DEBIT), ZERO)
         cr = sum((ln.amount for ln in self.lines if ln.side is Side.CREDIT), ZERO)
         if dr != cr:
@@ -188,9 +187,9 @@ REF_PREFIX: dict[TxnType, str] = {
     TxnType.DIVIDEND_POSTING: "DV-",
     TxnType.SHARE_TRANSFER_OUT: "ST-",  # both transfer legs share the ST-
     TxnType.SHARE_TRANSFER_IN: "ST-",  # sequence (the WD- precedent)
-    TxnType.FEE: "FE-",  # P13.15 misc fees
-    TxnType.LOAN_WRITE_OFF: "WO-",  # P13.15 write-off provisioning posting
-    TxnType.LOAN_RECOVERY: "RC-",  # issue #21 bad-debt recovery receipts
+    TxnType.FEE: "FE-",  #  misc fees
+    TxnType.LOAN_WRITE_OFF: "WO-",  #  write-off provisioning posting
+    TxnType.LOAN_RECOVERY: "RC-",  #  bad-debt recovery receipts
 }
 
 # Channel-specific prefix for deposits. Deposits only arrive via M-Pesa or
@@ -225,7 +224,7 @@ def _cash_account(channel: Channel) -> Account:
     ACCRUAL/INTERNAL are refused instead of silently routing to
     suspense (external Codex review, re-derived): a structural cash
     leg parked in suspense would hide a mis-channelled posting inside
-    the exceptional-items account, defeating reconciliation (gate 1.5).
+    the exceptional-items account, defeating reconciliation (data integrity).
     The API boundary already rejects non-cash channels
     (api.params.require_cash_channel); this is the defence in depth
     for internal callers and future code paths.
@@ -319,13 +318,13 @@ def build_allocated_repayment_posting(
     principal: Decimal,
     channel: Channel,
 ) -> PostingSpec:
-    """Split-leg repayment posting for the P10 allocation contract.
+    """Split-leg repayment posting for the allocation contract.
 
     DR cash for the full amount received; CR one leg per non-zero
     allocation component:
       * penalties -> income.penalties
-      * interest  -> income.interest (recognised on receipt; the P11
-        accrual job owns interest.receivable postings)
+      * interest -> income.interest (recognised on receipt; the accrual job owns interest.receivable
+      postings)
       * principal -> loans.receivable
     Balanced by construction; at least one component must be positive.
     """
@@ -394,20 +393,20 @@ def build_exit_settlement_posting(
     fee: Decimal,
     channel: Channel,
 ) -> PostingSpec:
-    """Exit settlement set-off (P12): one balanced posting, no suspense leg.
+    """Exit settlement set-off: one balanced posting, no suspense leg.
 
     DR member.shares + DR member.deposits — the member equity being
     extinguished; CR loans.receivable / income.interest /
     income.penalties — the loan payoff netted inside the settlement
-    (the P10 early-settlement split: principal, interest already due,
-    penalties); CR income.fees — the tenant-configured exit fee;
+    (the early-settlement split: principal, interest already due, penalties); CR income.fees — the
+    tenant-configured exit fee;
     CR cash — the net refund actually paid out.
 
     Balanced by construction: net = equity - loan components - fee, so
     DR(shares + deposits) == CR(loan + fee + net). Guards:
       * every component must be non-negative
-      * a negative net settlement can never be posted (the documented
-        P12 rule rejects it at request time; this is the final gate)
+      * a negative net settlement can never be posted (the documented rule rejects it at request
+      time; this is the final gate)
       * a positive net refund requires a cash channel (MPESA/BANK);
         a zero-net set-off moves no cash and posts as INTERNAL
       * zero-equity settlements have nothing to post — the caller
@@ -460,16 +459,40 @@ def build_exit_settlement_posting(
     )
 
 
-def build_dividend_distribution_posting(dividend: Decimal, rebate: Decimal) -> PostingSpec:
-    """One member's dividend + rebate payout (P13.11): DV- ref, ACCRUAL.
+def build_dividend_distribution_posting(
+    dividend: Decimal, rebate: Decimal, *, credit_account: Account | None = None
+) -> PostingSpec:
+    """One member's dividend + rebate payout: DV- ref, ACCRUAL.
 
-    DR expense.dividends / CR member.shares for the dividend component
-    (capitalised into share capital, so it compounds into the NEXT
-    financial year's share basis — gate 1.5) and DR expense.rebates /
-    CR member.deposits for the deposit-rebate component. Components are
-    rounded upstream by the single money primitive; at least one must
-    be positive (zero entitlements are skipped, never posted).
+    Default (credit_account=None — byte-identical to the earlier behaviour): DR expense.dividends /
+    CR member.shares for the
+    dividend component (capitalised into share capital, so it compounds into the NEXT financial
+    year's share basis — data integrity)
+    and DR expense.rebates / CR member.deposits for the rebate
+    component.
+
+    Since (human-authorized on, 2026-08-07) the
+    distribution engine may route BOTH member-side credit legs to a
+    single retention destination chosen by the member's stored
+    dividend_payout preference: credit_account is a CODE-OWNED value
+    restricted to member.deposits or member.shares (never
+    caller-supplied, never a cash account — external channels are
+    unbuilt and are never faked; the engine falls back to the default
+    with credit_account=None). The DR legs keep their expense
+    classification either way, so the legs stay balanced and the
+    declared totals conserve exactly.
+
+    Components are rounded upstream by the single money primitive; at
+    least one must be positive (zero entitlements are skipped, never
+    posted).
     """
+    if credit_account is not None and credit_account not in (
+        Account.MEMBER_DEPOSITS,
+        Account.MEMBER_SHARES,
+    ):
+        raise ValueError("dividend credit destination must be a member retention account")
+    dividend_credit = Account.MEMBER_SHARES if credit_account is None else credit_account
+    rebate_credit = Account.MEMBER_DEPOSITS if credit_account is None else credit_account
     dividend = to_cents(dividend)
     rebate = to_cents(rebate)
     if dividend < ZERO or rebate < ZERO:
@@ -480,10 +503,10 @@ def build_dividend_distribution_posting(dividend: Decimal, rebate: Decimal) -> P
     lines: list[LedgerLine] = []
     if dividend > ZERO:
         lines.append(LedgerLine(account=Account.DIVIDEND_EXPENSE, side=Side.DEBIT, amount=dividend))
-        lines.append(LedgerLine(account=Account.MEMBER_SHARES, side=Side.CREDIT, amount=dividend))
+        lines.append(LedgerLine(account=dividend_credit, side=Side.CREDIT, amount=dividend))
     if rebate > ZERO:
         lines.append(LedgerLine(account=Account.REBATE_EXPENSE, side=Side.DEBIT, amount=rebate))
-        lines.append(LedgerLine(account=Account.MEMBER_DEPOSITS, side=Side.CREDIT, amount=rebate))
+        lines.append(LedgerLine(account=rebate_credit, side=Side.CREDIT, amount=rebate))
     return PostingSpec(
         txn_type=TxnType.DIVIDEND_POSTING,
         channel=Channel.ACCRUAL,
@@ -493,20 +516,20 @@ def build_dividend_distribution_posting(dividend: Decimal, rebate: Decimal) -> P
 
 
 def build_unclaimed_dividend_posting(dividend: Decimal, rebate: Decimal) -> PostingSpec:
-    """Mid-run-exit disposition of one member's entitlement (issue #19 P3).
+    """Mid-run-exit disposition of one member's entitlement (P3).
 
     DV- ref, ACCRUAL channel — the same transaction type as a paid
-    distribution (dividend_posting stays classified SYSTEM in
-    MEMBER_INITIATED, so the P13.13 dormancy clock is untouched), but
+    distribution (dividend_posting stays classified SYSTEM in MEMBER_INITIATED, so the dormancy
+    clock is untouched), but
     the credit legs park the money as an explicit
     liability.unclaimed_dividends payable instead of member accounts:
     DR expense.dividends / CR liability.unclaimed_dividends and
     DR expense.rebates / CR liability.unclaimed_dividends. The exited
     member holds no balances any more; recognising the payable keeps
-    SUM(expense postings) == the approved declaration totals (the !30
-    zero-residue conservation rule) while the disposition row, its
+    SUM(expense postings) == the approved declaration totals (the zero-residue conservation rule)
+    while the disposition row, its
     audit row and the outbox event make the position visible.
-    Resolution (pay-out or write-back) happens through the P13.15
+    Resolution (pay-out or write-back) happens through the
     correction paths as reversing entries.
     """
     dividend = to_cents(dividend)
@@ -536,14 +559,14 @@ def build_unclaimed_dividend_posting(dividend: Decimal, rebate: Decimal) -> Post
 
 
 def build_share_transfer_out_posting(amount: Decimal) -> PostingSpec:
-    """Transferor leg of a share transfer (P13.11): ST- ref, INTERNAL.
+    """Transferor leg of a share transfer: ST- ref, INTERNAL.
 
     DR member.shares / CR clearing.share_transfers. The transfer posts
     as TWO transactions (OUT for the transferor, IN for the transferee)
     because ledger legs are attributed to members via
     transactions.member_id: a single netted posting would make the
     transferor's movement invisible to the ledger-reconstructed share
-    basis (v1.1 rule 2) and never credit the transferee's history. The
+    basis and never credit the transferee's history. The
     clearing account nets to zero inside the one atomic transfer
     transaction that posts both legs.
     """
@@ -560,7 +583,7 @@ def build_share_transfer_out_posting(amount: Decimal) -> PostingSpec:
 
 
 def build_share_transfer_in_posting(amount: Decimal) -> PostingSpec:
-    """Transferee leg of a share transfer (P13.11): ST- ref, INTERNAL.
+    """Transferee leg of a share transfer: ST- ref, INTERNAL.
 
     DR clearing.share_transfers / CR member.shares — the mirror of
     build_share_transfer_out_posting; see there for the two-transaction
@@ -579,12 +602,12 @@ def build_share_transfer_in_posting(amount: Decimal) -> PostingSpec:
 
 
 def build_fee_posting(amount: Decimal, channel: Channel) -> PostingSpec:
-    """Misc fee received from a member (P13.15): FE- ref.
+    """Misc fee received from a member: FE- ref.
 
     DR cash / CR income.fees — the member pays the fee in, so only the
     cash channels (MPESA/BANK) are valid; ACCRUAL/INTERNAL are refused
     exactly like deposits (a fee is never a system accrual). The amount
-    comes exclusively from P13.7 tenant configuration (v1.1 rule 1) —
+    comes exclusively from tenant configuration —
     the application service resolves it server-side and no request body
     ever carries it.
     """
@@ -603,20 +626,20 @@ def build_fee_posting(amount: Decimal, channel: Channel) -> PostingSpec:
 
 
 def build_write_off_posting(amount: Decimal) -> PostingSpec:
-    """Committee-approved write-off provisioning posting (P13.15): WO- ref.
+    """Committee-approved write-off provisioning posting: WO- ref.
 
     DR expense.loan_writeoffs / CR loans.receivable for the written-off
     PRINCIPAL balance, INTERNAL channel (no cash moves). penalty_due is
-    receivable-side loan-row bookkeeping only (the P13.8 rule: penalty
-    income is recognised on receipt), so writing it off zeroes the loan
+    receivable-side loan-row bookkeeping only (the rule: penalty income is recognised on receipt),
+    so writing it off zeroes the loan
     row without a ledger leg — there is no penalty receivable in the
     ledger to derecognise.
 
-    WRITE-OFF IS NOT FORGIVENESS (P13.15 A4): this posting zeroes the
+    WRITE-OFF IS NOT FORGIVENESS: this posting zeroes the
     performing receivable, but the legal claim on the member survives
     in the write-once loan_write_offs snapshot; post-write-off
-    recoveries are a FUTURE explicit branch (bad-debt-recovery income
-    posting — follow-up issue referencing P13.16/P19), and a repayment
+    recoveries are a FUTURE explicit branch (bad-debt-recovery income posting — follow-up issue
+    referencing /), and a repayment
     against a written_off loan is refused loudly today.
     """
     amt = to_cents(amount)
@@ -632,11 +655,11 @@ def build_write_off_posting(amount: Decimal) -> PostingSpec:
 
 
 def build_loan_recovery_posting(amount: Decimal, channel: Channel) -> PostingSpec:
-    """Bad-debt recovery receipt against a written-off loan (issue #21):
+    """Bad-debt recovery receipt against a written-off loan:
     RC- ref.
 
     DR cash / CR income.bad_debt_recoveries — the treatment named on
-    issue #21: cash recovered on a claim whose receivable was already
+    cash recovered on a claim whose receivable was already
     derecognised by the WO- posting is recognised as recovery INCOME.
     The write-off posting is never reversed and loans.receivable is
     never resurrected (the loan stays written_off; the surviving claim
@@ -648,8 +671,7 @@ def build_loan_recovery_posting(amount: Decimal, channel: Channel) -> PostingSpe
     repayment) — but the CLAIM it draws down (total_written_off and the
     receipts already recorded) is resolved server-side by the
     corrections service under the write-off row lock, and a receipt can
-    never exceed the outstanding claim (issue #21: partial recoveries
-    tracked against total_written_off).
+    never exceed the outstanding claim (partial recoveries tracked against total_written_off).
     """
     amt = to_cents(amount)
     if channel not in (Channel.MPESA, Channel.BANK):
@@ -668,7 +690,7 @@ def build_loan_recovery_posting(amount: Decimal, channel: Channel) -> PostingSpe
 
 
 def build_reversal_posting(original: PostingSpec) -> PostingSpec:
-    """Return a reversing entry that exactly negates the original (gate 1.5).
+    """Return a reversing entry that exactly negates the original (data integrity).
 
     Each line's side is flipped; the amount and accounts are unchanged.
     The resulting PostingSpec is balanced by construction.
@@ -690,7 +712,7 @@ def build_reversal_posting(original: PostingSpec) -> PostingSpec:
 
 
 # ---------------------------------------------------------------------------
-# Member-facing direction (P11 ledger listing)
+# Member-facing direction (ledger listing)
 # ---------------------------------------------------------------------------
 
 #: Direction of each transaction type from the member's perspective:
@@ -707,18 +729,18 @@ MEMBER_DIRECTION: dict[TxnType, Side] = {
     TxnType.WITHDRAWAL: Side.DEBIT,
     TxnType.LOAN_DISBURSEMENT: Side.DEBIT,
     TxnType.EXIT_SETTLEMENT: Side.DEBIT,
-    # P13.11: a dividend/rebate credits the member's position; a share
+    # a dividend/rebate credits the member's position; a share
     # transfer posts one DEBIT-direction transaction for the transferor
     # (OUT) and one CREDIT-direction transaction for the transferee (IN).
     TxnType.DIVIDEND_POSTING: Side.CREDIT,
     TxnType.SHARE_TRANSFER_OUT: Side.DEBIT,
     TxnType.SHARE_TRANSFER_IN: Side.CREDIT,
-    # P13.15: a fee is a charge on the member (money out of their
+    # a fee is a charge on the member (money out of their
     # pocket); a write-off extinguishes their receivable like a
     # repayment leg would (money into their position).
     TxnType.FEE: Side.DEBIT,
     TxnType.LOAN_WRITE_OFF: Side.CREDIT,
-    # Issue #21: a recovery receipt draws down the member's surviving
+    # Issue: a recovery receipt draws down the member's surviving
     # written-off claim — money into their position, like a repayment.
     TxnType.LOAN_RECOVERY: Side.CREDIT,
 }
@@ -733,12 +755,12 @@ def member_direction(txn_type: TxnType, *, is_reversal: bool = False) -> Side:
 
 
 # ---------------------------------------------------------------------------
-# Member-initiated activity classification (P13.13 dormancy, FM1)
+# Member-initiated activity classification (dormancy)
 # ---------------------------------------------------------------------------
 
 #: Code-owned classification of EVERY transaction type: does this type
 #: represent activity the MEMBER initiated? Only member-initiated
-#: activity resets the dormancy clock (P13.13 FM1 — the universal bank
+#: activity resets the dormancy clock (the universal bank
 #: bug is counting system postings, so no account ever goes dormant).
 #: The completeness test pins this map to the TxnType enum, so a new
 #: transaction type cannot land unclassified; the dormancy tests pin
@@ -753,9 +775,9 @@ def member_direction(txn_type: TxnType, *, is_reversal: bool = False) -> Side:
 #:   * exit_settlement — the member's own exit request (moot for
 #:     dormancy: the member is terminal-exited in the same
 #:     transaction).
-#:   * interest_posting — SYSTEM accrual (P11 INT- postings): never
+#:   * interest_posting — SYSTEM accrual (INT- postings): never
 #:     member activity.
-#:   * dividend_posting — SYSTEM distribution (!30 DV- postings, with
+#:   * dividend_posting — SYSTEM distribution (DV- postings, with
 #:     occurred_at pinned to FY END, potentially far in the past):
 #:     never member activity.
 #:   * share_transfer_in — the TRANSFEREE did not act; counting it
@@ -776,16 +798,16 @@ MEMBER_INITIATED: dict[TxnType, bool] = {
     TxnType.DIVIDEND_POSTING: False,
     TxnType.SHARE_TRANSFER_OUT: True,
     TxnType.SHARE_TRANSFER_IN: False,
-    # P13.15: fees are STAFF-charged (the member did not act) and a
-    # write-off is a committee action — neither may reset the P13.13
+    # fees are STAFF-charged (the member did not act) and a
+    # write-off is a committee action — neither may reset the
     # dormancy clock.
     TxnType.FEE: False,
     TxnType.LOAN_WRITE_OFF: False,
-    # Issue #21: recovery receipts are COLLECTIONS outcomes recorded by
+    # Issue: recovery receipts are COLLECTIONS outcomes recorded by
     # staff — the funds may originate from auctions, guarantor calls or
     # negotiated settlements, so a receipt is never proof the member
     # transacted; counting it would quietly keep a written-off member's
-    # account out of dormancy monitoring (the P13.13 FM1 gaming vector).
+    # account out of dormancy monitoring (the gaming vector).
     TxnType.LOAN_RECOVERY: False,
 }
 
@@ -796,7 +818,7 @@ def member_initiated_types() -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Account classification (P13.10 income statement / SASRA return)
+# Account classification (income statement / SASRA return)
 # ---------------------------------------------------------------------------
 
 
@@ -818,11 +840,11 @@ class AccountClass(enum.StrEnum):
     CLEARING = "clearing"
 
 
-#: Code-owned classification of EVERY chart account (v1.1 rule 6: the
+#: Code-owned classification of EVERY chart account (the
 #: account identifiers interpolated into report groupings come from
 #: THIS mapping, never from callers). The completeness test pins this
 #: map to the Account enum, so a new account cannot land unclassified
-#: — and the P13.10 report builders FAIL LOUDLY (UnprocessableError)
+#: — and the report builders FAIL LOUDLY (UnprocessableError)
 #: on any ledger account string not covered here, so a future account
 #: can never silently vanish from an income statement or a regulator
 #: return (the classic silent-drop return defect).
@@ -858,7 +880,7 @@ def account_class(account_value: str) -> AccountClass:
     ValueError (unknown enum value) or KeyError (enum member missing
     from ACCOUNT_CLASS) both surface as ValueError so report builders
     can translate the failure into a loud, sanitized domain error —
-    never a silently dropped line (gate 1.5).
+    never a silently dropped line (data integrity).
     """
     try:
         return ACCOUNT_CLASS[Account(account_value)]

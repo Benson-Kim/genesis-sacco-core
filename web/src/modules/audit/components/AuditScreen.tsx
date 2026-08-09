@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Audit-log viewer (P15 — the governance counterpart of the audit-write
- * gate 1.5), salvaged from duo/feature/p13-5-frontend-followthrough
- * @ 198a238 (itself ported from !25 onto the P14 scaffold).
+ * Audit-log viewer (the governance counterpart of the audit-write data integrity), salvaged from duo/feature/p13-5-frontend-followthrough
+ * @ 198a238 (itself ported from onto the scaffold).
  *
  * Security posture (carried forward):
  * - before/after payloads are ATTACKER-INFLUENCED data (they embed member
@@ -18,12 +17,13 @@
  *   entitlement regardless.
  */
 import { useState, type FormEvent } from "react";
-import { Banner, Button, Card, Modal, Pill } from "@genesis/design-system";
+import { Banner, Button, Card, Kv, Modal, Pill } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
 import { fmtDateTime, isUuid, prettyJson } from "@/lib/format";
 import { fetchAuditPage } from "../api";
 import { EMPTY_AUDIT_FILTERS, type AuditEntry, type AuditFilters } from "../schemas";
+import { FormField } from "@/modules/forms/FormField";
 import styles from "./Audit.module.css";
 
 export function AuditScreen() {
@@ -109,64 +109,74 @@ export function AuditScreen() {
     <Card padded={false}>
       <form className={styles.toolbar} onSubmit={applyFilters}>
         <div className={styles.filters}>
-          <label className={styles.formStack}>
-            <span className={styles.label}>Entity</span>
-            <input
-              className={styles.input}
-              maxLength={100}
-              placeholder="e.g. users"
-              value={draft.entity}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, entity: event.target.value }))
-              }
-            />
-          </label>
-          <label className={styles.formStack}>
-            <span className={styles.label}>Action</span>
-            <input
-              className={styles.input}
-              maxLength={100}
-              placeholder="e.g. user.role"
-              value={draft.action}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, action: event.target.value }))
-              }
-            />
-          </label>
-          <label className={styles.formStack}>
-            <span className={styles.label}>Actor</span>
-            <input
-              className={styles.input}
-              maxLength={36}
-              placeholder="actor UUID"
-              value={draft.actorId}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, actorId: event.target.value }))
-              }
-            />
-          </label>
-          <label className={styles.formStack}>
-            <span className={styles.label}>From</span>
-            <input
-              className={styles.input}
-              type="date"
-              value={draft.dateFrom}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, dateFrom: event.target.value }))
-              }
-            />
-          </label>
-          <label className={styles.formStack}>
-            <span className={styles.label}>To</span>
-            <input
-              className={styles.input}
-              type="date"
-              value={draft.dateTo}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, dateTo: event.target.value }))
-              }
-            />
-          </label>
+          <FormField id="audit-filter-entity" label="Entity">
+            {(control) => (
+              <input
+                {...control}
+                className={styles.input}
+                maxLength={100}
+                placeholder="e.g. users"
+                value={draft.entity}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, entity: event.target.value }))
+                }
+              />
+            )}
+          </FormField>
+          <FormField id="audit-filter-action" label="Action">
+            {(control) => (
+              <input
+                {...control}
+                className={styles.input}
+                maxLength={100}
+                placeholder="e.g. user.role"
+                value={draft.action}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, action: event.target.value }))
+                }
+              />
+            )}
+          </FormField>
+          <FormField id="audit-filter-actor" label="Actor">
+            {(control) => (
+              <input
+                {...control}
+                className={styles.input}
+                maxLength={36}
+                placeholder="actor UUID"
+                value={draft.actorId}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, actorId: event.target.value }))
+                }
+              />
+            )}
+          </FormField>
+          <FormField id="audit-filter-from" label="From">
+            {(control) => (
+              <input
+                {...control}
+                className={styles.input}
+                type="date"
+                value={draft.dateFrom}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, dateFrom: event.target.value }))
+                }
+              />
+            )}
+          </FormField>
+          <FormField id="audit-filter-to" label="To">
+            {(control) => (
+              <input
+                {...control}
+                className={styles.input}
+                type="date"
+                value={draft.dateTo}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, dateTo: event.target.value }))
+                }
+              />
+            )}
+          </FormField>
         </div>
         <div className={styles.actions}>
           <Button type="button" onClick={clearFilters}>
@@ -215,30 +225,20 @@ function AuditEntryDrawer({ entry, onClose }: { entry: AuditEntry; onClose: () =
   return (
     <Modal title="Audit entry" onClose={onClose}>
       <div className={styles.detailGrid}>
-        <div className={styles.kvRow}>
-          <span className={styles.kvKey}>At</span>
-          <span className={`${styles.kvVal} ${styles.tnum}`}>{fmtDateTime(entry.at)}</span>
-        </div>
-        <div className={styles.kvRow}>
-          <span className={styles.kvKey}>Actor</span>
-          <span className={styles.kvVal}>{entry.actor_id ?? "system"}</span>
-        </div>
-        <div className={styles.kvRow}>
-          <span className={styles.kvKey}>Action</span>
-          <span className={styles.kvVal}>{entry.action}</span>
-        </div>
-        <div className={styles.kvRow}>
-          <span className={styles.kvKey}>Entity</span>
-          <span className={styles.kvVal}>{entry.entity}</span>
-        </div>
-        <div className={styles.kvRow}>
-          <span className={styles.kvKey}>Entity id</span>
-          <span className={styles.kvVal}>{entry.entity_id}</span>
-        </div>
-        <div className={styles.kvRow}>
-          <span className={styles.kvKey}>Payload access</span>
-          <span className={styles.kvVal}>{entry.redacted ? "Redacted" : "Disclosed per role"}</span>
-        </div>
+        {/* Design-system Kv rows — quiet
+            variant, byte-equivalent rules to the module CSS this
+            replaced; the At row's composed tnum class passes through
+            valueClassName, keeping the rendered class set equivalent. */}
+        <Kv label="At" variant="quiet" valueClassName={styles.tnum}>
+          {fmtDateTime(entry.at)}
+        </Kv>
+        <Kv label="Actor" variant="quiet">{entry.actor_id ?? "system"}</Kv>
+        <Kv label="Action" variant="quiet">{entry.action}</Kv>
+        <Kv label="Entity" variant="quiet">{entry.entity}</Kv>
+        <Kv label="Entity id" variant="quiet">{entry.entity_id}</Kv>
+        <Kv label="Payload access" variant="quiet">
+          {entry.redacted ? "Redacted" : "Disclosed per role"}
+        </Kv>
       </div>
       {entry.redacted && (
         <Banner>

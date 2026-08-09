@@ -1,9 +1,9 @@
-"""System users administration endpoints (P13.5, gate 1.6).
+"""System users administration endpoints (least disclosure).
 
 The prototype Access-control "Users" tab backend. Every route carries a
 RequirePermission dependency on access_control x action (deny by
 default); mutations are idempotent via the Idempotency-Key middleware
-(gate 1.4). Request bodies reject unknown fields (extra="forbid"):
+(concurrency safety). Request bodies reject unknown fields (extra="forbid"):
 role and status can never ride along on a profile edit — they are
 separate, separately-guarded mutations. OTP endpoints never disclose
 codes (the prototype's on-screen OTP is a demo artifact).
@@ -79,7 +79,7 @@ class UserOut(BaseModel):
     email: str
     phone: str | None
     branch: str | None
-    #: P13.6 branch-registry FK, read-only here (!24 finding #3): branch
+    #:  branch-registry FK, read-only here (finding): branch
     #: assignment goes exclusively through PUT /branches/{id}/users/{id}.
     branch_id: str | None
     role_id: str
@@ -95,7 +95,7 @@ class UserListResponse(BaseModel):
 
 
 class OtpInvalidateResponse(BaseModel):
-    """Side-effect counts only — never challenge contents (gate 1.6)."""
+    """Side-effect counts only — never challenge contents (least disclosure)."""
 
     voided_otp_challenges: int
 
@@ -206,7 +206,7 @@ async def change_status(user_id: uuid.UUID, body: UserStatusBody, ctx: EditCtx) 
 @router.post("/{user_id}/role")
 async def assign_role(user_id: uuid.UUID, body: UserRoleBody, ctx: EditCtx) -> UserOut:
     """Audited role assignment; self-changes and last-admin re-roles refused."""
-    # Review F2: granting System Admin, or re-roling a current System
+    # granting System Admin, or re-roling a current System
     # Admin, additionally requires the ACTOR to be a System Admin —
     # resolved server-side in the service, never from the JWT alone.
     factory = get_sessionmaker(get_settings().database_url)

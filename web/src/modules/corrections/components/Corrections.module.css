@@ -1,6 +1,6 @@
 /*
- * Corrections module styles (P15 batch 1, issue #31). Tokens only
- * (gate 1.1); page-level GRIDS come from the shared
+ * Corrections module styles. Tokens only
+ * (reuse-first); page-level GRIDS come from the shared
  * modules/layout/grid.module.css — no private page grid lives here.
  */
 
@@ -16,7 +16,7 @@
 }
 
 /* Correction figures — tabular numerals; each figure sits in its own
- * labelled row (issue #8: color never carries meaning alone). */
+ * labelled row (color never carries meaning alone). */
 .amountCell {
     font-weight: 700;
     color: var(--ink);
@@ -115,7 +115,7 @@
     flex: 1 1 260px;
 }
 
-/* Register header card (the batch-6 checker/committee registers). */
+/* Register header card (the checker/committee registers). */
 .registerHead {
     padding: 14px;
     border-bottom: 1px solid var(--line);

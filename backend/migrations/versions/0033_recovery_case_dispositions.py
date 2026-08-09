@@ -1,18 +1,18 @@
-"""richer recovery-case dispositions + post-closure outcome notes (issue #23)
+"""richer recovery-case dispositions + post-closure outcome notes
 
 Revision ID: 0033
 Revises: 0032
 Create Date: 2026-08-02
 
-Successor revision to 0026 backing the !47 maintainer-review N2/N3
-follow-ups (issue #23). NO money moves: no amount, balance or rate
+Successor revision to 0026 backing the maintainer-
+follow-ups. NO money moves: no amount, balance or rate
 column is added — recovery_cases stays workflow state only.
 
 Sequencing (v1.2 rules 12/14): this revision claims 0033 with
-down_revision '0032' (the issue-#24 track's claim) and merges AFTER it
-— declared in MR !53 at branch time; batch order #21 -> #24 -> #23.
+down_revision '0032' (that track's claim) and merges AFTER it
+— declared in at branch time; batch order -> ->.
 
-THE 0026 NAMED-CONTRACT DISCIPLINE, HONOURED (N2): 0026's docstring
+THE 0026 NAMED-CONTRACT DISCIPLINE, HONOURED: 0026's docstring
 records the CLASSIFICATION-LADDER MIRROR contract — a DB CHECK that
 mirrors a code-owned set may only change via a successor migration in
 the SAME MR that changes the set. This MR widens the recovery status
@@ -20,9 +20,9 @@ set in genesis.domain.recovery (the single transition gatekeeper), so
 this revision regenerates every mirrored shape in the same MR:
 
   * status CHECK — widened to the six-state machine: the three 0026
-    states plus 'irrecoverable_pending_write_off' (recovery concluded
-    impossible, committee write-off not yet landed — the P13.15/!46
-    linkage), 'disputed' (member contests the arrears; the case pauses
+    states plus 'irrecoverable_pending_write_off' (recovery concluded impossible, committee
+    write-off not yet landed — the / linkage), 'disputed' (member contests the arrears; the case
+    pauses
     without pretending to be workable), 'closed_restructured'
     (terminal: the loan was restructured, the case's premise no longer
     holds). Postgres stores the inline 0026 CHECK under the
@@ -44,15 +44,15 @@ this revision regenerates every mirrored shape in the same MR:
     ALL live statuses (loan facts end a pause: cure or write-off
     closes a paused case too); same name, live-set predicate.
 
-POST-CLOSURE OUTCOME NOTES (N3, issue option 1): exactly ONE outcome
+POST-CLOSURE OUTCOME NOTES (issue option 1): exactly ONE outcome
 note at/after closure, server-enforced —
 
   * recovery_case_notes.is_outcome boolean NOT NULL DEFAULT false
     (expand-only; every existing note is a regular live-case note).
   * uq_recovery_notes_one_outcome partial UNIQUE (tenant_id, case_id)
-    WHERE is_outcome — claimed atomically with INSERT ... ON CONFLICT
-    DO NOTHING + rowcount (v1.1 rule 5): a concurrent double-add lands
-    exactly one row. Notes stay append-only (addendum A2): no edit or
+    WHERE is_outcome — claimed atomically with INSERT... ON CONFLICT
+    DO NOTHING + rowcount: a concurrent double-add lands
+    exactly one row. Notes stay append-only (review addendum): no edit or
     delete route exists anywhere; the outcome note is a NEW row.
 
 Downgrade REFUSES LOUDLY (the 0017/0020 discipline applied to

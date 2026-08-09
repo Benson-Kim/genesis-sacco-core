@@ -1,11 +1,11 @@
-"""Member exit & settlement endpoints (P12, gate 1.6).
+"""Member exit & settlement endpoints (least disclosure).
 
 Every route carries a RequirePermission dependency (deny-by-default);
-mutations are idempotent via the Idempotency-Key middleware (gate 1.4).
+mutations are idempotent via the Idempotency-Key middleware (concurrency safety).
 
 Permission gates (P4 matrix, decided and documented):
 
-  * create request  — members x EDIT: initiating an exit is a member
+  * create request — members x EDIT: initiating an exit is a member
     lifecycle change (System Admin, Branch Manager).
   * vote / void / settle — members x APPROVE: exit governance lives in
     the members module (there is no dedicated exit module in the
@@ -26,8 +26,8 @@ Permission gates (P4 matrix, decided and documented):
     approve-holder than the initiator.
   * view / list / statement — members x VIEW.
 
-Money parameters never travel in request bodies (P11 caller-rate
-lesson): the exit fee comes exclusively from tenant_settings and every
+Money parameters never travel in request bodies (caller-rate lesson): the exit fee comes exclusively
+from tenant_settings and every
 settlement figure is computed server-side under locks. The only
 caller-chosen values are the payout channel (cash channels only) and
 the optional exit reason.
@@ -104,14 +104,14 @@ class ExitOut(BaseModel):
     loan_balance: str
     fees: str
     net_payable: str
-    #: Initiator attribution (issue #30 R3; the !64 honest-limitation
+    #: Initiator attribution (R3; the honest-limitation
     #: row): the staff principal who created the request — persisted
     #: since 0010 and already driving the self-vote/self-settle 403s,
     #: now exposed so approvers can see WHO they are checking (the
     #: maker-checker record itself, not a per-tab witness). Least
-    #: disclosure (gate 1.6): the bare user UUID only — never a name
+    #: disclosure (least disclosure): the bare user UUID only — never a name
     #: or email; resolving it stays behind access_control:view (the
-    #: P13.5 users/audit read paths). NULL only for legacy rows
+    #:  users/audit read paths). NULL only for legacy rows
     #: written without an actor (attribution is never invented).
     requested_by: str | None
     decided_at: str | None
@@ -128,9 +128,9 @@ class ExitListResponse(BaseModel):
 
 class ExitEligibilityOut(BaseModel):
     """Advisory blocker FACTS for the up-front eligibility checklist
-    (P15 batch 5, U6 — the prototype's vExit() criteria rows).
+    (the exit-eligibility criteria rows).
 
-    Least disclosure (gate 1.6): counts and booleans only — NEVER an
+    Least disclosure: counts and booleans only — NEVER an
     amount; served under members:view like every other exit read.
     ADVISORY only: computed WITHOUT locks; the binding verdict stays
     with the request/settlement locked recomputes (which also enforce
@@ -144,7 +144,7 @@ class ExitEligibilityOut(BaseModel):
     live_guarantees_count: int
     open_applications_count: int
     #: Informational, NOT a blocker — active loans net within the
-    #: settlement (the P10 early-settlement rule).
+    #: settlement (the early-settlement rule).
     active_loans_count: int
     unresolved_writeoff_claim: bool
     advisory_eligible: bool
@@ -178,9 +178,9 @@ class ExitStatementOut(BaseModel):
     fees: str
     net_payable: str
     #: Initiator attribution on the statement document itself (issue
-    #: #30 R3; the !64 honest-limitation row): who requested this
+    #:  R3; the honest-limitation row): who requested this
     #: settlement, next to the figures it produced. Least disclosure
-    #: (gate 1.6): the bare user UUID only — never a name or email;
+    #: (least disclosure): the bare user UUID only — never a name or email;
     #: resolving it stays behind access_control:view. null only for
     #: legacy rows written without an actor (never invented).
     requested_by: str | None
@@ -241,12 +241,11 @@ async def list_exit_requests(
 @router.get("/eligibility/{member_id}")
 async def get_exit_eligibility(member_id: uuid.UUID, ctx: ViewCtx) -> ExitEligibilityOut:
     """Advisory eligibility facts BEFORE a request is submitted
-    (members:view; P15 batch 5, U6 — human-authorized expand-only,
-    read-only contract change).
+    (members:view; human-authorized expand-only, read-only contract change).
 
     NO row locks: the checklist mirrors the blocker set the settlement
-    service enforces (same live-guarantee status set, same open-stage
-    list, the SAME unresolved-write-off SQL — gate 1.1), but the
+    service enforces (same live-guarantee status set, same open-stage list, the SAME
+    unresolved-write-off SQL — reuse-first), but the
     BINDING verdict remains the locked recompute at request and
     settlement time. Facts only — no amount ever travels here.
     """
@@ -329,7 +328,7 @@ async def post_exit_settlement(
 
 @router.get("/{exit_id}/statement")
 async def get_exit_statement(exit_id: uuid.UUID, ctx: ViewCtx) -> ExitStatementOut:
-    """Exit statement document (JSON; CSV/PDF arrives with P13 core/exports)."""
+    """Exit statement document (JSON; CSV/PDF arrives with core/exports)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         doc = await exits_service.exit_statement(session, ctx.tenant_id, exit_id)

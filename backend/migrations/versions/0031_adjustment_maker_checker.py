@@ -1,17 +1,16 @@
-"""maker-checker approval workflow for repayment adjustments (issue #24, N1)
+"""maker-checker approval workflow for repayment adjustments
 
 Revision ID: 0031
 Revises: 0030
 Create Date: 2026-08-02
 
-Expand-only revision backing issue #24 (the !46 maintainer-review N1
-follow-up): repayment adjustments below the P13.7 authority band were
+Expand-only revision backing (the maintainer- follow-up): repayment adjustments below the authority
+band were
 single-actor money mutations; this revision makes the core-banking
 maker-checker standard REPRESENTABLE AND ENFORCED at the database —
 the maker creates a PENDING adjustment bound to a persisted snapshot,
-and a DISTINCT checker approves before the reversal posts (the
-P9/P13.15 write-off shape: persisted snapshot + separate approver +
-snapshot-bind-reverify).
+and a DISTINCT checker approves before the reversal posts (the P9/ write-off shape: persisted
+snapshot + separate approver + snapshot-bind-reverify).
 
   * repayment_adjustments.status — the adjustment workflow machine:
     'pending_approval' -> 'posted' | 'rejected'. EXISTING rows are
@@ -25,15 +24,15 @@ snapshot-bind-reverify).
     movable exactly ONCE from NULL (the write-once trigger below), so
     a decided adjustment can never be silently re-attributed.
 
-  * DB-LEVEL SEGREGATION OF DUTIES (the !47 B2 principle as a
-    collusion-resistant CHECK): ck_repayment_adjustments_sod —
+  * DB-LEVEL SEGREGATION OF DUTIES (the B2 principle as a collusion-resistant CHECK):
+  ck_repayment_adjustments_sod —
     checker_id IS NULL OR checker_id <> maker_id. The server-side
     guard in approve/reject refuses first; this CHECK makes a
     maker-approved-own row unrepresentable even through direct SQL on
     the app role. (The assurance-role/auditor exclusion is enforced
     server-side — role NAMES are not visible to a CHECK.)
 
-  * PERSISTED APPROVAL SNAPSHOT (v1.1 rule 3): the loan figures the
+  * PERSISTED APPROVAL SNAPSHOT: the loan figures the
     checker approves — loan_balance_at_request,
     loan_penalty_due_at_request (both >= 0) and
     loan_status_at_request ('active' | 'closed'; written_off can never
@@ -42,16 +41,16 @@ snapshot-bind-reverify).
     are exempt (their request-time figures were never captured —
     truthful history, never invented). Approval re-verifies every
     component under the full lock set and 409s on drift, posting
-    NOTHING (the P12/!30 snapshot-bind-reverify pattern).
+    NOTHING (the / snapshot-bind-reverify pattern).
 
   * version + updated_at — the reject path is an optimistic-locked
-    mutation (409 on stale version, gate 1.4).
+    mutation (409 on stale version, concurrency safety).
 
   * uq_repayment_adjustments_claim becomes a PARTIAL UNIQUE
     (tenant_id, repayment_id) WHERE status <> 'rejected': a REJECTED
     adjustment frees the slot for a fresh request (the
     uq_loan_write_offs_open shape), while pending/posted still block
-    atomically (INSERT ... ON CONFLICT DO NOTHING + rowcount, v1.1
+    atomically (INSERT... ON CONFLICT DO NOTHING + rowcount, v1.1
     rule 5) — a repayment can never carry two live adjustments.
 
   * The write-once trigger is REGENERATED (the 0025 discipline),

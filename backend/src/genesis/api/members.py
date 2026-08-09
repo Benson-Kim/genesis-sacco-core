@@ -1,9 +1,9 @@
-"""Members endpoints: CRUD, status transitions, statement (P8, gate 1.6).
+"""Members endpoints: CRUD, status transitions, statement (P8, least disclosure).
 
 Every route carries a RequirePermission dependency (deny-by-default);
-mutations are idempotent via the Idempotency-Key middleware (gate 1.4).
+mutations are idempotent via the Idempotency-Key middleware (concurrency safety).
 Terminal exit is owned exclusively by the P12 settlement workflow
-(/member-exits; issue #14 resolved): direct status changes to 'exited'
+(/member-exits): direct status changes to 'exited'
 are rejected by the service with 409.
 """
 
@@ -40,14 +40,14 @@ EditCtx = Annotated[AuthContext, Depends(_edit)]
 
 
 class MemberCreateBody(BaseModel):
-    """extra="forbid" (gate 1.6): unknown fields are a 422, never
-    silently dropped. dividend_payout (#31 ledger (c)) is typed as a
+    """extra="forbid" (least disclosure): unknown fields are a 422, never
+    silently dropped. dividend_payout is typed as a
     bounded STRING, deliberately not the enum: the service resolves it
     against the CODE-OWNED vocabulary and an unknown value surfaces as
     the sanitized 422 category ONLY — a pydantic enum here would echo
     the permitted values in FastAPI's structural 422 (least
     disclosure). Stored PREFERENCE only; nothing routes money by it
-    (batch-8 fence)."""
+    (the preference-only fence)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -105,25 +105,25 @@ class MemberOut(BaseModel):
     email: str | None
     status: str
     version: int
-    #: Branch attribution (#31 ledger (j).2) — expand-only NULLABLE
-    #: field: the 0016 FK written ONLY by the batch-4 assignment route
+    #: Branch attribution — expand-only NULLABLE
+    #: field: the 0016 FK written ONLY by the assignment route
     #: (PUT /branches/{id}/members/{member_id}, members:edit). NULL is
     #: the honest "unassigned" state (attribution is never invented);
     #: the bare branch UUID only — resolving the branch name stays
     #: behind settings:view (GET /branches/{id}), least disclosure.
     branch_id: str | None
-    #: Dividend payout PREFERENCE (#31 ledger (c)) — nullable, NEVER
+    #: Dividend payout PREFERENCE — nullable, NEVER
     #: optional: the key is always serialized; null is the honest
     #: "not chosen" state clients render with an explicit affordance.
     dividend_payout: str | None
 
 
 class MemberAggregatesOut(BaseModel):
-    """Advisory financial aggregates on the single-member read (#31).
+    """Advisory financial aggregates on the single-member read.
 
     All four figures are canonical decimal strings scaled by the
     database (numeric(18,2)); clients render them verbatim and never
-    compute money (P15 blocker (a)). Advisory only: every BINDING money
+    compute money (no client-side money math). Advisory only: every BINDING money
     decision recomputes under the established row locks.
     """
 
@@ -139,7 +139,7 @@ class MemberDetailOut(MemberOut):
     Expand-only contract: every MemberOut field is unchanged. The
     register LIST serves the same object per row ONLY when the request
     opts in with include=aggregates (one set-based statement per page,
-    never a per-row fan-out — gate 1.3); without the parameter list
+    never a per-row fan-out — scalability); without the parameter list
     rows stay flat.
     """
 
@@ -152,7 +152,7 @@ class MemberListResponse(BaseModel):
 
 
 class MemberListDetailResponse(BaseModel):
-    """Register page whose rows carry the advisory aggregates (#31).
+    """Register page whose rows carry the advisory aggregates.
 
     Served ONLY when the request opts in with include=aggregates; the
     flat MemberListResponse stays byte-identical otherwise.
@@ -225,17 +225,23 @@ async def list_members(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     status: MemberStatus | None = None,
     member_type: Annotated[MemberType | None, Query(alias="type")] = None,
+    member_no: Annotated[str | None, Query(min_length=1, max_length=32)] = None,
     include: Annotated[Literal["aggregates"] | None, Query()] = None,
 ) -> MemberListDetailResponse | MemberListResponse:
     """Keyset member register page (members:view).
 
-    OPT-IN aggregates (#31 batch 3 review): with include=aggregates
+    OPT-IN aggregates: with include=aggregates
     every row carries the same four advisory decimal-string figures as
     the detail read, computed by ONE set-based statement per page (the
     keyset page drives, LEFT JOIN LATERAL supplies the probes — never
     a per-row fan-out). Without the parameter the response is
     byte-identical to the flat register. No rejection path (403, 422)
     computes or echoes an amount.
+
+    member_no (the posting-drawer unique-identifier
+    lookup): expand-only EXACT-match filter served by the 0001 UNIQUE
+    (tenant_id, member_no) key. An unknown number is an EMPTY page,
+    never a 404 — no existence oracle beyond the members:view grant.
     """
     factory = get_sessionmaker(get_settings().database_url)
     if include == "aggregates":
@@ -247,6 +253,7 @@ async def list_members(
                 limit=limit,
                 status=status,
                 member_type=member_type,
+                member_no=member_no,
             )
         return MemberListDetailResponse(
             items=[
@@ -266,6 +273,7 @@ async def list_members(
             limit=limit,
             status=status,
             member_type=member_type,
+            member_no=member_no,
         )
     return MemberListResponse(items=[_out(r) for r in page.items], next_cursor=page.next_cursor)
 
@@ -303,7 +311,7 @@ async def member_statement(
 
 @router.get("/{member_id}")
 async def get_member(member_id: uuid.UUID, ctx: ViewCtx) -> MemberDetailOut:
-    """Single-member read with advisory aggregates (#31, members:view).
+    """Single-member read with advisory aggregates (members:view).
 
     The existence check runs FIRST: unknown ids (including cross-tenant
     ids hidden by RLS) surface 404 before any aggregate is computed, so
@@ -344,16 +352,16 @@ async def run_dormancy(body: DormancyRunBody, ctx: EditCtx) -> DormancyRunOut:
 
     The nightly cycle (infrastructure/dormancy_worker.py) drives the
     same service per tenant; this route exists for operations and
-    backfills (the P10/P13.8 /jobs/arrears precedent). Members with no
+    backfills (the /jobs/arrears precedent). Members with no
     MEMBER-INITIATED ledger activity inside the tenant-configured
     window transition Active -> Dormant under their row lock; each
-    batch commits its own short transaction (gate 1.3).
+    batch commits its own short transaction (scalability).
 
     Configuration (dormancy_period_months) is resolved server-side
     from tenant settings only — this body accepts none of it
     (extra="forbid"; v1.1 rule 1) — and an unconfigured or corrupt
     period REFUSES the run with 409 and zero transitions (fail closed,
-    P13.13 FM8; never a silent default).
+    never a silent default).
 
     Permission (P4 matrix): members x EDIT — the job rewrites member
     status rows, the same power the manual status route carries; no

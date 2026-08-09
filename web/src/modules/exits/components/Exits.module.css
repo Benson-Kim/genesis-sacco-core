@@ -1,5 +1,5 @@
 /*
- * Member exit module styles (P15 module 7). Tokens only (gate 1.1);
+ * Member exit module styles (module 7). Tokens only (reuse-first);
  * page-level GRIDS come from the shared modules/layout/grid.module.css
  * — no private page grid lives here.
  */
@@ -26,7 +26,7 @@
     gap: 6px;
 }
 
-/* Persistent label (issue #8 — never placeholder-as-label). */
+/* Persistent label (never placeholder-as-label). */
 .filterLabel {
     font-size: 11px;
     text-transform: uppercase;
@@ -53,7 +53,7 @@
 }
 
 /* Settlement figures — tabular numerals; each figure sits in its own
- * labelled column/row (issue #8: color never carries meaning alone). */
+ * labelled column/row (color never carries meaning alone). */
 .amountCell {
     font-weight: 700;
     color: var(--ink);

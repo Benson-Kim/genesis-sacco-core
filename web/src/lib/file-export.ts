@@ -1,16 +1,14 @@
 /**
- * File-export helper (P15 Phase B — one copy, gate 1.1, for the reports/
- * statements modules).
+ * File-export helper (one copy, reuse-first, for the reports/ statements modules).
  *
  * The caller performs the request through the GENERATED client (e.g.
  * `api.GET("/reports/{id}/export", { parseAs: "stream" })`) and hands the
- * raw `Response` here — no hand-written fetch exists (MASTER_PROMPT
- * §2.3), so auth/tenant headers and URL construction stay the generated
+ * raw `Response` here — no hand-written fetch exists (the house doctrine), so auth/tenant headers and URL construction stay the generated
  * client's job and nothing secret can leak into a hand-built URL.
  *
  * Failures surface as the least-disclosure ApiError ({category,
  * correlation_id} via toApiError) — the body is parsed defensively and
- * NEVER echoed (gate 1.6). The download itself is a Blob object URL on a
+ * NEVER echoed (least disclosure). The download itself is a Blob object URL on a
  * transient anchor — no parser sink, revoked immediately.
  */
 import { toApiError } from "@genesis/api-client";

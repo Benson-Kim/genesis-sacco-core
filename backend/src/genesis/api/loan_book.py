@@ -1,9 +1,9 @@
-"""Loan book endpoints: disbursement, repayments, portfolio, arrears (P10).
+"""Loan book endpoints: disbursement, repayments, portfolio, arrears.
 
-Every route carries a RequirePermission dependency (deny-by-default,
-gate 1.6); mutations are idempotent via the Idempotency-Key middleware
-(gate 1.4). Disbursement goes exclusively through the P7 atomic
-contract; repayments through the documented P10 allocation service.
+Every route carries a RequirePermission dependency (deny-by-default, least disclosure); mutations
+are idempotent via the Idempotency-Key middleware
+(concurrency safety). Disbursement goes exclusively through the P7 atomic
+contract; repayments through the documented allocation service.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ TxnCreateCtx = Annotated[AuthContext, Depends(_txn_create)]
 class DisburseBody(BaseModel):
     """extra="forbid": a caller-sent disbursed_at/occurred_at (or any
     money field this contract does not own) is a 422, never silently
-    ignored — the posting date is resolved server-side (issue #12)."""
+    ignored — the posting date is resolved server-side."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -152,12 +152,12 @@ class ArrearsRunOut(BaseModel):
     scanned: int
     updated: int
     batches: int
-    #: P13.8 — False means the tenant has not configured all three
+    #:  — False means the tenant has not configured all three
     #: penalty keys and the run accrued nothing by design (fail closed).
     penalty_configured: bool
     penalties_accrued: int
     penalty_total: str
-    #: P13.16 — recovery cases auto-closed by this run's close pass.
+    #:  — recovery cases auto-closed by this run's close pass.
     cases_closed_cured: int
     cases_closed_written_off: int
 
@@ -303,8 +303,9 @@ async def post_repayment(
 
 
 def portfolio_summary_out(summary: loans_service.PortfolioSummary) -> PortfolioSummaryOut:
-    """Shared serializer: /portfolio/summary and the P13.9 dashboard
-    loan-book slice render the SAME model (gate 1.1 — no forked shape)."""
+    """Shared serializer: /portfolio/summary and the dashboard
+
+    loan-book slice render the SAME model (reuse-first — no forked shape)."""
     return PortfolioSummaryOut(
         active_loans=summary.active_loans,
         outstanding_balance=str(summary.outstanding_balance),
@@ -341,16 +342,16 @@ async def run_arrears(body: ArrearsRunBody, ctx: BookEditCtx) -> ArrearsRunOut:
 
     The nightly scheduler calls the same service per tenant; this route
     exists for operations and backfills. Each batch commits its own
-    short transaction (gate 1.3).
+    short transaction (scalability).
 
-    P13.8: the same run accrues arrears penalties into
+    the same run accrues arrears penalties into
     loans.penalty_due, write-once per (loan, UTC day) via the
     penalty_accruals claim. Configuration (rate/grace/basis) is
     resolved server-side from tenant settings only — this body accepts
-    none of it (extra="forbid"; v1.1 rule 1) — and an unconfigured
+    none of it (extra="forbid") — and an unconfigured
     tenant accrues nothing (penalty_configured=false, fail closed).
     Ledger boundary: penalty income stays recognised ON RECEIPT by the
-    P10 repayment allocation (income.penalties); this job maintains
+     repayment allocation (income.penalties); this job maintains
     only the receivable-side loans.penalty_due and posts no ledger
     rows.
 

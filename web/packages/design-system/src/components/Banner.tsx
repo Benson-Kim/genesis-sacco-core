@@ -11,9 +11,9 @@ export interface BannerProps {
 /**
  * Inline operator notice. Content renders as React children only — never
  * raw markup — so attacker-influenced strings (names, correlation ids)
- * stay inert text (gate 1.6).
+ * stay inert text (least disclosure).
  *
- * Live-region convention (W56-4, issue #8): `error` banners are
+ * Live-region convention (W56-4): `error` banners are
  * assertive alerts; `info`/`ok` notices carry `role="status"` (polite
  * live region) so conflict-withdrawal and reload notices reach
  * assistive technology without a separate announce() call. All

@@ -28,10 +28,9 @@ const FOCUSABLE =
 /**
  * Overlay container for the prototype drawer and confirm dialogs. Content
  * is React children only (no raw markup). Dismissal is click-on-overlay,
- * the ✕ button or Escape; all are disabled while `closeDisabled` (a
- * destructive action must never lose its in-flight state — gate 1.4 UX).
+ * the ✕ button or Escape; all are disabled while `closeDisabled` (a destructive action must never lose its in-flight state — concurrency safety UX).
  *
- * Accessibility (issue #8; review finding F-A2):
+ * Accessibility (review finding):
  * - Focus moves INTO the dialog on open and is TRAPPED there (Tab and
  *   Shift+Tab cycle within) until the modal closes.
  * - On close, focus RETURNS to the element that was focused when the

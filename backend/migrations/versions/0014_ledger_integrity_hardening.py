@@ -15,9 +15,9 @@ every direct-SQL test fixture before being enforced at the database.
 
   1. Tenant-safe reversal linkage: transactions.reversal_of_id was a
      single-column FK to transactions(id), so raw SQL running as a
-     privileged role could link a reversal across tenants (RLS fences
-     the app role; defence in depth must not depend on it — gate 1.6
-     v1.1). A UNIQUE (tenant_id, id) target plus a composite
+     privileged role could link a reversal across tenants (RLS fences the app role; defence in depth
+     must not depend on it — least disclosure v1.1). A UNIQUE (tenant_id, id) target plus a
+     composite
      (tenant_id, reversal_of_id) FK makes cross-tenant linkage
      impossible at the database. The FK is added NOT VALID and then
      VALIDATEd so existing rows are checked without blocking writes
@@ -60,7 +60,7 @@ every direct-SQL test fixture before being enforced at the database.
   5. idx_repayments_transaction — repayments.transaction_id was an
      unindexed FK; the new repayment-reversal guard
      (ledger.post_reversal) and the NPL-trend joins query by it
-     (gate 1.3: index shipped with the query that needs it).
+     (scalability: index shipped with the query that needs it).
 
 Working downgrade restores the exact 0004/0012 function bodies and the
 0001 index, and drops only the new objects.

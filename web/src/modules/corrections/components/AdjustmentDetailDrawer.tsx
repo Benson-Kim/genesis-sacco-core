@@ -1,20 +1,17 @@
 "use client";
 
 /**
- * Adjustment review drawer (P15 batch 1 — the CHECKER phase of the
- * issue-#24 two-phase correction): the full AdjustmentRecordOut plus
+ * Adjustment review drawer (the CHECKER phase of the issue- two-phase correction): the full AdjustmentRecordOut plus
  * the checker writes its status allows — approval (`POST …/approval`,
  * EMPTY body: the checker approves the PERSISTED snapshot, v1.1 rule
- * 3) and rejection (`POST …/reject`, version-pinned + REQUIRED
- * rationale, !52 F2). Both are corrections:approve.
+ * 3) and rejection (`POST …/reject`, version-pinned + REQUIRED rationale). Both are corrections:approve.
  *
  * - FRESH RECORD READ (record class, staleTime 0): every checker write
  *   arms against the freshest available read; the version anchors the
  *   reject body and both idempotency-key materials.
  * - MAKER-CHECKER (blocker (f)): checker affordances mount ONLY inside
  *   MakerCheckerPanel. The maker identity is the CONTRACT's maker_id —
- *   REQUIRED server truth (0025 NOT NULL; the !70 pattern with NO
- *   registry fallback needed on this surface), rendered under least
+ *   REQUIRED server truth (0025 NOT NULL; the pattern with NO registry fallback needed on this surface), rendered under least
  *   disclosure (bare UUID, short-id convention — never a name/email).
  *   The server enforces maker ≠ checker regardless, plus the 0031
  *   ck_repayment_adjustments_sod DB CHECK (collusion-resistant).
@@ -25,8 +22,8 @@
  *   snapshot); reject folds the version it also pins on the wire.
  * - A 409 (snapshot drift under the full lock set — balance, penalty
  *   or status moved since request; NOTHING posted) renders the shared
- *   ConflictBanner's explicit reload-and-re-enter flow (!60 F5) with
- *   the P13.15 remedy stated: reject the drifted request and raise a
+ *   ConflictBanner's explicit reload-and-re-enter flow with
+ *   the remedy stated: reject the drifted request and raise a
  *   fresh one. NOTHING is replayed.
  * - MONEY (blocker (a)): every figure (allocation legs, 0031 snapshot,
  *   approval result) is the SERVER's decimal string rendered verbatim
@@ -57,7 +54,7 @@ import { adjustmentStatusPill } from "./pills";
 import styles from "./Corrections.module.css";
 
 /** Bare staff UUID under least disclosure: 8-char prefix, full UUID on
- * title — never a name or email (the !70 short-id convention). */
+ * title — never a name or email (the short-id convention). */
 function ShortId({ id }: Readonly<{ id: string }>) {
   return (
     <span className={styles.mono} title={id}>
@@ -81,7 +78,7 @@ export function AdjustmentDetailDrawer({
   const [rejectReasonError, setRejectReasonError] = useState("");
   const [approveResult, setApproveResult] = useState<AdjustmentResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency keys (!60 F3): bumped on
+  // Freshness component for the idempotency keys: bumped on
   // every explicit post-conflict reload — a re-entered decision after
   // an acknowledged 409 is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -96,7 +93,7 @@ export function AdjustmentDetailDrawer({
   });
 
   const approve = useMutation({
-    // STRUCTURAL freshness guard (F-M1): the money write refuses to
+    // STRUCTURAL freshness guard: the money write refuses to
     // fire without the loaded fresh record — the key material folds
     // the REAL record version, never a sentinel.
     mutationFn: () => {
@@ -111,7 +108,7 @@ export function AdjustmentDetailDrawer({
         idempotencyKeyFor(
           approveKeySlot.current,
           // Money-mover material (README rule 4): the wire body is
-          // DELIBERATELY EMPTY (v1.1 rule 3), so the KEY pins the
+          // DELIBERATELY EMPTY, so the KEY pins the
           // acted-on snapshot — fresh record version + reload epoch.
           // Approval is once-per-record (the workflow machine), so no
           // per-success intent counter exists here.
@@ -205,7 +202,7 @@ export function AdjustmentDetailDrawer({
   const rejectConflict = reject.isError && isConflict(reject.error);
   const ownId = getOwnUserId();
 
-  // SERVER TRUTH (the !70 pattern): maker_id is the CONTRACT's maker —
+  // SERVER TRUTH (the pattern): maker_id is the CONTRACT's maker —
   // required, never null (0025 NOT NULL); no per-tab fallback exists or
   // is needed on this surface. Least disclosure: the bare UUID only.
   const makerLabel =
@@ -214,7 +211,7 @@ export function AdjustmentDetailDrawer({
       : `Requesting officer ${record.maker_id.slice(0, 8)} (server attribution).`;
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record (its snapshot
+    // Explicit reload flow: refetch the record (its snapshot
     // drifted under the lock set, its status moved, or the version
     // advanced); the stale decision is NEVER replayed.
     void queryClient.refetchQueries({ queryKey: ["corrections", "adjustment", adjustmentId] });
@@ -269,7 +266,7 @@ export function AdjustmentDetailDrawer({
           </Kv>
         )}
         <Kv label="Maker">
-          {/* Contract attribution (the !70 pattern): bare staff UUID,
+          {/* Contract attribution (the pattern): bare staff UUID,
               short-id convention — never resolved to a name/email. */}
           <ShortId id={record.maker_id} />
         </Kv>
@@ -327,7 +324,7 @@ export function AdjustmentDetailDrawer({
         returns a conflict on any drift, posting nothing.
       </div>
 
-      {/* One copy of the 409 reload flow (gate 1.1). */}
+      {/* One copy of the 409 reload flow (reuse-first). */}
       <ConflictBanner error={approve.error} onReload={reloadRecord} />
       {approve.isError && !approveConflict && <ErrorBanner error={approve.error} />}
       <ConflictBanner error={reject.error} onReload={reloadRecord} />

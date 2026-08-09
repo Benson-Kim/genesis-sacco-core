@@ -1,4 +1,4 @@
-"""Shared in-transaction audit writer (gate 1.5).
+"""Shared in-transaction audit writer (data integrity).
 
 Every mutation writes its audit row inside the same transaction as the
 domain change, so the trail can never disagree with the data.

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Branches register (issue #31 batch 4 — the P13.6 registry console):
+ * Branches register (the registry console):
  * the organisational-registry read surface plus entry points for the
  * registry writes (register, rename, assignments, the legacy
  * backfill).
@@ -13,12 +13,12 @@
  *   (gate-tested; branch NAMES are operator free text and the named
  *   XSS threat here).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). The route itself is
+ *   the server enforces every call (least disclosure). The route itself is
  *   settings:view; "+ Register branch" mounts with settings:create,
  *   the backfill with settings:edit; rename/assignment affordances
  *   mount in the drawer per THEIR OWN modules (see api.ts — the
  *   registry/entity permission split recorded on the router).
- * - Keyset pagination only (opaque cursors — gate 1.3); the list
+ * - Keyset pagination only (opaque cursors — scalability); the list
  *   contract declares NO filters — none are offered and nothing is
  *   filtered locally.
  * - NO money figure exists on this contract — nothing is summed,
@@ -36,7 +36,7 @@ import { fetchBranchesPage } from "../api";
 import type { BranchRecord } from "../schemas";
 import styles from "./Branches.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load
+// Drawer-level code splitting (speed): drawer chunks load
 // on first open, not with the list route.
 const BranchCreateDrawer = dynamic(
   () => import("./BranchCreateDrawer").then((m) => m.BranchCreateDrawer),
@@ -94,7 +94,7 @@ export function BranchesScreen() {
     <div>
       <div className={styles.toolbar}>
         <div className={styles.toolbarNote}>
-          Branches are organisational metadata (the P13.6 registry) — no money
+          Branches are organisational metadata — no money
           value exists on a branch record. Assigning PEOPLE to a branch is a
           user-administration or member-edit action with its own permission,
           never a settings right (the registry/entity split, server-enforced).

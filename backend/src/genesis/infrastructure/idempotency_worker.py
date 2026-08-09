@@ -1,4 +1,4 @@
-"""Idempotency-key retention purge worker (P13.17c / DSA-3).
+"""Idempotency-key retention purge worker (.17c / DSA-3).
 
 Deployment counterpart of the outbox retention purge (the
 export_worker composition precedent): a long-running loop that walks
@@ -22,7 +22,7 @@ registry alongside its bootstrap grant.
 
 Expiry semantics NEVER depend on this worker running: the
 ``expires_at > now()`` fence in api/idempotency.py holds before any
-purge (FM3).
+purge.
 """
 
 from __future__ import annotations
@@ -48,10 +48,10 @@ PURGE_INTERVAL_SECONDS = 3600.0
 async def run_purge_cycle(factory: async_sessionmaker[AsyncSession]) -> int:
     """One purge pass over every active tenant; returns rows purged.
 
-    Per-tenant error isolation (the !37 pattern): a failed tenant is
+    Per-tenant error isolation (the pattern): a failed tenant is
     logged with its stack trace and the cycle keeps walking — its
     expired rows are simply reclaimed on a later cycle (the purge is
-    idempotent by side-effect counts). Never a silent pass (gate 1.2).
+    idempotent by side-effect counts). Never a silent pass (reliability).
     """
     purged = 0
     for tenant_id in await list_active_tenants(factory):

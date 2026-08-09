@@ -51,7 +51,7 @@
     color: var(--ink);
 }
 
-/* 44px hit area per issue #8 touch-target rule. */
+/* 44px hit area per touch-target rule. */
 .close {
     border: 1px solid var(--line);
     background: var(--card);
@@ -74,7 +74,7 @@
 }
 
 /* Focus ring for the dialog container itself (tabindex=-1 fallback focus)
-   — replaced, never removed (issue #8). */
+   — replaced, never removed. */
 .drawer:focus-visible,
 .dialog:focus-visible {
     outline: 2px solid var(--navy);
@@ -82,7 +82,7 @@
 }
 
 /* Narrow viewports: drawers and dialogs go full-screen so form controls
-   keep their 44px+ targets without cramping (issue #8). */
+   keep their 44px+ targets without cramping. */
 @media (max-width: 640px) {
     .overlayCenter {
         padding: 0;

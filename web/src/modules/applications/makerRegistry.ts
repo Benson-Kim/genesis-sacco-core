@@ -1,10 +1,9 @@
 /**
- * Per-tab committee maker registry (P15 module 3 — separation of duties,
- * UX side).
+ * Per-tab committee maker registry (module 3 — separation of duties, UX side).
  *
- * STATUS (issue #30 close-out, migration 0037): the limitation this
+ * STATUS (close-out, migration 0037): the limitation this
  * registry worked around is CLOSED for attributed rows — ApplicationOut
- * carries `created_by` (the initiator, !66/0036) AND `recommended_by`
+ * carries `created_by` (the initiator, /0036) AND `recommended_by`
  * (the committee referrer, 0037), both as the bare staff UUID, and
  * SERVER TRUTH SUPERSEDES this per-tab witness wherever either is
  * present (CommitteeScreen consumes the server attribution first).
@@ -20,7 +19,7 @@
  * know a recommendation made by another operator or in another tab, and
  * for those the maker is UNKNOWN (a distinct sentinel that never equals
  * a real user id, so MakerCheckerPanel's self-check simply cannot match).
- * The ENFORCED invariants are server-side regardless (gate 1.6): one
+ * The ENFORCED invariants are server-side regardless (least disclosure): one
  * vote per voter (DB UNIQUE), voting open only in committee stage,
  * approval-authority bands, the RECOMMENDER can never vote on the
  * application they referred (403, keyed on the persisted
@@ -28,10 +27,10 @@
  * can post the disbursement (403, keyed on the persisted
  * created_by/recommended_by).
  *
- * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
+ * Storage: the shared createSessionScopedRegistry
  * primitive — teardown on BOTH session-death paths (the query-path 401
  * dual-cache teardown and explicit sign-out) is wired by construction
- * (W58-2, the !60 F2 class). This wrapper keeps the module's exported
+ * (W58-2, the F2 class). This wrapper keeps the module's exported
  * vocabulary byte-compatible.
  */
 import { createSessionScopedRegistry } from "@/modules/auth/createSessionScopedRegistry";

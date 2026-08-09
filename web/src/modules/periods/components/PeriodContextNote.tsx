@@ -1,9 +1,7 @@
 "use client";
 
 /**
- * Period-context note (issue #31 batch 4 — the audit #30 A5 remedy:
- * "operators cannot see period-close state next to the figures they
- * read; statement readers have no period context"). Mounted beside
+ * Period-context note (the remedy: "operators cannot see period-close state next to the figures they read; statement readers have no period context"). Mounted beside
  * the figure-bearing surfaces (transactions register, reports).
  *
  * - SELF-GATING: `GET /accounting-periods` is transactions:view — the
@@ -11,8 +9,7 @@
  *   probes an endpoint the operator cannot read; the server enforces
  *   regardless). This keeps the mount unconditional at the routes.
  * - HONESTY: the latest CLOSED month is the server's newest-first
- *   first row; months after it are open BY DESIGN (absence of a row =
- *   open, issue #12) — stated, not computed. On a read failure the
+ *   first row; months after it are open BY DESIGN (absence of a row = open) — stated, not computed. On a read failure the
  *   note says so quietly instead of implying "everything open".
  * - NO money and NO client-side date arithmetic: dates render
  *   verbatim; nothing is derived here.

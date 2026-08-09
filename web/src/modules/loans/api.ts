@@ -1,17 +1,17 @@
 /**
- * Loan-book API layer (P15 module 4 — P10 API) over the GENERATED
+ * Loan-book API layer (module 4 — API) over the GENERATED
  * client.
  *
  * - Keyset pagination ONLY: opaque `cursor` echoed back verbatim; no
- *   offset/page parameters exist here (gate 1.3, tested).
+ *   offset/page parameters exist here (scalability, tested).
  * - Every mutation takes a caller-supplied Idempotency-Key following the
- *   stability/rotation contract (gate 1.4). Neither money write carries
+ *   stability/rotation contract (concurrency safety). Neither money write carries
  *   a version field: the server serialises disbursement under the P7
  *   atomic contract (an already-moved application stage surfaces as
  *   409) and repayments under the loan row lock. A 409 is rendered via
  *   the explicit reload-and-re-enter flow, never replayed.
  * - Ids travel as path parameters serialized by the generated client;
- *   tokens/PII never enter URLs (gate 1.6, tested).
+ *   tokens/PII never enter URLs (least disclosure, tested).
  * - MONEY (blocker (a)): the repayment amount is a decimal STRING on
  *   the wire; every response figure is a server-computed decimal string
  *   asserted by the Zod boundary (numbers are REJECTED).

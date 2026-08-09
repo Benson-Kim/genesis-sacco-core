@@ -1,6 +1,6 @@
 /*
- * Share-transfers module styles (issue #31 batch 6, ledger (e)).
- * Tokens only (gate 1.1); page-level grids come from the shared
+ * Share-transfers module styles.
+ * Tokens only (reuse-first); page-level grids come from the shared
  * modules/layout/grid.module.css — no private page grid lives here.
  */
 
@@ -78,7 +78,7 @@
     margin-bottom: 8px;
 }
 
-/* Batch-10 maker-checker additions (issue #31 (l)/(m)). */
+/*  maker-checker additions. */
 
 .subhead {
     font-size: 12.5px;

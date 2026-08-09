@@ -78,7 +78,7 @@ async def put_role_permission(
     body: PermissionUpdateBody,
     ctx: EditCtx,
 ) -> PermissionOut:
-    """Permission changes are audit-logged in-transaction (gate 1.5)."""
+    """Permission changes are audit-logged in-transaction (data integrity)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         updated = await rbac_service.update_permission(

@@ -1,8 +1,8 @@
 /*
- * Users screen (P15 access-control) — composes prototype table/card/pill
+ * Users screen (access-control) — composes prototype table/card/pill
  * styling. Salvaged from duo/feature/p13-5-frontend-followthrough
- * @ 198a238; inputs adapted to this branch's issue-#8 conventions:
- * 44px minimum touch targets and :focus-visible rings (replaced, never
+ * @ 198a238; inputs adapted to this branch's issue- conventions:
+ * 44px minimum touch targets and:focus-visible rings (replaced, never
  * removed).
  */
 .toolbar {

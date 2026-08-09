@@ -1,19 +1,19 @@
-"""Month-end portfolio snapshots: writer + backfill (P13.17a / DSA-1).
+"""Month-end portfolio snapshots: writer + backfill (.17a / DSA-1).
 
 Replaces the NPL-trend export's months x full-history rescans with
 incremental month-end snapshots (docs/DSA_HARDENING.md DSA-1) without
 changing any observable money semantics:
 
   * every snapshot is COMPUTED by the same statement the export always
-    ran (portfolio_reconstruction.NPL_TREND_MONTH_SQL — single source
-    of truth, gate 1.1) for exactly one fully elapsed month;
-  * write sites are close_period (same transaction, under its
-    exclusive per-tenant advisory barrier — lock-order.md §6) and the
+    ran (portfolio_reconstruction.NPL_TREND_MONTH_SQL — single source of truth, reuse-first) for
+    exactly one fully elapsed month;
+  * write sites are close_period (same transaction, under its exclusive per-tenant advisory barrier
+  — lock-order.md) and the
     backfill job below (shared batch runner, one month per short
-    transaction, v1.1 rule 8);
-  * the claim is atomic (INSERT .. ON CONFLICT DO NOTHING checked by
-    rowcount, v1.1 rule 5) against UNIQUE (tenant_id, month_end), and
-    rows are DB-level WRITE-ONCE (0027 trigger, FM1): a restated month
+    transaction);
+  * the claim is atomic (INSERT.. ON CONFLICT DO NOTHING checked by
+    rowcount) against UNIQUE (tenant_id, month_end), and
+    rows are DB-level WRITE-ONCE (0027 trigger): a restated month
     is unrepresentable even via direct SQL through the app role;
   * a claim that loses to an EXISTING row verifies that row against
     the fresh reconstruction and raises ConflictError (409, loud) on
@@ -22,12 +22,12 @@ changing any observable money semantics:
     figures auditors read must never self-heal).
 
 Re-runs of the backfill are lock-free no-ops: the month worklist
-anti-joins on the claim key (v1.1 rule 8), so a fully snapshotted
+anti-joins on the claim key, so a fully snapshotted
 tenant scans zero months and writes nothing (proven by side-effect
 counts in tests/test_p1317_portfolio_snapshots.py).
 
 Every read and write carries an explicit bound tenant_id predicate on
-top of forced RLS (v1.1 rule 4); all values are bound parameters
+top of forced RLS; all values are bound parameters
 (rule 6). Least disclosure: divergence errors name the month only —
 the exact figures live in the audit row of the original write (rule 7).
 """
@@ -61,7 +61,7 @@ __all__ = [
 
 #: The export's snapshot read: N rows by month end, served by
 #: uq_portfolio_snapshots_month (0027 — the index ships with this
-#: query, gate 1.3). Module-level so the P13.17 EXPLAIN capture
+#: query, scalability). Module-level so the EXPLAIN capture
 #: asserts against the production statement.
 SNAPSHOT_LOOKUP_SQL = (
     "SELECT month_end, loans, gross_outstanding, npl_loans, npl_balance "
@@ -98,7 +98,7 @@ async def write_month_snapshot(
 
     Returns True when a new row was written, False when an identical
     snapshot already existed (idempotent no-op). Raises ConflictError
-    (409, loud — FM1) when an existing row diverges from the fresh
+    (409, loud) when an existing row diverges from the fresh
     reconstruction; nothing is ever self-healed. The caller owns the
     transaction (close_period runs this inside its own; the backfill
     gives each month its own short one).
@@ -134,7 +134,7 @@ async def write_month_snapshot(
         ),
     )
     if claimed.rowcount == 1:
-        # Exact figures live in the audit row (v1.1 rule 7): the write
+        # Exact figures live in the audit row: the write
         # is in the same transaction, so an abort leaves neither.
         await record_audit(
             session,
@@ -181,9 +181,9 @@ async def _read_snapshot(
 
 
 def _assert_snapshot_matches(computed: MonthPortfolio, stored: MonthPortfolio | None) -> None:
-    """FM1: divergence 409s loudly and never self-heals.
+    """divergence 409s loudly and never self-heals.
 
-    Least disclosure (v1.1 rule 7): the error names the month only;
+    Least disclosure: the error names the month only;
     the figures live in the original write's audit row and in the
     write-once table itself.
     """
@@ -210,13 +210,13 @@ async def run_snapshot_backfill_for_tenant(
 
     Worklist = calendar month ends from the tenant's earliest
     disbursed_at through the last fully elapsed month (both
-    server-resolved — nothing here is caller-suppliable, v1.1 rule 1),
+    server-resolved — nothing here is caller-suppliable),
     MINUS the months already snapshotted (anti-join on the claim key,
     rule 8: a completed re-run scans zero months, locks nothing and
     writes nothing). Each remaining month runs through the shared
-    batch runner in its own short transaction (gate 1.3), claimed via
+    batch runner in its own short transaction (scalability), claimed via
     ON CONFLICT (rule 5); a concurrent writer that got there first is
-    verified for equality and 409s on divergence (FM1).
+    verified for equality and 409s on divergence.
     """
     async with session_scope() as session:
         first_raw = (

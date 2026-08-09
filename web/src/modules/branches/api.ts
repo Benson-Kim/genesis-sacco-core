@@ -1,21 +1,20 @@
 /**
- * Branches registry API layer (issue #31 batch 4 — the P13.6 registry
- * contract) over the GENERATED client.
+ * Branches registry API layer (the registry contract) over the GENERATED client.
  *
  * - Keyset pagination ONLY on the register read (settings:view): the
  *   opaque `cursor` is echoed back verbatim; no offset or page
- *   parameters exist here (gate 1.3). The list contract declares NO
+ *   parameters exist here (scalability). The list contract declares NO
  *   filters — the client sends none and filters nothing locally.
  * - Permission map (the P4 matrix as recorded on the router): registry
  *   reads settings:view, create settings:create, rename settings:edit,
  *   the backfill job settings:edit — but ASSIGNMENTS follow the entity
  *   being edited, not the registry: assigning a USER is
- *   access_control:edit (the P13.5 users precedent), assigning a
- *   MEMBER is members:edit (the P8 precedent). Settings rights alone
+ *   access_control:edit (the users precedent), assigning a
+ *   MEMBER is members:edit (the precedent). Settings rights alone
  *   must not allow editing people records; the UI mirrors exactly
- *   that split (the server enforces regardless, gate 1.6).
+ *   that split (the server enforces regardless, least disclosure).
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the web/README.md MATERIAL rule (gate 1.4), travelling as a
+ *   the web/README.md MATERIAL rule (concurrency safety), travelling as a
  *   HEADER only. Rename pins the branch `version`; each assignment
  *   pins the USER/MEMBER row's `version` (a stale write is a 409 with
  *   NOTHING changed — the explicit reload-and-re-enter flow, never a
@@ -84,9 +83,7 @@ export async function fetchBranch(branchId: string): Promise<BranchRecord> {
 }
 
 /**
- * Keyset USER roster of one branch (#31 (j).1 — access_control:view,
- * the batch-4 assignment permission split mirrored on reads: the
- * entity being READ is the user record, never a settings right).
+ * Keyset USER roster of one branch ((j).1 — access_control:view, the assignment permission split mirrored on reads: the entity being READ is the user record, never a settings right).
  * Identity facts only; 404-before-facts server-side (an unknown or
  * cross-tenant branch id is a 404, never an empty page).
  */
@@ -105,8 +102,7 @@ export async function fetchBranchUsersRosterPage(
 }
 
 /**
- * Keyset MEMBER roster of one branch (#31 (j).1 — members:view, the
- * batch-4 split's member leg). Identity facts only; 404-before-facts
+ * Keyset MEMBER roster of one branch ((j).1 — members:view, the split's member leg). Identity facts only; 404-before-facts
  * server-side.
  */
 export async function fetchBranchMembersRosterPage(
@@ -152,8 +148,7 @@ export async function updateBranch(
   return branchSchema.parse(data);
 }
 
-/** Assign a USER to a branch (access_control:edit — the P13.5 users
- * precedent). The body pins the USER row's version. */
+/** Assign a USER to a branch (access_control:edit — the users precedent). The body pins the USER row's version. */
 export async function assignUserToBranch(
   branchId: string,
   userId: string,
@@ -169,7 +164,7 @@ export async function assignUserToBranch(
   return branchAssignmentSchema.parse(data);
 }
 
-/** Assign a MEMBER to a branch (members:edit — the P8 precedent). The
+/** Assign a MEMBER to a branch (members:edit — the precedent). The
  * body pins the MEMBER row's version. */
 export async function assignMemberToBranch(
   branchId: string,

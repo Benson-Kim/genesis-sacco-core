@@ -62,7 +62,7 @@ export function clearSession(): void {
  * Decode a JWT payload WITHOUT verifying it. Used solely to read our own
  * `sub` claim for UX (disabling self-role/self-status buttons — the
  * separation-of-duties affordances); the server is the only verifier and
- * enforcer (gate 1.6). Salvaged from
+ * enforcer (least disclosure). Salvaged from
  * duo/feature/p13-5-frontend-followthrough @ 198a238.
  */
 export function decodeJwtPayload(token: string): Record<string, unknown> | null {

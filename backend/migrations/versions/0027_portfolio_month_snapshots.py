@@ -1,18 +1,18 @@
-"""month-end portfolio snapshots (P13.17a / DSA-1)
+"""month-end portfolio snapshots (.17a / DSA-1)
 
 Revision ID: 0027
 Revises: 0026
 Create Date: 2026-08-02
 
-Claimed as 0027 with down_revision 0026 per v1.2 rule 14. At branch
+Claimed as 0027 with down_revision 0026 per the migration-declaration rule. At branch
 time main's migration head was 0025 and **0026 is the open claim of
-!47 (P13.16)** — this MR therefore merges AFTER !47 and its DB-backed
-jobs are structurally blocked until 0026 lands on main (sequencing
-declared in the MR description; combined-state pipeline re-verified
-per rule 12 before ready). If !47 closes instead of merging, this
+ ** — this MR therefore merges AFTER and its DB-backed
+jobs are structurally blocked until 0026 lands on main (sequencing declared in the MR description;
+combined-state pipeline re-verified per the house rules before ready). If closes instead of merging,
+this
 revision re-chains to 0025 (the 0017 re-chain discipline).
 
-One expand-only object backing P13.17(a):
+One expand-only object backing (a):
 
   * portfolio_month_snapshots — the persisted month-end portfolio
     figures (gross outstanding, NPL balance, loan counts) that the
@@ -22,12 +22,12 @@ One expand-only object backing P13.17(a):
     a month completes — at close_period under its exclusive per-tenant
     advisory barrier, or by the backfill job — using the SAME
     reconstruction statement the export used
-    (application/portfolio_reconstruction.NPL_TREND_MONTH_SQL — single
-    source of truth, gate 1.1), so the stored figures are BY
+    (application/portfolio_reconstruction.NPL_TREND_MONTH_SQL — single source of truth,
+    reuse-first), so the stored figures are BY
     CONSTRUCTION the figures a full rescan would produce.
 
-  * WRITE-ONCE at the database level (the !30 0020-trigger precedent,
-    P13.17 FM1): these are the figures auditors and regulators read —
+  * WRITE-ONCE at the database level (the 0020-trigger precedent): these are the figures auditors
+  and regulators read —
     a restated month is the classic concealment vector — so UPDATE and
     DELETE are refused by trigger for EVERY role subject to triggers,
     including manual SQL through the app role. A wrong snapshot is
@@ -41,16 +41,15 @@ One expand-only object backing P13.17(a):
     pin every bound — counts and balances non-negative, the NPL subset
     never exceeding the portfolio total, and month_end pinned to a
     real calendar month end so a fabricated mid-month "snapshot" is
-    unrepresentable; a BEFORE INSERT fence (review !49 N1) refuses any
+    unrepresentable; a BEFORE INSERT fence refuses any
     month that has not fully elapsed - a fabricated FUTURE month would
     otherwise be frozen undeletable by the write-once trigger and
     permanently 409 that month's real close (a CHECK cannot carry the
     rule: now() is not immutable). UNIQUE (tenant_id, month_end) makes
     concurrent
     writers collapse to exactly one row (claimed atomically, v1.1
-    rule 5) and serves the export's snapshot lookup (gate 1.3: the
-    index ships with the query it serves,
-    application/portfolio_snapshots.SNAPSHOT_LOOKUP_SQL).
+    rule 5) and serves the export's snapshot lookup (scalability: the index ships with the query it
+    serves, application/portfolio_snapshots.SNAPSHOT_LOOKUP_SQL).
 
 Lock posture (0024 honesty precedent): CREATE TABLE takes no lock on
 existing relations; no index is added to an existing table. CREATE

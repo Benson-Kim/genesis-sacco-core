@@ -12,7 +12,7 @@ import styles from "./RequireModule.module.css";
  * Route guard driven by /me/permissions: renders children only when the
  * signed-in role can view the module. Deny by default — while loading or on
  * error, nothing privileged is shown. The API still authorizes every call
- * server-side (gate 1.6).
+ * server-side (least disclosure).
  */
 export function RequireModule({ module, children }: { module: ModuleId; children: ReactNode }) {
   const permissions = usePermissions();

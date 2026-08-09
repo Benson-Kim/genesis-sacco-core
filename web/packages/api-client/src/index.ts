@@ -1,9 +1,8 @@
 /**
  * @genesis/api-client — typed client for the Genesis Prestige API.
  *
- * The request/response types in ./generated/schema.d.ts are GENERATED from
- * the backend OpenAPI contract (MASTER_PROMPT §2.1 — clients are generated,
- * never hand-written). Regenerate with `npm run generate:api`; CI enforces
+ * The request/response types in./generated/schema.d.ts are GENERATED from
+ * the backend OpenAPI contract (the house doctrine — clients are generated, never hand-written). Regenerate with `npm run generate:api`; CI enforces
  * freshness via the web:spec-drift and web:client-drift jobs.
  */
 import createClient, { type Middleware } from "openapi-fetch";
@@ -49,7 +48,7 @@ export function createGenesisClient(options: GenesisClientOptions): GenesisClien
 }
 
 /**
- * Fresh Idempotency-Key for a logical mutation attempt (gate 1.4).
+ * Fresh Idempotency-Key for a logical mutation attempt (concurrency safety).
  * Generate ONE key per user intent (e.g. per form submission), reuse it on
  * retries of that same intent, and send it as the `Idempotency-Key` header.
  */
@@ -67,7 +66,7 @@ export interface IdempotencyKeySlot {
 }
 
 /**
- * Stability/rotation contract for Idempotency-Keys (gate 1.4):
+ * Stability/rotation contract for Idempotency-Keys (concurrency safety):
  * retrying the IDENTICAL logical submission (same canonical body) REUSES
  * the key — the server's idempotency store replays the stored response
  * instead of re-executing. Changing the content is a NEW logical intent

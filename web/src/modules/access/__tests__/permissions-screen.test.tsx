@@ -376,3 +376,29 @@ test("mutation 401 tears the session down (re-login flow)", async () => {
   // the MutationCache onError in Providers and this keeps a live session.
   await waitFor(() => expect(hasSession()).toBe(false));
 });
+
+test("REGRESSION #35 item 2: a save that fails (the old 404 on a never-seeded deny-by-default cell) is VISIBLY surfaced — sanitized banner + retry affordance, never silence (gate 1.2)", async () => {
+  const user = userEvent.setup();
+  // The user-reported scenario: toggling a module that has NO server
+  // row (deny-by-default zero map) and saving. The old server 404ed on
+  // every attempt; whatever the verdict, the UI must SHOW it.
+  mocked.updateRolePermission.mockRejectedValue(new ApiError(404, "not_found", "corr-hole"));
+  mountScreen();
+  await screen.findByText(`Permissions — ${HOSTILE_ROLE}`);
+  await screen.findByRole("checkbox", { name: "Members — View" });
+
+  // "Reports" has no row in SERVER_PERMS — the exact deny-by-default
+  // hole class from the incident.
+  await user.click(screen.getByRole("checkbox", { name: "Reports — View" }));
+  await user.click(screen.getByRole("button", { name: "Save role" }));
+
+  // Least-disclosure banner (sanitized title + correlation id), the
+  // inline failure status, and a LIVE retry affordance — no silent
+  // failure (falsifiable: drop the saveAll.isError banner or the error
+  // branch of statusText and this fails).
+  expect(await screen.findByText(/Not found\./)).toBeInTheDocument();
+  expect(screen.getByText(/ref: corr-hole/)).toBeInTheDocument();
+  expect(screen.getByText("Save failed — retry")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save role" })).toBeEnabled();
+  expect(mocked.updateRolePermission).toHaveBeenCalledTimes(1);
+});

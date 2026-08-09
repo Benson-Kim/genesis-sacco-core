@@ -1,37 +1,37 @@
-"""core/exports: export engine, job runner, artifact access (P13).
+"""core/exports: export engine, job runner, artifact access.
 
-The only way report data leaves the system (MASTER_PROMPT 1.3):
+The only way report data leaves the system (the house doctrine 1.3):
 
   * run_export — keyset streaming with a hard server-side row cap;
     every batch asks for batch_size + 1 rows so truncation is detected
     exactly; rendering work runs off the event loop
     (asyncio.to_thread), so an export never stalls concurrently served
-    requests (P13 blocker d and the EXIT latency test).
+    requests (blocker d and the EXIT latency test).
 
   * request_export — persists the export scope (report, filters,
     column allow-list) resolved SERVER-SIDE at request
     time; the artifact as-of instant is advanced to the worker snapshot
     start when rendering begins. Callers never supply money, cost,
     format, limit, or storage
-    parameters (P13 blocker a); PII columns are granted only to roles
+    parameters (blocker a); PII columns are granted only to roles
     holding members:view and the grant is frozen into the job row
-    (P13 blocker e).
+    (blocker e).
 
   * run_export_job — ONE transaction per job on a REPEATABLE READ
     tenant session (see infrastructure.tenancy.tenant_snapshot_session):
     claim (FOR UPDATE SKIP LOCKED) -> snapshot-consistent report read
-    (P13 blocker h) -> render CSV + PDF off-loop -> artifact + status
+    (blocker h) -> render CSV + PDF off-loop -> artifact + status
     + audit + outbox. An abort at any point rolls back to zero partial
     state: no artifact, no claim, no audit, no outbox event
-    (P13 blocker i). The rendered volume is bounded by the row cap, so
+    (blocker i). The rendered volume is bounded by the row cap, so
     the claim is held for a bounded time and it locks only the export
-    job row — never a domain money row (gate 1.3 note).
+    job row — never a domain money row (scalability note).
 
   * download_artifact — unguessable random tokens, expiring links,
     requester-only access (the allow-list was resolved from the
     REQUESTER's entitlement, so nobody else may fetch the artifact),
     and an in-transaction audit row per download: exports are the
-    exfiltration channel, so the audit IS the control (P13 blocker f).
+    exfiltration channel, so the audit IS the control (blocker f).
 """
 
 from __future__ import annotations
@@ -76,8 +76,8 @@ _EXPORT_COLS = (
 )
 
 #: Job claim: oldest pending export, skipping rows a concurrent runner
-#: holds (gate 1.4). Served by the partial idx_exports_requested
-#: (0013); module-level so the P13 EXPLAIN test captures this exact
+#: holds (concurrency safety). Served by the partial idx_exports_requested
+#: (0013); module-level so the EXPLAIN test captures this exact
 #: statement.
 CLAIM_SQL = (
     f"SELECT {_EXPORT_COLS} FROM exports "  # noqa: S608 - static columns
@@ -101,7 +101,7 @@ DOWNLOAD_SQL = (
 
 
 # ---------------------------------------------------------------------------
-# Server-side export configuration (P13 blocker a). Small accessors so
+# Server-side export configuration (blocker a). Small accessors so
 # tests can pin values without touching the cached Settings object.
 # ---------------------------------------------------------------------------
 
@@ -123,18 +123,18 @@ async def _between_batches() -> None:
 
     Monkeypatched by the snapshot-consistency test to interleave a
     concurrent committed write mid-export and prove the REPEATABLE
-    READ snapshot never observes it (P13 blocker h).
+    READ snapshot never observes it (blocker h).
     """
 
 
 # ---------------------------------------------------------------------------
-# run_export — the streaming engine (MASTER_PROMPT 1.3)
+# run_export — the streaming engine (the house doctrine 1.3)
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ExportRun:
-    """Outcome metadata ONLY (P13.17d / DSA-4): the run carries no
+    """Outcome metadata ONLY (.17d / DSA-4): the run carries no
     rows - every batch is handed to on_batch and released, so worker
     memory no longer scales with a third in-memory copy of the
     export."""
@@ -158,7 +158,7 @@ async def run_export(
     + 1), so "more rows exist" is always observed, never inferred —
     the truncation flag is exact. on_batch (CPU-bound rendering) runs
     in a worker thread via asyncio.to_thread, keeping the event loop
-    responsive while the export renders (gate 1.3). Batches are NOT
+    responsive while the export renders (scalability). Batches are NOT
     accumulated (DSA-4): on_batch is the only consumer of the cells;
     a batch is released as soon as it has been rendered.
     """
@@ -226,7 +226,7 @@ def _row_to_export(row: Any) -> ExportRecord:
 async def _allowed_columns(
     session: AsyncSession, role_id: uuid.UUID, definition: ReportDefinition
 ) -> tuple[str, ...]:
-    """Column allow-list per role (P13 blocker e): PII needs members:view."""
+    """Column allow-list per role (blocker e): PII needs members:view."""
     include_pii = False
     if any(column.pii for column in definition.columns):
         include_pii = await rbac_service.has_permission(
@@ -304,7 +304,7 @@ async def get_export(
     *,
     requester_id: uuid.UUID,
 ) -> ExportRecord:
-    """Requester-scoped lookup (P13 blocker e): the scope was resolved
+    """Requester-scoped lookup (blocker e): the scope was resolved
     from the requester's entitlement, so nobody else may read the job
     or its tokens. Least disclosure: everyone else sees not-found."""
     row = (
@@ -387,9 +387,9 @@ class ExportJobError(AppError):
 async def run_export_job(session: AsyncSession, tenant_id: uuid.UUID) -> ExportJobOutcome | None:
     """Render the oldest pending export in the caller's transaction.
 
-    The caller supplies a REPEATABLE READ tenant session (P13 blocker
-    h) and owns commit/rollback — everything below is atomic: claim,
-    read, render, artifact, status, audit, outbox (P13 blocker i).
+    The caller supplies a REPEATABLE READ tenant session (blocker h) and owns commit/rollback —
+    everything below is atomic: claim,
+    read, render, artifact, status, audit, outbox (blocker i).
     Returns None when no job is pending.
     """
     claim = (await session.execute(text(CLAIM_SQL), {"tid": str(tenant_id)})).first()
@@ -460,7 +460,7 @@ async def run_export_job(session: AsyncSession, tenant_id: uuid.UUID) -> ExportJ
             "id": str(uuid.uuid4()),
             "tid": str(tenant_id),
             "eid": str(record.id),
-            # Unguessable download tokens (P13 blocker e): random,
+            # Unguessable download tokens (blocker e): random,
             # independent of any enumerable id.
             "csv_token": secrets.token_urlsafe(32),
             "pdf_token": secrets.token_urlsafe(32),
@@ -486,7 +486,7 @@ async def run_export_job(session: AsyncSession, tenant_id: uuid.UUID) -> ExportJ
     )
     if completed.rowcount != 1:  # pragma: no cover - unreachable under the row lock
         raise ExportJobError(record.id, NotFoundError(f"export {record.id} moved during render"))
-    # The exfiltration audit (P13 blocker f): who exported what scope.
+    # The exfiltration audit (blocker f): who exported what scope.
     await record_audit(
         session,
         tenant_id,
@@ -593,7 +593,7 @@ async def _mark_failed(session: AsyncSession, tenant_id: uuid.UUID, error: Expor
         action="export.failed",
         entity="exports",
         entity_id=str(error.export_id),
-        # Least disclosure (gate 1.6): the sanitized category only.
+        # Least disclosure (least disclosure): the sanitized category only.
         after={"category": error.category.value},
     )
 
@@ -624,9 +624,9 @@ async def download_artifact(
     """Resolve a download token; audit the download in-transaction.
 
     Uniform not-found for a wrong token, a foreign tenant, a foreign
-    requester, or an expired link (least disclosure, gate 1.6). The
+    requester, or an expired link (least disclosure, least disclosure). The
     token match is served by its UNIQUE index; the tenant predicate
-    doubles the RLS fence (P13 blocker c).
+    doubles the RLS fence (blocker c).
     """
     row = (
         await session.execute(text(DOWNLOAD_SQL), {"token": token, "tid": str(tenant_id)})

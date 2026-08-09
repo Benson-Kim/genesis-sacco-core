@@ -1,5 +1,5 @@
 /**
- * Dual-state nav icons (issue #8): the SAME geometry renders as an
+ * Dual-state nav icons: the SAME geometry renders as an
  * OUTLINE when inactive and switches to the SOLID-FILLED variant only for
  * the active page — a distinct visual anchor that does not rely on color
  * alone (the active nav item also gains weight + background). Inline SVG

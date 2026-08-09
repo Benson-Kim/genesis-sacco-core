@@ -1,12 +1,12 @@
-"""Branches registry endpoints (P13.6, gate 1.6).
+"""Branches registry endpoints (least disclosure).
 
 Registry CRUD sits under settings x view/create/edit per the P4 matrix
 (the prototype manages branches from Settings; the spec-walk and
 matrix tests cover every route, deny-by-default). Assignment routes
 follow the entity being edited, not the registry: assigning a USER to
-a branch is a user-administration mutation (access_control x edit, the
-P13.5 users precedent), assigning a MEMBER is a member edit (members x
-edit, the P8 precedent) — settings rights alone must not allow editing
+a branch is a user-administration mutation (access_control x edit, the users precedent), assigning a
+MEMBER is a member edit (members x
+edit, the precedent) — settings rights alone must not allow editing
 people records.
 
 Mutations are idempotent via the Idempotency-Key middleware (gate
@@ -107,7 +107,7 @@ class BranchAssignmentOut(BaseModel):
 
 
 class BackfillRunOut(BaseModel):
-    """Side-effect counts (§4): what the run created and linked."""
+    """Side-effect counts: what the run created and linked."""
 
     scanned: int
     branches_created: int
@@ -116,11 +116,11 @@ class BackfillRunOut(BaseModel):
 
 
 class BranchUserRosterOut(BaseModel):
-    """One user assigned to a branch (#31 (j).1) — identity facts only.
+    """One user assigned to a branch ((j).1) — identity facts only.
 
-    Least disclosure (gate 1.6): who is assigned, nothing more — no
+    Least disclosure: who is assigned, nothing more — no
     role, no last-active, no phone; the full user record stays on the
-    P13.5 /users reads under the same access_control:view gate.
+     /users reads under the same access_control:view gate.
     """
 
     id: str
@@ -135,9 +135,9 @@ class BranchUserRosterResponse(BaseModel):
 
 
 class BranchMemberRosterOut(BaseModel):
-    """One member assigned to a branch (#31 (j).1) — identity facts only.
+    """One member assigned to a branch ((j).1) — identity facts only.
 
-    Least disclosure (gate 1.6): no contact details, no figures; the
+    Least disclosure: no contact details, no figures; the
     member record stays on the P8 /members reads under the same
     members:view gate.
     """
@@ -225,12 +225,12 @@ async def list_branch_users(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> BranchUserRosterResponse:
-    """Keyset USER roster of a branch (#31 (j).1, access_control:view).
+    """Keyset USER roster of a branch ((j).1, access_control:view).
 
     Expand-only read model over the 0016 assignment column, mirroring
-    the batch-4 assignment permission split: the entity being READ is
+    the assignment permission split: the entity being READ is
     the user record, so the roster sits behind access_control x view
-    (the P13.5 users precedent) — settings rights alone must not
+    (the users precedent) — settings rights alone must not
     disclose people records. 404-BEFORE-FACTS: an unknown or
     cross-tenant branch id surfaces 404 before any roster row is read.
     """
@@ -260,12 +260,12 @@ async def list_branch_members(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> BranchMemberRosterResponse:
-    """Keyset MEMBER roster of a branch (#31 (j).1, members:view).
+    """Keyset MEMBER roster of a branch ((j).1, members:view).
 
     Expand-only read model over the 0016 assignment column, mirroring
-    the batch-4 assignment permission split: the entity being READ is
+    the assignment permission split: the entity being READ is
     the member record, so the roster sits behind members x view (the
-    P8 precedent) — settings rights alone must not disclose people
+    precedent) — settings rights alone must not disclose people
     records. 404-BEFORE-FACTS: an unknown or cross-tenant branch id
     surfaces 404 before any roster row is read.
     """
@@ -295,7 +295,7 @@ async def assign_user(
     body: BranchAssignBody,
     ctx: UserEditCtx,
 ) -> BranchAssignmentOut:
-    """Assign a user to a branch (access_control x edit — P13.5 precedent)."""
+    """Assign a user to a branch (access_control x edit — precedent)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         result = await branches_service.assign_user_branch(
@@ -316,7 +316,7 @@ async def assign_member(
     body: BranchAssignBody,
     ctx: MemberEditCtx,
 ) -> BranchAssignmentOut:
-    """Assign a member to a branch (members x edit — P8 precedent)."""
+    """Assign a member to a branch (members x edit — precedent)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         result = await branches_service.assign_member_branch(
@@ -335,9 +335,9 @@ async def run_branch_backfill(body: BackfillRunBody, ctx: EditCtx) -> BackfillRu
     """Backfill branches from legacy users.branch text (batched, idempotent).
 
     Runs for the caller's own tenant only; each batch commits its own
-    short transaction via the shared batch runner (gate 1.3). A
+    short transaction via the shared batch runner (scalability). A
     completed re-run scans nothing (anti-join on the branch_id claim
-    key) — a lock-free no-op (v1.1 rule 8).
+    key) — a lock-free no-op.
     """
     factory = get_sessionmaker(get_settings().database_url)
     result = await branches_service.run_branch_backfill_for_tenant(

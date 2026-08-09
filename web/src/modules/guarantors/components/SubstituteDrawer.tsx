@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Guarantee-substitution drawer (P15 module 5 — P13.14 atomic swap):
+ * Guarantee-substitution drawer (module 5 — atomic swap):
  * replaces a disbursed loan's collateral via
  * `POST /guarantees/{id}/substitute` (applications:edit).
  *
@@ -10,11 +10,11 @@
  *   leaves the original fully intact — nothing is orchestrated
  *   client-side.
  * - The substitute's consent is a first-class audited attestation
- *   (P14.5): the form requires a consent reference citing its evidence
+ *   the form requires a consent reference citing its evidence
  *   (an unreferenced substitute is a server 422; the server verdict
- *   wins per field). The pre-P14.5 caller-asserted `consented` boolean
+ *   wins per field). The pre- caller-asserted `consented` boolean
  *   is REMOVED from the contract — the attestation is the staff act
- *   plus its cited evidence, never a checkbox (the !29 lesson).
+ *   plus its cited evidence, never a checkbox (the lesson).
  * - The replacement amount is OPTIONAL: blank lets the server derive it
  *   from the guarantee row (it may only meet or exceed the released
  *   amount — enforced server-side, never computed here).
@@ -81,7 +81,7 @@ export function SubstituteDrawer({
     staleTime: STALE_TIME.record,
   });
 
-  // Substitute picker: ACTIVE members via the keyset contract (gate 1.3).
+  // Substitute picker: ACTIVE members via the keyset contract (scalability).
   const members = useKeysetList<Member>({
     queryKey: ["members", "list", { status: "active", type: "" }],
     fetchPage: (cursor) => fetchMembersPage({ status: "active", type: "" }, cursor),
@@ -137,8 +137,8 @@ export function SubstituteDrawer({
     setNotice(
       "This guarantee changed outside this tab and its actions are withdrawn here — the contract exposes no per-guarantee read to refresh it.",
     );
-    // Every async outcome is announced (issue #8): the withdrawal is an
-    // outcome, not a success — the live region must say so (!60 F5).
+    // Every async outcome is announced: the withdrawal is an
+    // outcome, not a success — the live region must say so.
     announce("Guarantee actions withdrawn — the record changed outside this tab.");
   }
 
@@ -179,12 +179,12 @@ export function SubstituteDrawer({
       closeDisabled={substitute.isPending}
       // W56-3: a stray overlay click must never discard a half-completed
       // substitution form (attestation + evidence reference) — dismissal
-      // is the explicit ✕ or Escape. (This drawer arrived via the !60
+      // is the explicit ✕ or Escape. (This drawer arrived via the
       // main-merge after the W56-3 sweep; convention completed here.)
       dismissOnOverlay={false}
     >
       {/* Informational, NOT success styling: the notice reports a
-          CONFLICTED/WITHDRAWN record (!60 F5). */}
+          CONFLICTED/WITHDRAWN record. */}
       {notice !== "" && <Banner variant="info">{notice}</Banner>}
       <div className={styles.detailGrid}>
         <Kv label="Guarantee record">
@@ -204,7 +204,7 @@ export function SubstituteDrawer({
         <Kv label="Record version">{guarantee.version}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={substitute.error} onReload={reloadAfterConflict} />
       {substitute.isError && !conflict && !renderedInline && (
         <ErrorBanner error={substitute.error} />
@@ -267,7 +267,7 @@ export function SubstituteDrawer({
             id="substitute-consent-reference"
             label="Consent evidence reference"
             error={fieldErrors["consent_reference"]}
-            hint="Cite the evidence the substitute guarantor's consent rests on (e.g. the signed guarantorship form) — submitting IS the staff attestation and it is written as an audited fact (P14.5)."
+            hint="Cite the evidence the substitute guarantor's consent rests on (e.g. the signed guarantorship form) — submitting IS the staff attestation and it is written as an audited fact."
           >
             {(control) => (
               <input

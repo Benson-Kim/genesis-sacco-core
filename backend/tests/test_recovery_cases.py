@@ -59,6 +59,7 @@ from db_helpers import api_client, factory, seed_user, unique_email
 from export_helpers import add_user, count, seed_actor
 from genesis.application import recovery as recovery_service
 from genesis.application.arrears import run_arrears_for_tenant
+from genesis.application.pagination import encode_cursor
 from genesis.domain.rbac import AUDITOR, ROLE_NAMES, Action, Module, seed_matrix
 from genesis.errors import ConflictError, NotFoundError
 from genesis.infrastructure.tenancy import tenant_session
@@ -574,6 +575,19 @@ def test_notes_append_only_keyset_and_closed_case_refusal() -> None:
             )
             page2 = res.json()
             assert [n["id"] for n in page2["items"]] == [note_ids[1]]
+
+            # FM9 (#31 batch 13): forged cursors are sanitized 400s —
+            # garbage AND a validly signed token for a FOREIGN scope
+            # (same tenant), which only the tag check can refuse.
+            cross_scope = encode_cursor(page1["next_cursor"], tenant_id=tid, endpoint="tamper.test")
+            for forged in ("not-a-cursor", cross_scope):
+                res = await client.get(
+                    f"/recovery-cases/{case['id']}/notes",
+                    params={"cursor": forged},
+                    headers=headers,
+                )
+                assert res.status_code == 400, (forged, res.text)
+                assert set(res.json().keys()) == {"category", "correlation_id"}
 
             # Append-only (A2): no edit/delete route exists at all —
             # attempted in-place edits have NO route (405 from the

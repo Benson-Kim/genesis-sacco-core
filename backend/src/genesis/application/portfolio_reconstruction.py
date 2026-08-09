@@ -1,11 +1,11 @@
-"""Month-end portfolio reconstruction — the single source of truth (P13.17a).
+"""Month-end portfolio reconstruction — the single source of truth (.17a).
 
 NPL_TREND_MONTH_SQL and the month-end walk moved here VERBATIM from
-application/reports.py (where they shipped in P13) so that the DSA-1
+application/reports.py (where they shipped in) so that the DSA-1
 snapshot writer (application/portfolio_snapshots.py) and the NPL-trend
 report builder execute the SAME statement — the math is never
-dual-maintained (gate 1.1; P13.17 blocker d "no dual-maintained
-math"). reports.py re-exports both names, so every existing import
+dual-maintained (reuse-first; blocker d "no dual-maintained math"). reports.py re-exports both
+names, so every existing import
 site (tests/test_p13_explain.py, application/dashboard.py's docstring
 cross-reference) is unchanged.
 
@@ -29,7 +29,7 @@ from genesis.domain.lending import NPL_DPD_DAYS
 from genesis.domain.money import to_cents
 
 #: One month-end snapshot, reconstructed from the append-only record
-#: (gate 1.5: never from current mutable state):
+#: (data integrity: never from current mutable state):
 #:   * outstanding principal per loan = disbursed principal minus the
 #:     loans.receivable credit legs of its repayments up to the cutoff
 #:     (ledger-reconstructed, the deposit-interest ADB precedent);
@@ -38,7 +38,7 @@ from genesis.domain.money import to_cents
 #:   * NPL = days past due > 90 (domain classify threshold:
 #:     substandard and worse).
 #: Loans closed on or before the cutoff are excluded (their terminal
-#: postings — repayment closure or P12 exit set-off — zeroed them);
+#: postings — repayment closure or exit set-off — zeroed them);
 #: written_off is excluded pending a write-off flow (none exists yet).
 NPL_TREND_MONTH_SQL = """
 WITH paid AS (
@@ -110,8 +110,8 @@ class MonthPortfolio:
 
     npl_loans / npl_balance are the FLAGGED bucket at the dpd_days
     threshold the caller selected: the NPL bucket at the default
-    NPL_DPD_DAYS (every pre-batch-8 caller), the PAR-30 bucket at
-    PAR_DPD_DAYS (the #31 batch-8 dashboard trend). Field names keep
+    NPL_DPD_DAYS (every earlier caller), the PAR-30 bucket at
+    PAR_DPD_DAYS (the dashboard trend). Field names keep
     the as-built NPL spelling so the snapshot writer's stored-column
     mapping is untouched."""
 
@@ -134,13 +134,13 @@ async def reconstruct_month(
 
     The cutoff instant is the UTC end of month_end's calendar day; an
     as_of cap (the export's snapshot instant) additionally bounds the
-    CURRENT, incomplete month exactly as the P13 export always has.
+    CURRENT, incomplete month exactly as the export always has.
     All values are bound parameters; the receivable account identifier
-    comes from the code-owned chart (v1.1 rule 6). dpd_days selects
+    comes from the code-owned chart. dpd_days selects
     the flagged bucket from the code-owned domain/lending thresholds —
-    the default (NPL_DPD_DAYS, 90) keeps every pre-batch-8 caller
+    the default (NPL_DPD_DAYS, 90) keeps every earlier caller
     (snapshot writer, NPL-trend export) behaviour-identical; the
-    dashboard PAR-30 trend (#31 batch 8 ledger (k)) passes
+    dashboard PAR-30 trend passes
     PAR_DPD_DAYS (30). Never caller input.
     """
     cutoff = datetime(month_end.year, month_end.month, month_end.day, tzinfo=UTC)

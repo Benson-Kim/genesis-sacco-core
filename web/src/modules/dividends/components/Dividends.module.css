@@ -1,7 +1,7 @@
 /*
- * Dividends module styles (issue #31 batch 2). Tokens only (gate 1.1);
+ * Dividends module styles. Tokens only (reuse-first);
  * page-level GRIDS come from the shared modules/layout/grid.module.css
- * — no private page grid lives here (P15 blocker (f)).
+ * — no private page grid lives here (blocker (f)).
  */
 
 .toolbar {
@@ -37,7 +37,7 @@
 }
 
 /* Declaration figures — tabular numerals; each figure sits in its own
- * labelled column/row (issue #8: color never carries meaning alone). */
+ * labelled column/row (color never carries meaning alone). */
 .amountCell {
     font-weight: 700;
     color: var(--ink);

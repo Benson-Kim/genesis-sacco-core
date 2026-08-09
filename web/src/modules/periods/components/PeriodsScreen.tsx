@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Accounting-periods register (issue #31 batch 4 — the P12.5 period
- * machinery; audit #30 finding A5): the close-state read surface plus
+ * Accounting-periods register (the period machinery): the close-state read surface plus
  * the close-period entry point.
  *
  * Security posture (dividends/exits precedent):
@@ -10,16 +9,15 @@
  *   attacker-influenced data; it renders exclusively through React
  *   text interpolation — no parser sink exists in this module.
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). The route itself is
+ *   the server enforces every call (least disclosure). The route itself is
  *   transactions:view; "Close period" mounts only with
  *   transactions:approve (the router's recorded decision: the people
  *   who post must not be able to freeze the periods they post into —
  *   deliberately NOT transactions:create/edit).
- * - Keyset pagination only (opaque cursors — gate 1.3); the list
+ * - Keyset pagination only (opaque cursors — scalability); the list
  *   contract declares NO filters — none are offered and nothing is
  *   filtered locally.
- * - HONESTY: rows exist only for months an approver CLOSED (issue #12
- *   design — absence of a row IS the open state); the register states
+ * - HONESTY: rows exist only for months an approver CLOSED (design — absence of a row IS the open state); the register states
  *   this instead of fabricating synthetic "open" rows, and no reopen
  *   affordance exists because no reopen contract exists.
  * - NO money figure exists on this contract — nothing is summed,
@@ -38,7 +36,7 @@ import type { PeriodRecord } from "../schemas";
 import { periodStatusPill } from "./pills";
 import styles from "./Periods.module.css";
 
-// Dialog-level code splitting (P15 Phase B speed): the close dialog
+// Dialog-level code splitting (speed): the close dialog
 // chunk loads on first open, not with the list route.
 const ClosePeriodDialog = dynamic(
   () => import("./ClosePeriodDialog").then((m) => m.ClosePeriodDialog),
@@ -92,8 +90,8 @@ export function PeriodsScreen() {
       <div className={styles.toolbar}>
         <div className={styles.toolbarNote}>
           A row exists only for a month the books were CLOSED for — every
-          other month is open for posting (issue #12: posting dates are
-          resolved and checked server-side; the database trigger refuses
+          other month is open for posting (posting dates are resolved and
+          checked server-side; the database trigger refuses
           postings into a closed month regardless of any screen). There is
           no reopen: a close is a governance fact, not a toggle.
         </div>

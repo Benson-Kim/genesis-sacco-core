@@ -1,19 +1,19 @@
-"""ledger corrections, misc fees & loan write-off (P13.15)
+"""ledger corrections, misc fees & loan write-off
 
 Revision ID: 0025
 Revises: 0024
 Create Date: 2026-08-01
 
-Expand-only revision backing BUILD_PROMPTS P13.15. RLS enabled AND
+Expand-only revision backing the build plan. RLS enabled AND
 FORCED on every new table with the 0001/0019/0020 tenant_isolation
-policy shape (ADR-0002); DB CHECKs on every bound (gate 1.5); the
+policy shape (ADR-0002); DB CHECKs on every bound (data integrity); the
 leakage suite is extended to all three tables.
 
   * transactions.type CHECK expanded (expand-only, the 0020 precedent)
-    with 'fee' (FE- misc fees, amounts exclusively from P13.7 config)
+    with 'fee' (FE- misc fees, amounts exclusively from config)
     and 'loan_write_off' (WO- provisioning posting).
 
-  * repayments.amount CHECK relaxed from (> 0) to (<> 0): the P13.15
+  * repayments.amount CHECK relaxed from (> 0) to (<> 0): the
     repayment adjustment writes a NEGATIVE-linked correction row (the
     storno pair of the original) whose transaction is the reversing
     posting. Zero rows stay unrepresentable. The downgrade restores
@@ -23,36 +23,36 @@ leakage suite is extended to all three tables.
     deleted).
 
   * repayment_adjustments — the atomic one-adjustment-per-repayment
-    CLAIM (v1.1 rule 5): UNIQUE (tenant_id, repayment_id) claimed with
-    INSERT ... ON CONFLICT DO NOTHING + rowcount, so a second
-    adjustment of the same repayment is unrepresentable (FM2). The row
-    records the maker distinctly (A3 maker-checker), the exact
+    CLAIM: UNIQUE (tenant_id, repayment_id) claimed with
+    INSERT... ON CONFLICT DO NOTHING + rowcount, so a second
+    adjustment of the same repayment is unrepresentable. The row
+    records the maker distinctly (maker-checker), the exact
     allocation components being undone (identity CHECK: amount =
     penalties + interest + principal) and BOTH transaction ids — the
-    original and the reversing posting (A1 storno linkage; the ledger
-    linkage itself is transactions.reversal_of_id, tenant-safe per
-    0014). A write-once trigger (the !30 0020 precedent) pins every
+    original and the reversing posting (storno linkage; the ledger linkage itself is
+    transactions.reversal_of_id, tenant-safe per 0014). A write-once trigger (the 0020 precedent)
+    pins every
     column after insert except the one workflow write: filling
     reversal_transaction_id from NULL inside the same adjustment
     transaction.
 
   * loan_write_offs — the PERSISTED, DB-LEVEL WRITE-ONCE approval
-    snapshot (v1.1 rule 3; the !30 0020-trigger precedent): the loan's
+    snapshot (the 0020-trigger precedent): the loan's
     balance, penalty_due, classification and provision at request
     time, which the committee approves and posting re-verifies
     component-by-component (409 on drift, posting nothing). The
     write-once trigger refuses any mutation of the snapshot figures in
     ANY status — even manual SQL through the app role fails loudly
-    (FM4/A6); only the status workflow columns (status, decided_at,
+    (/A6); only the status workflow columns (status, decided_at,
     posted_at, version, updated_at) and the NULL -> value fill of
     transaction_id may move. The classification CHECK restricts the
     snapshot to NPL classes ('substandard'/'doubtful'/'loss') — the
     prudential DB backstop behind the request_write_off service gate
-    (review B3/FM9): a performing-loan write-off snapshot is
+    (/): a performing-loan write-off snapshot is
     unrepresentable at the database. A4 (write-off is NOT forgiveness): the
     snapshot persists the written-off claim on the member after the
     receivable is derecognised; post-write-off recovery is a future
-    explicit branch (follow-up issue referencing P13.16/P19).
+    explicit branch (follow-up issue referencing /).
 
   * uq_loan_write_offs_open — at most ONE live (non-rejected)
     write-off per loan: concurrent double-requests collapse to exactly
@@ -61,7 +61,7 @@ leakage suite is extended to all three tables.
 
   * loan_write_off_votes — the P9/0005/0010/0020 committee-voting
     shape: one vote per (tenant, write_off, voter) enforced by UNIQUE
-    (gate 1.4).
+    (concurrency safety).
 
 Downgrade reverses this revision: the new tables, triggers and
 functions are dropped and the original repayments/transactions CHECKs

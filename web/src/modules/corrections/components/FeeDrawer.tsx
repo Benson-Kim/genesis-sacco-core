@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Misc-fee drawer (P15 batch 1 — the prototype "Fee" posting the
- * transactions module deliberately deferred to corrections):
+ * Misc-fee drawer (the prototype "Fee" posting the transactions module deliberately deferred to corrections):
  * `POST /corrections/fees` (corrections:create, FE- ref).
  *
- * - NO AMOUNT FIELD EXISTS (FM5/v1.1 rule 1): the request names a
+ * - NO AMOUNT FIELD EXISTS (rule 1): the request names a
  *   CODE-OWNED fee type and the cash channel only — the amount
- *   resolves exclusively from P13.7 tenant configuration server-side
+ *   resolves exclusively from tenant configuration server-side
  *   (extra="forbid" turns a caller-supplied amount into a 422). The
  *   result panel renders the SERVER's resolved figure verbatim.
  * - FRESH MEMBER READ before the write (record class, staleTime 0 —
@@ -53,7 +52,7 @@ import { postFee } from "../api";
 import { FEE_TYPES, FEE_TYPE_LABELS, feeTypeSchema, type FeeResult } from "../schemas";
 import styles from "./Corrections.module.css";
 
-/** Client-side pre-validation (the server re-validates — gate 1.6):
+/** Client-side pre-validation (the server re-validates — least disclosure):
  * member, code-owned fee type, cash channel. NO amount can even be
  * expressed in this input. */
 const feeEntrySchema = z.object({
@@ -73,16 +72,16 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
   const [confirmEntry, setConfirmEntry] = useState<FeeEntry | null>(null);
   const [result, setResult] = useState<FeeResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3).
+  // Freshness component for the idempotency key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
-  // Per-posting intent counter (the T2 lesson): bumped on every
+  // Per-posting intent counter (the lesson): bumped on every
   // SUCCESS, so a deliberately repeated identical fee after "Post
   // another" is a NEW intent with a NEW key — never deduplicated into
   // a silently missing ledger row.
   const [intentSeq, setIntentSeq] = useState(0);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
-  // Member picker: the keyset contract (gate 1.3) — pages of 20 with
+  // Member picker: the keyset contract (scalability) — pages of 20 with
   // an explicit "load more" (the PostTransactionDrawer pattern; the
   // P8 list has no search parameter).
   const members = useKeysetList<Member>({
@@ -141,7 +140,7 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the member; the failed
+    // Explicit reload flow: refetch the member; the failed
     // posting is structurally WITHDRAWN — re-entering it is a NEW
     // operator intent whose key rotates via the reload epoch.
     void queryClient.refetchQueries({ queryKey: ["members", "detail", memberId] });
@@ -182,7 +181,7 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
     Object.keys(serverErrors).length > 0;
 
   // Structural withdrawal: the ledger accepts no postings for an
-  // exited member — the form is not offered (gate 1.6).
+  // exited member — the form is not offered (least disclosure).
   const memberExited = freshMember !== undefined && freshMember.status === "exited";
 
   return (
@@ -196,7 +195,7 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
     >
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={post.error} onReload={reloadAfterConflict} />
       {post.isError && !conflict && !renderedInline && <ErrorBanner error={post.error} />}
 
@@ -212,7 +211,7 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
             <span className={styles.mono}>{result.txn_id}</span>
           </Kv>
           <div className={styles.formNote}>
-            The amount above is the SERVER&apos;s P13.7-configured figure from
+            The amount above is the SERVER&apos;s configured figure from
             the posting response — no amount was (or can be) entered in this
             screen. The row now appears in the transactions register.
           </div>

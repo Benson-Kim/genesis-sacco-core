@@ -9,7 +9,7 @@ import styles from "./AppShell.module.css";
 
 /**
  * Prototype app frame: navy sidebar, top header, scrollable main area.
- * Accessibility shell primitives (issue #8): skip-to-content as the first
+ * Accessibility shell primitives: skip-to-content as the first
  * focusable element and the single shared aria-live region.
  */
 export function AppShell({ children }: { children: ReactNode }) {

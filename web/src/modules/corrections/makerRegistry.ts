@@ -1,12 +1,10 @@
 /**
- * Per-tab write-off requester registry (P15 batch 1 — separation of
- * duties, UX side; the exits makerRegistry precedent).
+ * Per-tab write-off requester registry (separation of duties, UX side; the exits makerRegistry precedent).
  *
- * WHY THIS MODULE NEEDS A REGISTRY AT ALL (the !70 rule: server truth
- * first, registry only as fallback): the 0025 loan_write_offs table
+ * WHY THIS MODULE NEEDS A REGISTRY AT ALL (the rule: server truth first, registry only as fallback): the 0025 loan_write_offs table
  * carries requested_by, but WriteOffOut deliberately does NOT
  * serialise it — the requester is NOT on this contract. Until that
- * contract follow-up lands (recorded on issue #31), this per-tab
+ * contract follow-up lands (recorded on), this per-tab
  * witness is the ONLY maker signal available to MakerCheckerPanel for
  * the vote/post affordances. The ADJUSTMENT surface needs NO registry:
  * AdjustmentRecordOut.maker_id is required server truth (0025
@@ -17,14 +15,14 @@
  * for those the maker is UNKNOWN (a distinct sentinel that never
  * equals a real user id, so MakerCheckerPanel's self-check simply
  * cannot match). The ENFORCED invariants are server-side regardless
- * (gate 1.6): the requester can never vote on nor post their own
+ * (least disclosure): the requester can never vote on nor post their own
  * write-off (403, keyed on the persisted requested_by), and the
  * decision needs the committee quorum (the P9 machinery).
  *
- * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
+ * Storage: the shared createSessionScopedRegistry
  * primitive — teardown on BOTH session-death paths (the query-path 401
  * dual-cache teardown and explicit sign-out) is wired by construction
- * (W58-2, the !60 F2 class). This wrapper keeps the module's exported
+ * (W58-2, the F2 class). This wrapper keeps the module's exported
  * vocabulary byte-compatible.
  */
 import { createSessionScopedRegistry } from "@/modules/auth/createSessionScopedRegistry";

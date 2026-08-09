@@ -204,7 +204,7 @@ test("happy path: OTP login → member register renders → the create flow comm
 
   // The create flow, through the real drawer UI.
   await page.getByRole("button", { name: "Register member" }).click();
-  const drawer = page.getByRole("dialog", { name: "Register member" });
+  const drawer = page.getByRole("dialog", { name: "New member registration" });
   await drawer.getByLabel("Full name").fill("Amina Otieno");
   await drawer.getByLabel("Phone (optional)").fill("+254711000002");
   await drawer.getByRole("button", { name: "Register member" }).click();

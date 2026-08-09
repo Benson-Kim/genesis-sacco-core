@@ -1,25 +1,25 @@
-"""P13.10 report registry expansion: register keyset index + report
-vocabulary CHECK widening (gates 1.3, 1.5)
+"""report registry expansion: register keyset index + report
+vocabulary CHECK widening (the house gates)
 
 Revision ID: 0023
 Revises: 0022
 Create Date: 2026-08-01
 
-Claimed as 0023 with down_revision 0022 per v1.2 rule 14 — 0022
-(dividends x dormancy policy, !36) verified as main's migration head
+Claimed as 0023 with down_revision 0022 per the migration-declaration rule — 0022
+(dividends x dormancy policy) verified as main's migration head
 at branch time (0001-0022 linear). NO new tables: no TENANT_TABLES /
 ENTITY_MODULES / RLS delta. Two changes, expand-only in the SCHEMA
 sense (nothing dropped or narrowed; one-release backward compatible):
 
   * the 0013 exports.report CHECK pins the report vocabulary; the
-    P13 registry gains the four P13.10 reports here (the exact 0020
+     registry gains the four reports here (the exact 0020
     dividend_rebate_schedule precedent);
   * idx_members_register_keyset, below.
 
-Lock posture (!40 review R5 — honest, v1.2 rule 13): this migration
+Lock posture (honest, the house rules): this migration
 is NOT lock-free and NOT zero-downtime. CREATE INDEX (non-CONCURRENT)
 takes a SHARE lock on members for the whole build — every write to
-members blocks until it finishes. The CHECK re-add (ALTER TABLE ...
+members blocks until it finishes. The CHECK re-add (ALTER TABLE...
 DROP CONSTRAINT + ADD CONSTRAINT) FULLY VALIDATES existing exports
 rows under ACCESS EXCLUSIVE, blocking reads and writes on exports for
 the scan. This migration therefore ASSUMES the maintenance-window
@@ -28,21 +28,21 @@ job with the app quiesced, and both CI migrate-check and the test
 harness apply plain transactional DDL (CREATE INDEX CONCURRENTLY and
 NOT VALID/VALIDATE are non-transactional and would break them). The
 zero-downtime alternative — CREATE INDEX CONCURRENTLY plus ADD
-CONSTRAINT ... NOT VALID followed by VALIDATE CONSTRAINT — is
+CONSTRAINT... NOT VALID followed by VALIDATE CONSTRAINT — is
 deliberately deferred to the ops-hardening prompt.
 
-The P13.10 membership register streams the full members table through
+The membership register streams the full members table through
 the export engine in (created_at, id) keyset order. This composite
 index leads with tenant_id (matching the RLS predicate) so the keyset
 page stays index-backed at any page depth (EXPLAIN gate:
 tests/test_p1310_explain.py -> backend/perf/explain_p1310.txt).
 
-The other P13.10 reports ship NO new index by design:
+The other reports ship NO new index by design:
   * portfolio-at-risk aging reuses the NPL-trend reconstruction shape
     (idx_schedules_due / idx_repayments_loan / idx_ledger_txn /
     idx_loans_status, all shipped with their queries in 0001/0013);
   * income statement and SASRA return aggregate the ledger exactly
-    like the P13 trial balance (idx_ledger_txn + transactions PK),
+    like the trial balance (idx_ledger_txn + transactions PK),
     with cardinality bounded by the chart of accounts.
 """
 

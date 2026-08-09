@@ -23,8 +23,8 @@ export const memberSchema = z.object({
     email: z.string().nullable(),
     status: memberStatusSchema,
     version: z.number().int(),
-    /** Branch attribution (#31 ledger (j).2) — the 0016 FK written
-     * ONLY by the batch-4 assignment route, as the bare branch UUID.
+    /** Branch attribution — the 0016 FK written
+     * ONLY by the assignment route, as the bare branch UUID.
      * NULLABLE, NOT optional: every member read carries the key, so a
      * response missing it is a contract violation and is REJECTED
      * (network-tested). NULL renders the honest "unassigned"
@@ -33,16 +33,16 @@ export const memberSchema = z.object({
      * without that grant the drawer renders the short id only and
      * fetches nothing (the created_by least-disclosure precedent). */
     branch_id: z.string().nullable(),
-    /** Dividend payout PREFERENCE (#31 ledger (c)) — the authorized
-     * batch-8 expand. NULLABLE, NOT optional: every member read
+    /** Dividend payout PREFERENCE — the authorized
+     *  expand. NULLABLE, NOT optional: every member read
      * carries the key, so a response missing it is a contract
      * violation and is REJECTED (network-tested). NULL renders the
      * honest "not set" affordance — a preference is never invented.
      * The value is the server's CODE-OWNED vocabulary token rendered
      * VERBATIM (the backend deliberately types it as a bounded string
      * and never echoes the vocabulary — least disclosure); the client
-     * pins no duplicate enum. Stored preference ONLY: the P13.11
-     * distribution engine does not consume it (batch-8 fence). */
+     * pins no duplicate enum. Stored preference ONLY: the
+     * distribution engine does not consume it (fence). */
     dividend_payout: z.string().nullable(),
 });
 
@@ -50,10 +50,10 @@ export type Member = z.infer<typeof memberSchema>;
 
 /**
  * Advisory financial aggregates on the single-member DETAIL read
- * (#31 batch 3) and on register LIST rows fetched with the OPT-IN
- * include=aggregates expand (#31 batch 3 review). All four figures
+ *  and on register LIST rows fetched with the OPT-IN
+ * include=aggregates expand (review). All four figures
  * are decimal STRINGS rendered verbatim: NO client-side money math
- * ever (P15 blocker (a)), no summing, no derived figures. Required,
+ * ever, no summing, no derived figures. Required,
  * not optional, per the contract: the detail read and every opted-in
  * list row always carry the object, so a missing or null aggregates
  * is a contract violation and is REJECTED.
@@ -74,7 +74,7 @@ export const memberDetailSchema = memberSchema.extend({
 export type MemberDetail = z.infer<typeof memberDetailSchema>;
 
 /**
- * Dormancy run report (DormancyRunOut — #31 ledger (f)): SERVER facts
+ * Dormancy run report (DormancyRunOut): SERVER facts
  * only. as_of/cutoff are DATE isoformat strings ("YYYY-MM-DD",
  * api/members.py date.isoformat()) rendered VERBATIM — deliberately
  * NOT isoTimestampSchema, which would reject every legitimate

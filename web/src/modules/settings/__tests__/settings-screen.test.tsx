@@ -117,8 +117,16 @@ function mountScreen() {
   );
 }
 
+/** Enter interest-tab edit mode when still in the read-only view
+ * (#35 item 3 — panels are read-only by default). */
+async function enterInterestEdit(user: ReturnType<typeof userEvent.setup>) {
+  const edit = screen.queryByRole("button", { name: "Edit interest rules" });
+  if (edit !== null) await user.click(edit);
+}
+
 /** Drive the interest-tab save through its typed confirmation. */
 async function confirmInterestSave(user: ReturnType<typeof userEvent.setup>) {
+  await enterInterestEdit(user);
   await user.click(await screen.findByRole("button", { name: "Save interest rules" }));
   const dialog = await screen.findByRole("dialog", { name: "Apply interest rules" });
   await user.type(within(dialog).getByLabelText('Type "interest" to confirm'), "interest");
@@ -164,6 +172,7 @@ test("typed confirmation gates every settings save; the WYSIWYG body carries ver
   mocked.updateSettings.mockResolvedValue(baseSettings({ version: 6 }));
   mountScreen();
 
+  await user.click(await screen.findByRole("button", { name: "Edit interest rules" }));
   await user.click(await screen.findByRole("button", { name: "Save interest rules" }));
   const dialog = await screen.findByRole("dialog", { name: "Apply interest rules" });
   // Opening the confirmation writes nothing.
@@ -200,6 +209,7 @@ test("clearing a configured field submits an explicit null (never a silent keep)
   mocked.updateSettings.mockResolvedValue(baseSettings({ version: 6 }));
   mountScreen();
 
+  await user.click(await screen.findByRole("button", { name: "Edit interest rules" }));
   const dividendInput = await screen.findByLabelText("Dividend on shares (% p.a.)");
   await user.clear(dividendInput);
   await confirmInterestSave(user);
@@ -215,6 +225,7 @@ test("typed confirmation NAMES the keys a save would CLEAR (W57-3) — never a s
   mountScreen();
 
   // penalty_grace_days is CONFIGURED (5) — clearing it must be disclosed.
+  await user.click(await screen.findByRole("button", { name: "Edit interest rules" }));
   const grace = await screen.findByLabelText("Penalty grace (days)");
   await user.clear(grace);
   await user.click(screen.getByRole("button", { name: "Save interest rules" }));
@@ -236,7 +247,7 @@ test("stale edit: 409 shows the explicit reload flow with EXACTLY ONE write atte
   mocked.updateSettings.mockRejectedValue(new ApiError(409, "conflict", "corr-stale"));
   mountScreen();
 
-  await screen.findByRole("button", { name: "Save interest rules" });
+  await screen.findByRole("button", { name: "Edit interest rules" });
   await confirmInterestSave(user);
 
   expect(await screen.findByText(/Your change was NOT applied/)).toBeInTheDocument();
@@ -262,7 +273,7 @@ test("idempotency keys: stable across retries of an identical body, rotated when
     .mockResolvedValue(baseSettings({ version: 6 }));
   mountScreen();
 
-  await screen.findByRole("button", { name: "Save interest rules" });
+  await screen.findByRole("button", { name: "Edit interest rules" });
   await confirmInterestSave(user);
   await waitFor(() => expect(mocked.updateSettings).toHaveBeenCalledTimes(1));
   await confirmInterestSave(user);
@@ -287,6 +298,9 @@ test("UI affordances follow the matrix: view-only settings role sees NO save con
 
   expect(await screen.findByLabelText("Interest on deposits (% p.a.)")).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Save interest rules" })).toBeNull();
+  // #35 item 3: the Edit affordance is permission-gated — a view-only
+  // role never even sees the way INTO edit mode.
+  expect(screen.queryByRole("button", { name: "Edit interest rules" })).toBeNull();
 
   await user.click(screen.getByRole("tab", { name: "Parameters" }));
   expect(await screen.findByLabelText("Minimum share capital (KES)")).toBeDisabled();
@@ -341,7 +355,7 @@ test("least-disclosure: a 403 renders the sanitized banner only, no reload affor
   mocked.updateSettings.mockRejectedValue(new ApiError(403, "forbidden", "corr-f"));
   mountScreen();
 
-  await screen.findByRole("button", { name: "Save interest rules" });
+  await screen.findByRole("button", { name: "Edit interest rules" });
   await confirmInterestSave(user);
 
   expect(await screen.findByText(/Not permitted\./)).toBeInTheDocument();
@@ -361,7 +375,7 @@ test("server 422 field verdicts render inline through form-errors (server wins)"
   );
   mountScreen();
 
-  await screen.findByRole("button", { name: "Save interest rules" });
+  await screen.findByRole("button", { name: "Edit interest rules" });
   await confirmInterestSave(user);
 
   // The band-level server verdict lands next to the band editor.
@@ -411,4 +425,67 @@ test("Zod boundary rejects unknown enum vocabulary (W57-2) — a degraded value 
       penalty_charged_on: null,
     }).success,
   ).toBe(true);
+});
+
+test("#35 item 3: settings panels are READ-ONLY by default — fields non-editable and NO save affordance before Edit", async () => {
+  const user = userEvent.setup();
+  mountScreen();
+
+  const dividend = await screen.findByLabelText("Dividend on shares (% p.a.)");
+  // Structurally disabled by the view-mode fieldset (the permission is
+  // FULL here — falsifiable: drop the fieldset gating and this fails).
+  expect(dividend).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Save interest rules" })).toBeNull();
+  expect(screen.getByText(/Read-only view/)).toBeInTheDocument();
+  expect(mocked.updateSettings).not.toHaveBeenCalled();
+
+  // The permission-gated Edit affordance opens edit mode.
+  await user.click(screen.getByRole("button", { name: "Edit interest rules" }));
+  expect(screen.getByLabelText("Dividend on shares (% p.a.)")).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Save interest rules" })).toBeInTheDocument();
+
+  // The other tabs consume the same ONE shell (gate 1.1).
+  await user.click(screen.getByRole("tab", { name: "Parameters" }));
+  expect(await screen.findByLabelText("Minimum share capital (KES)")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Edit parameters" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Approval matrix" }));
+  expect(await screen.findByLabelText("Committee size")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Edit approval matrix" })).toBeInTheDocument();
+});
+
+test("#35 item 3: Cancel restores SERVER TRUTH (discard-by-remount); a successful save lands back in read-only view", async () => {
+  const user = userEvent.setup();
+  mocked.updateSettings.mockResolvedValue(
+    baseSettings({ version: 6, dividend_rate_pct: "20.00" }),
+  );
+  mountScreen();
+
+  await user.click(await screen.findByRole("button", { name: "Edit interest rules" }));
+  const dividend = screen.getByLabelText("Dividend on shares (% p.a.)");
+  await user.clear(dividend);
+  await user.type(dividend, "20.00");
+  expect(dividend).toHaveValue("20.00");
+
+  // Cancel: the draft dies by remount, the LOADED record's value
+  // returns, the fields disable — and NOTHING was written.
+  await user.click(screen.getByRole("button", { name: "Cancel — discard changes" }));
+  const restored = await screen.findByLabelText("Dividend on shares (% p.a.)");
+  expect(restored).toHaveValue("14.00");
+  expect(restored).toBeDisabled();
+  expect(mocked.updateSettings).not.toHaveBeenCalled();
+
+  // Save path: the confirmed write bumps the version, the shell
+  // remounts, and the tab returns to READ-ONLY view serving the fresh
+  // server record (never the draft).
+  await user.click(screen.getByRole("button", { name: "Edit interest rules" }));
+  const editable = screen.getByLabelText("Dividend on shares (% p.a.)");
+  await user.clear(editable);
+  await user.type(editable, "20.00");
+  await confirmInterestSave(user);
+  await waitFor(() => expect(mocked.updateSettings).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(screen.getByLabelText("Dividend on shares (% p.a.)")).toHaveValue("20.00"),
+  );
+  expect(screen.getByLabelText("Dividend on shares (% p.a.)")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Edit interest rules" })).toBeInTheDocument();
 });

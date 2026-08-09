@@ -1,4 +1,4 @@
-"""accounting periods: table, RLS, closed-period trigger (P12.5, issue #12)
+"""accounting periods: table, RLS, closed-period trigger
 
 Revision ID: 0012
 Revises: 0011
@@ -6,20 +6,20 @@ Create Date: 2026-07-29
 
 Additive only (expand phase):
 
-  * accounting_periods — the issue #12 period model, per tenant. A row
+  * accounting_periods — the period model, per tenant. A row
     exists once a period has been CLOSED by the close action (absence of
     a row = the period is open); the status column keeps a future
     "reopen" action additive. Every ledger posting validates its
     occurred_at against this table server-side (application guard in
     ledger._post) — callers can never backdate into a finalised month
-    (the P11 caller-input lesson). UNIQUE (tenant_id, period_start)
-    makes concurrent closes collapse to exactly one row (gate 1.4,
-    claimed atomically by INSERT .. ON CONFLICT rowcount) and doubles
+    (the caller-input lesson). UNIQUE (tenant_id, period_start)
+    makes concurrent closes collapse to exactly one row (concurrency safety, claimed atomically by
+    INSERT.. ON CONFLICT rowcount) and doubles
     as the closed-period lookup index for the hot posting path
-    (gate 1.3; the uq_member_exits_open precedent). RLS matches 0001.
+    (scalability; the uq_member_exits_open precedent). RLS matches 0001.
 
   * transactions_closed_period trigger — the DB-level backstop
-    (gate 1.5): even raw SQL that bypasses the application service
+    (data integrity): even raw SQL that bypasses the application service
     cannot insert a transaction whose occurred_at falls inside a
     closed period. The application guard gives clean 409 semantics;
     this trigger makes the invariant hold at the database.

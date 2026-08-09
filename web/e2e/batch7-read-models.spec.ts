@@ -72,6 +72,7 @@ const TXN_OUT = {
   occurred_at: "2026-07-18T10:15:00+00:00",
   is_reversal: false,
   created_by: null,
+  external_ref: null,
 };
 
 /** NON-ADDITIVE legs fixture: gross 200.00 / net 0.00 must NEVER

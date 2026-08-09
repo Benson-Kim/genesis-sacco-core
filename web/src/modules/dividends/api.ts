@@ -1,17 +1,16 @@
 /**
- * Dividends lifecycle API layer (issue #31 batch 2 — the P13.11
- * declare/approve/distribute contract) over the GENERATED client.
+ * Dividends lifecycle API layer (the declare/approve/distribute contract) over the GENERATED client.
  *
  * - Keyset pagination ONLY on the register read: opaque `cursor`
  *   echoed back verbatim; no offset or page parameters exist here
- *   (gate 1.3). The P13.11 list contract declares NO filters — the
+ *   (scalability). The list contract declares NO filters — the
  *   client sends none and filters nothing locally.
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the web/README.md MATERIAL rule (gate 1.4). Void PINS the record
- *   version (the P13.11 approved-snapshot rule): any drift since the
+ *   the web/README.md MATERIAL rule (concurrency safety). Void PINS the record
+ *   version (the approved-snapshot rule): any drift since the
  *   operator's fresh read is a 409 with NOTHING changed — rendered via
  *   the explicit reload-and-re-enter flow, never replayed.
- * - NO money parameter exists in ANY request body (v1.1 rule 1): the
+ * - NO money parameter exists in ANY request body: the
  *   rates and the financial-year period come exclusively from tenant
  *   configuration, every total from the persisted approval snapshot;
  *   `extra="forbid"` server-side turns a caller-supplied rate, period
@@ -79,9 +78,8 @@ export async function fetchDeclaration(declarationId: string): Promise<Declarati
 
 /**
  * Declare a dividend for the last completed financial year
- * (transactions:edit — back-office ledger governance, the P13.11 gate
- * decision). Rates and the FY period are resolved
- * server-side from tenant configuration (v1.1 rule 1); an
+ * (transactions:edit — back-office ledger governance, the gate decision). Rates and the FY period are resolved
+ * server-side from tenant configuration; an
  * unconfigured tenant, an existing live declaration for the FY, or a
  * zero payout each refuse with 409 — nothing is defaulted. The body
  * carries only the server's own documented batch-size default (see
@@ -122,7 +120,7 @@ export async function voteOnDeclaration(
 /**
  * Void an open declaration (transactions:approve): declared/approved →
  * rejected, freeing the one-live-declaration-per-FY slot so a fresh
- * declaration captures current figures (the P13.11 drift remedy). The
+ * declaration captures current figures (the drift remedy). The
  * version pins the record state the operator acted on (1.4) — drift
  * is a 409, nothing changed. REFUSED by the server once any
  * distribution claim exists (re-declaring the year would pay
@@ -149,8 +147,7 @@ export async function voidDeclaration(
  * Run the distribution job for an APPROVED declaration
  * (transactions:approve — the mass money-mover). Idempotent and
  * batched server-side: already-claimed members are skipped, mid-run
- * exits are disposed as unclaimed payables (issue #19 P3, migration
- * 0022), and concurrency-skipped members (`pending_members > 0`,
+ * exits are disposed as unclaimed payables (P3, migration 0022), and concurrency-skipped members (`pending_members > 0`,
  * status still "approved") are picked up by an idempotent RE-RUN.
  * The body carries NO money field and NO version — only the server's
  * own documented batch-size default (see SERVER_DEFAULT_BATCH_SIZE):

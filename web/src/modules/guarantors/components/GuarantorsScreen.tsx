@@ -1,25 +1,24 @@
 "use client";
 
 /**
- * Guarantors screen (P15 module 5 — prototype `vGuar`, adapted to the
- * P9/P13.9/P13.14 contract).
+ * Guarantors screen (module 5 — prototype `vGuar`, adapted to the P9// contract).
  *
  * Security posture (loans/applications precedent):
  * - Every rendered string (member names, ids) is attacker-influenced
  *   data; it renders exclusively through React text interpolation — no
  *   parser sink exists in this module (gate-tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). The pledge queue and the
+ *   the server enforces every call (least disclosure). The pledge queue and the
  *   session panel mount only with applications:edit (the grant every
  *   guarantee write requires); a stripped role fetches NOTHING extra.
  * - MONEY (blocker (a)): active-guarantee counts, pledged totals and
- *   per-guarantor free capacity come from the SERVER's P13.9 dashboard
+ *   per-guarantor free capacity come from the SERVER's dashboard
  *   slice, rendered via fmtKes or verbatim with the server's as-of
  *   stamp. The prototype's client-side freeCap()/avg-capacity/
  *   utilisation math is deliberately NOT reproduced.
  * - The contract exposes NO guarantee list endpoint: the "session"
  *   panel shows only records THIS TAB witnessed from write responses
- *   (per-tab registry, the !58 makerRegistry honesty precedent) — the
+ *   (per-tab registry, the makerRegistry honesty precedent) — the
  *   MR records this limitation; nothing is fabricated.
  */
 import { useState } from "react";
@@ -48,7 +47,7 @@ import { guaranteeStatusPill } from "./pills";
 import grid from "@/modules/layout/grid.module.css";
 import styles from "./Guarantors.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load on
+// Drawer-level code splitting (speed): drawer chunks load on
 // first open, not with the list route.
 const PledgeDrawer = dynamic(() => import("./PledgeDrawer").then((m) => m.PledgeDrawer), {
   ssr: false,
@@ -63,7 +62,7 @@ const SubstituteDrawer = dynamic(
 );
 
 /**
- * SERVER aggregates (P13.9 guarantors slice): counts, pledged total and
+ * SERVER aggregates (guarantors slice): counts, pledged total and
  * the per-guarantor capacity panel — every figure a server fact with
  * the server's as-of stamp. When the slice is not granted the endpoint
  * omits it and an honest note renders instead (nothing is fabricated).
@@ -104,7 +103,7 @@ function AggregatesStrip() {
       </Card>
       <Card>
         <Stat label="Aggregates as of" value={fmtDateTime(summary.data.as_of)} />
-        <div className={styles.statSub}>Server-computed snapshot (P13.9)</div>
+        <div className={styles.statSub}>Server-computed snapshot</div>
       </Card>
       <Card className={grid.wide}>
         <div className={styles.resultTitle}>Guarantor capacity (server slice)</div>
@@ -177,8 +176,7 @@ function StageFilter({
 /**
  * Applications open for pledging (the P9 pledgeable stages) — a
  * separate component so its keyset hook mounts ONLY for operators
- * holding applications:edit; a stripped role fetches NOTHING (the
- * useKeysetList primitive is consumed unmodified, gate 1.1). The stage
+ * holding applications:edit; a stripped role fetches NOTHING (the useKeysetList primitive is consumed unmodified, reuse-first). The stage
  * filter is a SERVER query parameter.
  */
 function PledgeQueue({
@@ -233,7 +231,7 @@ export function GuarantorsScreen() {
   const witnessed = useWitnessedGuarantees();
 
   // Every guarantee write is gated on applications:edit server-side
-  // (P13.14's guarantor self-release path is member-facing — P17).
+  // (guarantor self-release path is member-facing).
   const mayPledge = can(permissions.data, "applications", "edit");
 
   const productName = (productId: string): string => {
@@ -248,7 +246,7 @@ export function GuarantorsScreen() {
       header: "Borrower",
       render: (app) => (
         // The P9 list carries member_id only (no joined name) — the
-        // pledge drawer resolves the member record (!58 precedent).
+        // pledge drawer resolves the member record (precedent).
         <span className={styles.mono} title={app.member_id}>
           {app.member_id.slice(0, 8)}
         </span>

@@ -1,8 +1,8 @@
 /**
- * Audit-log API layer (P15) over the GENERATED client — salvaged from
+ * Audit-log API layer over the GENERATED client — salvaged from
  * duo/feature/p13-5-frontend-followthrough @ 198a238.
  *
- * Keyset pagination ONLY (gate 1.3): the cursor is an opaque server
+ * Keyset pagination ONLY (scalability): the cursor is an opaque server
  * string, echoed back as a bound query parameter, never parsed, never
  * rendered. No offset/page parameters exist here (tested).
  */

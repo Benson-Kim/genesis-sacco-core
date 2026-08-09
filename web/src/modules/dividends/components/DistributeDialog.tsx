@@ -1,21 +1,19 @@
 "use client";
 
 /**
- * Distribution dialog (issue #31 batch 2 — the tenant-wide mass
- * money-mover): `POST /dividends/declarations/{id}/distribution`
+ * Distribution dialog (the tenant-wide mass money-mover): `POST /dividends/declarations/{id}/distribution`
  * (transactions:approve) pays the committee-APPROVED snapshot to every
  * eligible member — batched, idempotent and atomic per member
  * server-side.
  *
  * - The dialog fetches the declaration FRESH (record class, staleTime
  *   0) and offers the action ONLY while the status is `approved` — the
- *   UI never offers what the API forbids (gate 1.6).
+ *   UI never offers what the API forbids (least disclosure).
  * - SEPARATION OF DUTIES (blocker (f)): the run affordance mounts ONLY
  *   inside MakerCheckerPanel — the contract bans the declarer from
  *   executing their own distribution (403, keyed on the PERSISTED
  *   requested_by). The maker identity is the CONTRACT's requested_by
- *   FIRST (issue #31 ledger (a).4 — server truth, the exits !66/0036
- *   precedent); the per-tab witness (makerRegistry.ts) is a fallback
+ *   FIRST (server truth, the exits /0036 precedent); the per-tab witness (makerRegistry.ts) is a fallback
  *   for unattributed rows only. Controls are structurally withheld
  *   for the identified maker (no override prop exists); the server
  *   enforces regardless.
@@ -28,16 +26,16 @@
  *   concurrent locks) is a NEW intent that must never be served the
  *   first run's stored response; retries of one failed attempt keep
  *   the key stable. The wire body carries only the server's own
- *   documented batch-size default (v1.1 rule 1): every figure
+ *   documented batch-size default: every figure
  *   derives from the persisted approval snapshot.
  * - A 409 (snapshot drift on first-run verification, a concurrent
  *   void, or a non-approved status) renders the shared
  *   ConflictBanner's explicit reload-and-re-enter flow with an
- *   INFORMATIONAL notice + announce() (!60 F5). The documented remedy
+ *   INFORMATIONAL notice + announce(). The documented remedy
  *   for drift is voiding and re-declaring — stated to the operator;
  *   NOTHING is replayed.
  * - The run REPORT renders VERBATIM (blocker (a)): claim counts, the
- *   issue-#19 unclaimed dispositions (mid-run exits parked as a
+ *   issue- unclaimed dispositions (mid-run exits parked as a
  *   payable, never credited to a closed account, never dropped) and
  *   the server's totals. A partial run keeps the affordance armed for
  *   the idempotent re-run; a completed run (status `distributed`)
@@ -71,7 +69,7 @@ export function DistributeDialog({
   const [confirming, setConfirming] = useState(false);
   const [lastRun, setLastRun] = useState<DistributionRun | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload.
   const [reloadEpoch, setReloadEpoch] = useState(0);
   // Per-success run counter (README MATERIAL rule 4 / W59-3): the
@@ -175,12 +173,12 @@ export function DistributeDialog({
   const runnable = record.status === "approved";
   const completed = lastRun !== null && lastRun.status === "distributed";
 
-  // SERVER TRUTH FIRST (issue #31 ledger (a).4, the exits !66/0036
+  // SERVER TRUTH FIRST (the exits /0036
   // precedent): requested_by is the contract's declarer attribution;
   // the per-tab witness (makerRegistry.ts) is a fallback for
   // unattributed rows ONLY — nothing is invented. The server 403s the
   // declarer's self-distribution on the persisted column regardless
-  // (gate 1.6).
+  // (least disclosure).
   const witnessedMakerId = dividendMakerOf(record.id);
   const makerId = record.requested_by ?? witnessedMakerId;
   const ownId = getOwnUserId();
@@ -198,7 +196,7 @@ export function DistributeDialog({
           : "Declaring officer (witnessed by this tab).";
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record (the snapshot
+    // Explicit reload flow: refetch the record (the snapshot
     // drifted on verification, a void raced the run, or the status
     // moved) and the register; the stale run is NEVER replayed.
     void queryClient.refetchQueries({ queryKey: ["dividends", "detail", declarationId] });
@@ -221,7 +219,7 @@ export function DistributeDialog({
       // tenant-wide money write.
       dismissOnOverlay={false}
     >
-      {/* Informational, NOT success styling (W59-4, the !60 F5 class). */}
+      {/* Informational, NOT success styling (W59-4, the F5 class). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
       <div className={styles.detailGrid}>
@@ -244,7 +242,7 @@ export function DistributeDialog({
         <Kv label="Pinned record version">{record.version}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={distribute.error} onReload={reloadRecord} />
       {distribute.isError && !conflict && <ErrorBanner error={distribute.error} />}
 
@@ -272,7 +270,7 @@ export function DistributeDialog({
             Every figure above came from the run report — nothing was computed
             in this screen. &quot;Unclaimed&quot; are members who exited
             mid-run: their entitlement is parked as an unclaimed-dividends
-            payable (issue #19 policy), never credited to a closed account and
+            payable, never credited to a closed account and
             never silently dropped — resolve through the corrections paths.
             {lastRun.pending_members > 0 &&
               " Pending members were skipped under concurrent locks — re-run the distribution to pick them up; already-paid members are never paid twice."}

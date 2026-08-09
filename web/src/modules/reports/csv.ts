@@ -1,6 +1,5 @@
 /**
- * Strict CSV parsing for the ON-SCREEN report view (P15 batch 5, U2 —
- * pure string processing, no DOM, no I/O).
+ * Strict CSV parsing for the ON-SCREEN report view (pure string processing, no DOM, no I/O).
  *
  * The input is the server's OWN rendered artifact: the backend
  * CsvBuilder (backend/src/genesis/domain/documents.py) writes with

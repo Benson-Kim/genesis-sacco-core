@@ -1,26 +1,20 @@
 /**
- * Corrections API layer (P15 follow-on batch 1, issue #31 — the
- * P13.15 corrections & write-off API plus the issue-#21 recovery
- * receipts) over the GENERATED client.
+ * Corrections API layer (follow-on, — the corrections & write-off API plus the issue- recovery receipts) over the GENERATED client.
  * 
- * - REGISTERS (issue #31 batch 6, ledger (a).1/(a).2 — the
- *   human-authorized read-contract expansion that closed the batch-1
- *   gap): keyset LIST reads for adjustments (pending-first — the
+ * - REGISTERS (the human-authorized read-contract expansion that closed the gap): keyset LIST reads for adjustments (pending-first — the
  *   checker's job order) and write-offs (live-first — the committee's
  *   job order), both under corrections:view. By-id reads and every
- *   mutation are UNTOUCHED. All keyset reads follow gate 1.3: opaque
+ *   mutation are UNTOUCHED. All keyset reads follow scalability: opaque
  *   `cursor` echoed back verbatim; no offset/page parameters.",
  *
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the stability/rotation contract (gate 1.4). Reject and void PIN
+ *   the stability/rotation contract (concurrency safety). Reject and void PIN
  *   the record version in the wire body; approval and posting bodies
- *   are DELIBERATELY EMPTY (issue #24 / v1.1 rule 3: the checker
- *   approves the PERSISTED snapshot — the server re-verifies it under
- *   the full lock set, 409 on drift with NOTHING posted).
+ *   are DELIBERATELY EMPTY (/: the checker approves the PERSISTED snapshot — the server re-verifies it under the full lock set, 409 on drift with NOTHING posted).
  * - NO money parameter exists in ANY request body except the recovery
  *   receipt's cash-received amount (the one caller-known figure —
  *   the cash physically in hand; sent as the typed decimal STRING,
- *   never a float). Fee amounts resolve from P13.7 configuration,
+ *   never a float). Fee amounts resolve from configuration,
  *   adjustment figures from the original transaction's append-only
  *   legs, write-off figures from the write-once 0025 snapshot
  *   (extra="forbid" server-side turns anything else into a 422).
@@ -63,8 +57,7 @@ const adjustmentsPageSchema = keysetPageSchema(adjustmentSchema);
 const writeOffsPageSchema = keysetPageSchema(writeOffSchema);
 
 /**
- * The pending-adjustments checker register (corrections:view; issue
- * #31 ledger (a).1): keyset, PENDING FIRST then newest first — the
+ * The pending-adjustments checker register (corrections:view): keyset, PENDING FIRST then newest first — the
  * server's order, never re-sorted locally. The checker works from
  * this register instead of a hand-carried id.
  */
@@ -80,8 +73,7 @@ export async function fetchAdjustmentsPage(
 }
 
 /**
- * The write-off committee register (corrections:view; issue #31
- * ledger (a).2): keyset, LIVE (requested/approved) FIRST then newest
+ * The write-off committee register (corrections:view): keyset, LIVE (requested/approved) FIRST then newest
  * first — the server's order, never re-sorted locally. Vote/posting
  * semantics are untouched; this is a read.
  */
@@ -96,7 +88,7 @@ export async function fetchWriteOffsPage(
 }
 
 /**
- * MAKER phase (issue #24): create a PENDING adjustment bound to the
+ * MAKER phase: create a PENDING adjustment bound to the
  * persisted approval snapshot (corrections:create). The body carries
  * the repayment and the reason ONLY — every figure derives server-side
  * from the original transaction's append-only legs.
@@ -126,8 +118,8 @@ export async function fetchAdjustment(adjustmentId: string): Promise<AdjustmentR
 }
 
 /**
- * CHECKER phase (issue #24, corrections:approve): approve the
- * PERSISTED snapshot. The body is DELIBERATELY EMPTY (v1.1 rule 3) —
+ * CHECKER phase (corrections:approve): approve the
+ * PERSISTED snapshot. The body is DELIBERATELY EMPTY —
  * the server re-verifies every snapshot component under the full lock
  * set (409 on drift, posting nothing), then posts the storno reversal.
  * Maker ≠ checker is server-enforced AND a 0031 DB CHECK.
@@ -151,8 +143,7 @@ export async function approveAdjustment(
 /**
  * Reject a pending adjustment (checker decision, corrections:approve):
  * the version pins the record state the operator acted on (1.4) and
- * the rationale is REQUIRED (!52 F2 — four-eyes practice puts the
- * checker's reason on the record). Frees the one-live-adjustment slot.
+ * the rationale is REQUIRED (four-eyes practice puts the checker's reason on the record). Frees the one-live-adjustment slot.
  */
 export async function rejectAdjustment(
   adjustmentId: string,
@@ -175,8 +166,8 @@ export async function rejectAdjustment(
 /**
  * Post a configured misc fee against a member (corrections:create,
  * FE- ref). The body names the member, the CODE-OWNED fee type and the
- * CASH channel ONLY — the amount resolves exclusively from P13.7
- * tenant configuration server-side (v1.1 rule 1/FM5).
+ * CASH channel ONLY — the amount resolves exclusively from
+ * tenant configuration server-side (/).
  */
 export async function postFee(
   memberId: string,
@@ -267,7 +258,7 @@ export async function voidWriteOff(
 
 /**
  * Execute an APPROVED write-off (corrections:approve): the WO-
- * provisioning posting. The body is DELIBERATELY EMPTY (v1.1 rule 3) —
+ * provisioning posting. The body is DELIBERATELY EMPTY —
  * every figure comes from the persisted write-once snapshot, re-
  * verified component-by-component under the loan row lock (409 on
  * drift, posting nothing).
@@ -290,7 +281,7 @@ export async function postWriteOff(
 
 /**
  * Record a bad-debt recovery receipt against a POSTED write-off
- * (corrections:create, issue #21): RC- posting + append-only receipt
+ * (corrections:create): RC- posting + append-only receipt
  * row — never a resurrection of the loan. The amount is the cash
  * physically received, sent as the typed decimal STRING (blocker (a));
  * a receipt exceeding the outstanding claim is a 409 (the claim
@@ -315,8 +306,7 @@ export async function recordRecoveryReceipt(
 }
 
 /**
- * Receipts recorded against one write-off claim (corrections:view;
- * keyset, oldest first — gate 1.3) with the server-reconstructed
+ * Receipts recorded against one write-off claim (corrections:view; keyset, oldest first — scalability) with the server-reconstructed
  * recovered/outstanding position.
  */
 export async function fetchRecoveryReceiptsPage(

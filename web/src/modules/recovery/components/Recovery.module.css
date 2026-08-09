@@ -1,5 +1,5 @@
 /*
- * Recovery module styles (P15 batch 1, issue #31). Tokens only (gate
+ * Recovery module styles. Tokens only (gate
  * 1.1); page-level GRIDS come from the shared
  * modules/layout/grid.module.css — no private page grid lives here.
  */
@@ -101,9 +101,8 @@
     margin-bottom: 16px;
 }
 
-/* Declared-filter controls (issue #31 ledger (a).3) — the members
-   register's filter classes verbatim (issue #8: persistent labels,
-   segmented ≤5 options, tokens only). */
+/* Declared-filter controls — the members
+   register's filter classes verbatim (persistent labels, segmented ≤5 options, tokens only). */
 .filters {
     display: flex;
     gap: 16px;

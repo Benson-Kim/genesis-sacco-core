@@ -1,19 +1,19 @@
 /**
- * Transactions API layer (P15 module 6 — P11 API) over the GENERATED
+ * Transactions API layer (the P11 API) over the GENERATED
  * client.
  *
  * - Keyset pagination ONLY: opaque `cursor` echoed back verbatim; no
- *   offset or page parameters exist here (gate 1.3). Filters (member,
+ *   offset or page parameters exist here (scalability). Filters (member,
  *   type, channel, direction, exact ref, date range) are SERVER query
  *   parameters — the client never filters locally.
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the stability/rotation contract (gate 1.4). None of the P11 teller
+ *   the stability/rotation contract (concurrency safety). None of the P11 teller
  *   writes carries a version field: the server serialises them under
  *   the member's account row lock; an exited member or an insufficient
  *   available balance surfaces as 409. A 409 is rendered via the
  *   explicit reload-and-re-enter flow, never replayed.
  * - Ids travel as path parameters serialized by the generated client;
- *   tokens and PII never enter URLs (gate 1.6, tested).
+ *   tokens and PII never enter URLs (least disclosure, tested).
  * - MONEY (blocker (a)): the amount is a decimal STRING on the wire;
  *   every response figure (amount, balance_after, total_interest) is a
  *   server-computed decimal string asserted by the Zod boundary
@@ -49,6 +49,11 @@ export interface TxnListFilters {
   direction: Side | "";
   /** Exact txn_ref match (the P11 contract's `ref` filter). */
   ref: string;
+  /** Free-text probe: txn_ref PREFIX or member match
+   * (member_no exact / name prefix) — resolved entirely SERVER-side
+   * (bound parameters, code-escaped LIKE); the client never filters
+   * locally. */
+  search: string;
   /** ISO dates (YYYY-MM-DD); the server treats date_to as inclusive. */
   date_from: string;
   date_to: string;
@@ -60,6 +65,7 @@ export const EMPTY_TXN_FILTERS: TxnListFilters = {
   channel: "",
   direction: "",
   ref: "",
+  search: "",
   date_from: "",
   date_to: "",
 };
@@ -78,6 +84,7 @@ export async function fetchTransactionsPage(
         channel: filters.channel === "" ? undefined : filters.channel,
         direction: filters.direction === "" ? undefined : filters.direction,
         ref: filters.ref === "" ? undefined : filters.ref,
+        search: filters.search === "" ? undefined : filters.search,
         date_from: filters.date_from === "" ? undefined : filters.date_from,
         date_to: filters.date_to === "" ? undefined : filters.date_to,
       },
@@ -88,14 +95,14 @@ export async function fetchTransactionsPage(
 }
 
 /**
- * The double-entry DR/CR legs of one posting (#31 ledger (g) — the
+ * The double-entry DR/CR legs of one posting (the
  * expand-only drill-down, transactions:view). Verbatim ledger_entries
  * facts in the server's total order (debits first), parsed strictly
  * at the Zod boundary and rendered VERBATIM: never summed, never
- * netted (P15 blocker (a)) — the 0004/0014 DB trigger proved balance
+ * netted (no client-side money math) — the 0004/0014 DB trigger proved balance
  * at commit time. Unpaginated BY CONSTRUCTION (bounded leg count per
  * posting); the id travels as a path parameter serialized by the
- * generated client (gate 1.6).
+ * generated client (least disclosure).
  */
 export async function fetchTransactionLegs(txnId: string): Promise<LedgerLeg[]> {
   const { data, error, response } = await api.GET("/transactions/{transaction_id}/legs", {
@@ -111,6 +118,10 @@ export async function fetchTransactionLegs(txnId: string): Promise<LedgerLeg[]> 
 export interface MoneyWireBody {
   amount: string;
   channel: CashChannel;
+  /** External receipt reference: REQUIRED by the server
+   * on both offered channels (sanitized 422 when missing); the server
+   * normalizes UPPERCASE and enforces the per-channel dedupe (409). */
+  external_ref: string;
 }
 
 /**

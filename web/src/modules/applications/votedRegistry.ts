@@ -12,11 +12,11 @@
  *
  * Scope and honesty (the makerRegistry precedent): per-tab, in-memory —
  * it cannot know votes cast by another operator or in another tab; for
- * those the server's 409 remains the enforcer (gate 1.6). Session-scoped
+ * those the server's 409 remains the enforcer (least disclosure). Session-scoped
  * per W58-2: registered below, so both teardown paths clear it and the
  * next operator's tab never inherits a previous operator's spent votes.
  *
- * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
+ * Storage: the shared createSessionScopedRegistry
  * primitive — teardown on both session-death paths and the reactive
  * read are wired by construction. This wrapper keeps the module's
  * exported vocabulary byte-compatible.

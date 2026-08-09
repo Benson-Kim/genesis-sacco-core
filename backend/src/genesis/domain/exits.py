@@ -1,24 +1,24 @@
-"""Member exit & settlement domain: status machine and settlement arithmetic (P12).
+"""Member exit & settlement domain: status machine and settlement arithmetic.
 
 Zero I/O — no imports from application, infrastructure, or api layers.
-Money rounding comes from genesis.domain.money (gate 1.1: reuse-first).
+Money rounding comes from genesis.domain.money (reuse-first).
 
-Status machine (mirrors the 0001 member_exits CHECK constraint; gate 1.4):
+Status machine (mirrors the 0001 member_exits CHECK constraint; concurrency safety):
 
-    requested -> approved | rejected   committee quorum (P9 machinery)
-    approved  -> settled  | rejected   settled by the atomic posting;
+    requested -> approved | rejected committee quorum (P9 machinery)
+    approved -> settled | rejected settled by the atomic posting;
                                        rejected = void (the approved
                                        snapshot drifted, or governance
                                        reversed the decision)
-    settled / rejected                 terminal
+    settled / rejected terminal
 
 Settlement arithmetic (single source of truth, persisted verbatim to
 the member_exits snapshot row):
 
-    equity      = shares + deposits
-    loan_total  = principal balance + interest due + penalties
-                  (the P10 early-settlement rule per loan: interest on
-                  installments not yet due is waived, never collected)
+    equity = shares + deposits
+    loan_total = principal balance + interest due + penalties
+                  (the early-settlement rule per loan: interest on installments not yet due is
+                  waived, never collected)
     net_payable = equity - loan_total - exit fee
 
 Negative-settlement rule (documented): a settlement whose net_payable
@@ -27,7 +27,7 @@ REJECTED at request time. The SACCO never auto-claims guarantor
 collateral or funds it does not hold; the member must first reduce the
 loan (deposits stay open to arrears members) until the netted
 settlement is non-negative. The prototype's "call guarantors"
-shortfall path is a manual recovery workflow outside P12.
+shortfall path is a manual recovery workflow outside.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ class ExitStatus(enum.StrEnum):
 
 
 class InvalidExitTransitionError(Exception):
-    """Raised when an exit settlement transition is not allowed (gate 1.4)."""
+    """Raised when an exit settlement transition is not allowed (concurrency safety)."""
 
 
 _ALLOWED: dict[ExitStatus, frozenset[ExitStatus]] = {
@@ -59,7 +59,7 @@ _ALLOWED: dict[ExitStatus, frozenset[ExitStatus]] = {
 
 
 def exit_transition(current: ExitStatus, target: ExitStatus) -> ExitStatus:
-    """The single gatekeeper for exit settlement status changes (gate 1.4)."""
+    """The single gatekeeper for exit settlement status changes (concurrency safety)."""
     if target not in _ALLOWED[current]:
         raise InvalidExitTransitionError(f"{current.value} -> {target.value}")
     return target

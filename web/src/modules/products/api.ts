@@ -1,17 +1,17 @@
 /**
- * Loan-products API layer (P15, Settings module) over the GENERATED
+ * Loan-products API layer (Settings module) over the GENERATED
  * client — modeled on the users module reference implementation.
  *
  * - `GET /products` returns a BOUNDED reference array (the P9 contract
  *   exposes no cursor — same non-paginated reference-data class as
  *   `GET /access/roles`); there is no offset pagination anywhere
- *   (gate 1.3).
+ *   (scalability).
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the stability/rotation contract (gate 1.4); updates send the
+ *   the stability/rotation contract (concurrency safety); updates send the
  *   `version` the record was loaded with — a stale write surfaces as
  *   409 (never a silent overwrite).
  * - rate_pct / deposit_multiplier are submitted as decimal STRINGS
- *   verbatim (P15 blocker (a) — no client-side money math or coercion).
+ *   verbatim (the money rule — no client-side money math or coercion).
  */
 import { toApiError } from "@genesis/api-client";
 import { api } from "@/lib/api";

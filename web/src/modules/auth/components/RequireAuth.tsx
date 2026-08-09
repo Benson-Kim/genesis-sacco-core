@@ -7,7 +7,7 @@ import styles from "./RequireAuth.module.css";
 
 /**
  * Client-side gate: redirects to /login when no session exists. This only
- * shapes UX — the API enforces authn/authz on every call (gate 1.6).
+ * shapes UX — the API enforces authn/authz on every call (least disclosure).
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const authed = useSession();

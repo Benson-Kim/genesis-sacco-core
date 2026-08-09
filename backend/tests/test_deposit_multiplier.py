@@ -595,6 +595,10 @@ def test_money_bodies_reject_caller_supplied_occurred_at() -> None:
                 json={
                     "amount": "100.00",
                     "channel": "bank",
+                    # Valid external ref (#35 item 6): occurred_at must
+                    # stay the ONLY 422 cause so this leg keeps pinning
+                    # the extra="forbid" guard, not the missing-ref one.
+                    "external_ref": "SLIP-0001",
                     "occurred_at": "2020-01-01T00:00:00Z",
                 },
                 headers=_headers(token),

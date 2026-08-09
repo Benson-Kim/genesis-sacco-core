@@ -1,7 +1,7 @@
 /*
- * Branches module styles (issue #31 batch 4). Tokens only (gate 1.1);
+ * Branches module styles. Tokens only (reuse-first);
  * page-level GRIDS come from the shared modules/layout/grid.module.css
- * — no private page grid lives here (P15 blocker (f)).
+ * — no private page grid lives here (blocker (f)).
  */
 
 .toolbar {

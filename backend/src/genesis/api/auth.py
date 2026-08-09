@@ -1,11 +1,11 @@
-"""Authentication endpoints: OTP step-up, refresh rotation, logout (gate 1.6)."""
+"""Authentication endpoints: OTP step-up, refresh rotation, logout (least disclosure)."""
 
 from __future__ import annotations
 
 import uuid
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from genesis.application import auth as auth_service
 from genesis.errors import RateLimitedError, UnauthenticatedError
@@ -17,12 +17,41 @@ from genesis.settings import get_settings
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-class OtpRequestBody(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
+class OtpIdentifierBody(BaseModel):
+    """Sign-in identifier envelope.
+
+    Exactly one of ``email`` (the earlier field, accepted for one more
+    release) or ``identifier`` must be present. ``identifier`` may be
+    an email address or a Kenya mobile number in local (07XX/01XX) or
+    international (+2547XX/+2541XX) form.
+    """
+
+    email: str | None = Field(default=None, min_length=3, max_length=254)
+    identifier: str | None = Field(default=None, min_length=3, max_length=254)
+
+    @model_validator(mode="after")
+    def _exactly_one_identifier(self) -> OtpIdentifierBody:
+        """Reject bodies carrying both fields or neither."""
+        if (self.email is None) == (self.identifier is None):
+            msg = "provide exactly one of email or identifier"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def signin_identifier(self) -> str:
+        value = self.identifier if self.identifier is not None else self.email
+        if value is None:  # pragma: no cover - forbidden by the model validator
+            raise UnauthenticatedError("missing sign-in identifier")
+        return value
 
 
-class OtpVerifyBody(BaseModel):
-    email: str = Field(min_length=3, max_length=254)
+class OtpRequestBody(OtpIdentifierBody):
+    """Request a one-time password for a sign-in identifier."""
+
+
+class OtpVerifyBody(OtpIdentifierBody):
+    """Verify the six-digit one-time password for a sign-in identifier."""
+
     code: str = Field(pattern=r"^\d{6}$")
 
 
@@ -59,8 +88,16 @@ async def request_otp(body: OtpRequestBody, request: Request) -> dict[str, str]:
     tenant_id = tenant_id_from_headers(request)
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, tenant_id) as session:
-        await auth_service.request_otp(session, tenant_id, body.email)
-    return {"status": "sent"}
+        code = await auth_service.request_otp(session, tenant_id, body.signin_identifier)
+    payload = {"status": "sent"}
+    # DEV-ONLY (item 11, REMOVE BEFORE STAGING): with SMS/email
+    # delivery unbuilt, testers read the OTP from this response. The
+    # dev_otp_display flag is FAIL-CLOSED (off by default); the code is
+    # never logged and never appears in any error path. The declared
+    # response contract (an open string map) is unchanged.
+    if code is not None and get_settings().dev_otp_display:
+        payload["dev_otp"] = code
+    return payload
 
 
 @router.post("/otp/verify", dependencies=[Depends(_rate_guard)])
@@ -68,9 +105,11 @@ async def verify_otp(body: OtpVerifyBody, request: Request) -> TokenResponse:
     tenant_id = tenant_id_from_headers(request)
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, tenant_id) as session:
-        outcome = await auth_service.verify_otp(session, tenant_id, body.email, body.code)
+        outcome = await auth_service.verify_otp(
+            session, tenant_id, body.signin_identifier, body.code
+        )
     # The transaction has committed: punitive state (attempt counters) is
-    # durable even though this request fails (gates 1.4, 1.6).
+    # durable even though this request fails (the house gates).
     if isinstance(outcome, auth_service.AuthFailure):
         raise UnauthenticatedError(outcome.reason)
     return TokenResponse(
@@ -87,7 +126,7 @@ async def refresh(body: RefreshBody, request: Request) -> TokenResponse:
     async with tenant_session(factory, tenant_id) as session:
         outcome = await auth_service.rotate_refresh_token(session, tenant_id, body.refresh_token)
     # Family revocation on reuse must survive the failed request, so the
-    # 401 is raised only after the transaction has committed (gate 1.4).
+    # 401 is raised only after the transaction has committed (concurrency safety).
     if isinstance(outcome, auth_service.AuthFailure):
         raise UnauthenticatedError(outcome.reason)
     return TokenResponse(

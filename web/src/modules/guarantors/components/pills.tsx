@@ -5,8 +5,8 @@ import { GUARANTEE_STATUS_LABELS, type GuaranteeStatus } from "../schemas";
 /**
  * Guarantee status pills — SERVER-reported lifecycle only (pledged ->
  * active -> released; the client never advances a status locally). One
- * copy for the session panel, drawers and dialogs (gate 1.1). Never
- * color alone: the pill text carries the meaning (issue #8).
+ * copy for the session panel, drawers and dialogs (reuse-first). Never
+ * color alone: the pill text carries the meaning.
  */
 export function guaranteeStatusPill(status: GuaranteeStatus): ReactNode {
   switch (status) {

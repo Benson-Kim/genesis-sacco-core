@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Loan write-off request drawer (P15 batch 1 — the MAKER phase of the
- * P13.15 committee write-off): `POST /corrections/write-offs`
+ * Loan write-off request drawer (the MAKER phase of the committee write-off): `POST /corrections/write-offs`
  * (corrections:create) persists the write-once 0025 snapshot for
  * committee approval.
  *
@@ -18,9 +17,9 @@
  *   claim via the 0025 partial-unique index).
  * - SoD WITNESS: on success the requester is recorded in the per-tab
  *   makerRegistry — WriteOffOut does not serialise requested_by
- *   (contract follow-up on issue #31), so this witness is the ONLY
+ *   (contract follow-up on), so this witness is the ONLY
  *   maker signal for the vote/post SoD affordances; the server bans
- *   requester self-votes/postings regardless (gate 1.6).
+ *   requester self-votes/postings regardless (least disclosure).
  * - The result panel renders the SERVER's snapshot verbatim (blocker
  *   (a)); the affordance is then SPENT.
  */
@@ -66,7 +65,7 @@ export function WriteOffRequestDrawer({
   const [confirmEntry, setConfirmEntry] = useState<WriteOffRequestEntry | null>(null);
   const [result, setResult] = useState<WriteOffRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3).
+  // Freshness component for the idempotency key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
   const queryClient = useQueryClient();
@@ -112,7 +111,7 @@ export function WriteOffRequestDrawer({
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): the conflicted request is
+    // Explicit reload flow: the conflicted request is
     // structurally WITHDRAWN — a live write-off already claims this
     // loan, or the loan is not write-off eligible. NOTHING is replayed.
     setReloadEpoch((epoch) => epoch + 1);
@@ -157,7 +156,7 @@ export function WriteOffRequestDrawer({
     >
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={request.error} onReload={reloadAfterConflict} />
       {request.isError && !conflict && !renderedInline && <ErrorBanner error={request.error} />}
 

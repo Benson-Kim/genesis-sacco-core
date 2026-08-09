@@ -4,8 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import styles from "./FrameGuard.module.css";
 
 /**
- * Refuses to run the console inside a frame (clickjacking on destructive
- * admin actions — carried from the !25 threat model). Defence in depth:
+ * Refuses to run the console inside a frame (clickjacking on destructive admin actions — carried from the threat model). Defence in depth:
  * the primary control is `frame-ancestors 'none'` + `X-Frame-Options:
  * DENY` set in middleware.ts AND next.config.ts; this guard covers
  * header-stripping proxies.

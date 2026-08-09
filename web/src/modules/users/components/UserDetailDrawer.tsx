@@ -1,25 +1,26 @@
 "use client";
 
 /**
- * User detail drawer (P15; salvaged from
- * duo/feature/p13-5-frontend-followthrough @ 198a238):
+ * User detail drawer (salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238):
  * profile view, optimistic-locked edit with the
  * explicit 409 "record changed — reload" flow (never a silent overwrite,
  * exactly one write attempt per submission), confirmed activate/suspend,
  * audited role assignment and OTP lifecycle actions that surface
- * side-effect COUNTS only — zero OTP disclosure anywhere (gate 1.6).
+ * side-effect COUNTS only — zero OTP disclosure anywhere (least disclosure).
  */
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Field, Kv, Modal } from "@genesis/design-system";
+import { Banner, Button, Kv, Modal } from "@genesis/design-system";
 import { ConflictBanner } from "@/modules/layout/ConflictBanner";
 import { ErrorBanner } from "@/modules/layout/ErrorBanner";
+import { FormField } from "@/modules/forms/FormField";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, initials } from "@/lib/format";
+import { KENYA_PHONE_MESSAGE, normalizeKenyaMsisdn } from "@/lib/phone";
 import {
   assignUserRole,
   changeUserStatus,
@@ -209,7 +210,17 @@ function EditForm({
   const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone ?? "");
   const [branch, setBranch] = useState(user.branch ?? "");
+  //  item 1 — blur-time Kenya-phone validation (courtesy mirror of
+  // the server's E.164 normalization rule). Shows on blur, clears on
+  // correction. Legacy-format saved values only warn once touched.
+  const [phoneBlurError, setPhoneBlurError] = useState<string | null>(null);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
+
+  function validatePhoneBlur(value: string) {
+    const trimmed = value.trim();
+    const ok = trimmed === "" || normalizeKenyaMsisdn(trimmed) !== null;
+    setPhoneBlurError(ok ? null : KENYA_PHONE_MESSAGE);
+  }
 
   const update = useMutation({
     mutationFn: (input: UpdateUserInput) =>
@@ -243,57 +254,78 @@ function EditForm({
     const mail = email.trim();
     if (name !== "") input.full_name = name;
     if (mail !== "") input.email = mail;
-    if (phone.trim() !== "") input.phone = phone.trim();
+    if (phone.trim() !== "") {
+      if (normalizeKenyaMsisdn(phone.trim()) === null) {
+        setPhoneBlurError(KENYA_PHONE_MESSAGE);
+        return;
+      }
+      input.phone = phone.trim();
+    }
     if (branch.trim() !== "") input.branch = branch.trim();
     update.mutate(input);
   }
 
   return (
     <form onSubmit={submit}>
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={update.error} onReload={() => void reloadRecord()} />
       {update.isError && !conflict && <ErrorBanner error={update.error} />}
-      <Field label="Full name" htmlFor="edit-name">
-        <input
-          id="edit-name"
-          className={styles.input}
-          maxLength={200}
-          value={fullName}
-          onChange={(event) => setFullName(event.target.value)}
-        />
-      </Field>
-      <Field label="Email" htmlFor="edit-email">
-        <input
-          id="edit-email"
-          className={styles.input}
-          type="email"
-          maxLength={254}
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </Field>
-      <Field label="Phone" htmlFor="edit-phone">
-        <input
-          id="edit-phone"
-          className={styles.input}
-          maxLength={32}
-          value={phone}
-          onChange={(event) => setPhone(event.target.value)}
-        />
-      </Field>
-      <Field label="Branch" htmlFor="edit-branch">
-        <input
-          id="edit-branch"
-          className={styles.input}
-          maxLength={120}
-          value={branch}
-          onChange={(event) => setBranch(event.target.value)}
-        />
-      </Field>
+      <FormField id="edit-name" label="Full name">
+        {(control) => (
+            <input
+              {...control}
+              className={styles.input}
+              maxLength={200}
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+            />
+        )}
+      </FormField>
+      <FormField id="edit-email" label="Email">
+        {(control) => (
+            <input
+              {...control}
+              className={styles.input}
+              type="email"
+              inputMode="email"
+              maxLength={254}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+        )}
+      </FormField>
+      <FormField id="edit-phone" label="Phone" error={phoneBlurError ?? undefined}>
+        {(control) => (
+            <input
+              {...control}
+              className={styles.input}
+              type="tel"
+              inputMode="tel"
+              maxLength={32}
+              value={phone}
+              onChange={(event) => {
+                setPhone(event.target.value);
+                if (phoneBlurError !== null) validatePhoneBlur(event.target.value);
+              }}
+              onBlur={(event) => validatePhoneBlur(event.target.value)}
+            />
+        )}
+      </FormField>
+      <FormField id="edit-branch" label="Branch">
+        {(control) => (
+            <input
+              {...control}
+              className={styles.input}
+              maxLength={120}
+              value={branch}
+              onChange={(event) => setBranch(event.target.value)}
+            />
+        )}
+      </FormField>
       <div className={styles.formNote}>
         Optimistic lock: saving against record version {user.version}. Leaving an
         optional field blank keeps its saved value — clearing a saved value is not
-        yet supported by the API (!24 review note).
+        yet supported by the API.
       </div>
       <Button variant="primary" type="submit" className={styles.wide} disabled={update.isPending}>
         {update.isPending ? "Saving…" : "Save changes"}
@@ -440,20 +472,22 @@ function ConfirmActionDialog({
                 <Kv variant="quiet" label="User">{user.full_name}</Kv>
                 <Kv variant="quiet" label="Current role">{user.role_name}</Kv>
               </div>
-              <Field label="New role" htmlFor="confirm-role">
-                <select
-                  id="confirm-role"
-                  className={styles.select}
-                  value={roleId}
-                  onChange={(event) => setRoleId(event.target.value)}
-                >
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              <FormField id="confirm-role" label="New role">
+                {(control) => (
+                    <select
+                      {...control}
+                      className={styles.select}
+                      value={roleId}
+                      onChange={(event) => setRoleId(event.target.value)}
+                    >
+                      {roles.map((role) => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                )}
+              </FormField>
             </>
           )}
           {kind === "otp-invalidate" && (
@@ -479,7 +513,7 @@ function ConfirmActionDialog({
             </>
           )}
           {action.isError && !conflict && <ErrorBanner error={action.error} />}
-          {/* Explicit reload flow (one copy — gate 1.1): fetch the current
+          {/* Explicit reload flow (one copy — reuse-first): fetch the current
               record, then the operator re-initiates the action from fresh
               state. The stale action is never replayed. */}
           <ConflictBanner

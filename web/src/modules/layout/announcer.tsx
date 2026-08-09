@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Shared aria-live announcer (P15 Phase B accessibility primitive,
- * issue #8): async success/error outcomes are announced to assistive
+ * Shared aria-live announcer (accessibility primitive): async success/error outcomes are announced to assistive
  * technology without moving focus. One region for the whole app (gate
  * 1.1); screens call announce() from mutation/query callbacks.
  *
  * Announcements are OPERATOR-FACING copy ONLY — never raw API data, so
- * the least-disclosure posture (gate 1.6) carries into the audio layer.
+ * the least-disclosure posture (least disclosure) carries into the audio layer.
  */
 import { useEffect, useState } from "react";
 import styles from "./announcer.module.css";

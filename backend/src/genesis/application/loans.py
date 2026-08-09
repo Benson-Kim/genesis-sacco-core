@@ -9,9 +9,9 @@ genesis.domain.lending.allocate_repayment):
      buckets prepays principal)
   3. principal — the remainder reduces loans.balance
 
-Every repayment runs under the loan's row lock (gate 1.4), posts split
-ledger legs through the P7 contract (gate 1.5), and audits + notifies
-in-transaction (gates 1.5, 1.2). When the balance and penalties reach
+Every repayment runs under the loan's row lock (concurrency safety), posts split
+ledger legs through the P7 contract (data integrity), and audits + notifies
+in-transaction (the house gates). When the balance and penalties reach
 zero the loan closes through the status machine and the P9 guarantee
 release hook frees the guarantors' capacity.
 """
@@ -31,7 +31,12 @@ from genesis.application.audit import record_audit
 from genesis.application.guarantees import release_guarantees_for_loan
 from genesis.application.ledger import post_allocated_repayment
 from genesis.application.outbox import enqueue_event
-from genesis.application.pagination import build_created_id_cursor, parse_created_id_cursor
+from genesis.application.pagination import (
+    build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
+    parse_created_id_cursor,
+)
 from genesis.domain.ledger import Channel
 from genesis.domain.lending import (
     LoanClass,
@@ -51,6 +56,10 @@ _LOAN_COLS = (
     "term_months, status, classification, days_past_due, provision_pct, "
     "penalty_due, disbursed_at, closed_at, version"
 )
+
+#: Cursor scope id: signed cursors are bound to this
+#: endpoint and this tenant — no cross-scope replay (tenant isolation).
+LOAN_BOOK_SCOPE = "loan_book.list"
 
 
 @dataclass(frozen=True)
@@ -141,7 +150,7 @@ async def get_loan(session: AsyncSession, tenant_id: uuid.UUID, loan_id: uuid.UU
     row = (
         await session.execute(
             # Explicit tenant predicate on top of RLS: defence in depth
-            # on the money path (gate 1.6).
+            # on the money path (least disclosure).
             text(
                 f"SELECT {_LOAN_COLS} FROM loans "  # noqa: S608
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
@@ -163,7 +172,7 @@ async def list_loans(
     cursor: str | None = None,
     limit: int = 20,
 ) -> tuple[list[LoanRecord], str | None]:
-    """Keyset-paginated loan book, newest first, page cap 100 (gate 1.3).
+    """Keyset-paginated loan book, newest first, page cap 100 (scalability).
 
     Backed by idx_loans_created_keyset (tenant_id, created_at DESC,
     id DESC) so page depth never degrades the scan.
@@ -180,7 +189,10 @@ async def list_loans(
         clauses.append("classification = :cls")
         params["cls"] = classification.value
     if cursor:
-        params["c_ts"], params["c_id"] = parse_created_id_cursor(cursor, entity="loan")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext parse stays as defense-in-depth.
+        inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=LOAN_BOOK_SCOPE, entity="loan")
+        params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="loan")
         clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
     # Static fragments chosen in code; all values are bound parameters.
@@ -199,7 +211,11 @@ async def list_loans(
     next_cursor = None
     if len(rows) > limit and page_rows:
         last = page_rows[-1]
-        next_cursor = build_created_id_cursor(last[0], last[1])
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last[0], last[1]),
+            tenant_id=tenant_id,
+            endpoint=LOAN_BOOK_SCOPE,
+        )
     return items, next_cursor
 
 
@@ -289,7 +305,7 @@ async def record_repayment(
     channel: Channel,
     received_at: datetime | None = None,
 ) -> RepaymentResult:
-    """Allocate and post one repayment atomically (gates 1.4, 1.5).
+    """Allocate and post one repayment atomically (the house gates).
 
     Lock -> compute buckets -> allocate -> post split legs -> update
     schedule and balance -> close + release guarantees when paid off.
@@ -367,7 +383,7 @@ async def record_repayment(
             await session.execute(
                 text(
                     # Explicit tenant predicate on the write, on top of
-                    # RLS (defence in depth, gate 1.6 — finding 15).
+                    # RLS (defence in depth).
                     "UPDATE loan_schedules SET paid_amount = paid_amount + :pay "
                     "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
                 ),
@@ -380,7 +396,7 @@ async def record_repayment(
     await session.execute(
         text(
             # Explicit tenant predicate on the write, on top of RLS
-            # (defence in depth, gate 1.6 — finding 15).
+            # (defence in depth).
             "UPDATE loans SET balance = :bal, penalty_due = :pen, "
             "version = version + 1, updated_at = :ts "
             "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
@@ -435,7 +451,7 @@ async def _close_loan(
     """Close a fully repaid loan and release its guarantees (P10 hook).
 
     Runs inside the repayment transaction while the loan row lock is
-    held; the status machine is the single gatekeeper (gate 1.4).
+    held; the status machine is the single gatekeeper (concurrency safety).
     """
     target = loan_transition(LoanStatus.ACTIVE, LoanStatus.CLOSED)
     # Fully repaid: the prudential state returns to day zero. Leaving a
@@ -447,7 +463,7 @@ async def _close_loan(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 — finding 15).
+                # (defence in depth).
                 "UPDATE loans SET status = :st, closed_at = :ts, days_past_due = 0, "
                 "classification = :cls, provision_pct = :prov, "
                 "version = version + 1, updated_at = :ts "
@@ -492,8 +508,8 @@ async def portfolio_summary(session: AsyncSession, tenant_id: uuid.UUID) -> Port
     Provisions are rounded per loan (ROUND(balance * provision_pct / 100, 2))
     before summing — the same rule the loan book rows display — so the
     dashboard total always equals the sum of the visible rows. Explicit
-    tenant predicates on top of RLS (defence in depth, gate 1.6 v1.1;
-    issue #17).
+    tenant predicates on top of RLS (defence in depth
+    tenant scoping).
     """
     totals = (
         await session.execute(

@@ -1,35 +1,35 @@
-"""Branches registry services (P13.6, gates 1.1-1.6).
+"""Branches registry services.
 
 The tenant-scoped registry behind the prototype's free-text branch
 strings ("Nairobi CBD", "Thika", "HQ" — users list and the member
 "Home branch" field). Branch is organisational metadata ONLY: nothing
 here reads or writes money state, and no money path may key on
 branch_id in this prompt (cash/till management is explicitly out of
-scope — GAP_ANALYSIS §2.6).
+scope — per the recorded gap analysis).
 
-Reuse (gate 1.1): creation claims the (tenant_id, name) UNIQUE
+Reuse (reuse-first): creation claims the (tenant_id, name) UNIQUE
 atomically (`INSERT ... ON CONFLICT DO NOTHING` + rowcount, v1.1
-rule 5 — the P13.5 email-claim pattern); edits are optimistic-locked
-and surface 409 on stale versions (gate 1.4); the listing paginates on
+rule 5 — the email-claim pattern); edits are optimistic-locked
+and surface 409 on stale versions (concurrency safety); the listing paginates on
 the shared (created_at DESC, id DESC) keyset via the P11 cursor
 helpers; the backfill runs through the shared batch runner (v1.1
 rule 8). Every mutation writes its audit row in-transaction via the
-shared writer with before/after payloads (gate 1.5). No outbox events:
+shared writer with before/after payloads (data integrity). No outbox events:
 branch changes have no notification consumer — there is no side-effect
-to dispatch (gate 1.2 concerns delivery, not mutation).
+to dispatch (reliability concerns delivery, not mutation).
 
 Assignments: users and members get a nullable branch_id FK (0016).
 Assignment is a single guarded UPDATE (explicit tenant predicate +
-version check, v1.1 rule 4 / gate 1.4) — no SELECT ... FOR UPDATE is
+version check, v1.1 rule 4 / concurrency safety) — no SELECT ... FOR UPDATE is
 taken, so these paths hold at most one implicit row lock and cannot
 form a cycle with the established member/user lock chains (P12
-settlement set, P13.5 admin-set ORDER BY id). The target's legacy
+settlement set, admin-set ORDER BY id). The target's legacy
 free-text users.branch column is left untouched: it stays the
 deprecated source for the backfill until the deferred contract
-migration removes it (§3 migration policy).
+migration removes it (the migration policy).
 
 Backfill (v1.1 rule 8): walks users in id-keyset batches (ascending id
-— the same ordering convention as the P13.5 admin-set locks), creating
+— the same ordering convention as the admin-set locks), creating
 one branch row per distinct trimmed legacy text value and linking each
 scanned user. Both writes are atomic claims checked by rowcount: the
 branch insert on the (tenant_id, name) UNIQUE, the user link on the
@@ -65,15 +65,24 @@ from genesis.application.audit import record_audit
 from genesis.application.batch_runner import SessionScope, run_in_batches
 from genesis.application.pagination import (
     build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
     parse_created_id_cursor,
 )
 from genesis.domain.members import MEMBER_NO_PREFIX
 from genesis.errors import ConflictError, InvalidInputError, NotFoundError
 
+#: Cursor scope ids: every signed cursor is bound to ONE
+#: endpoint — a branches cursor can never open a roster page and vice
+#: versa (least disclosure).
+BRANCHES_LIST_SCOPE = "branches.list"
+BRANCH_USERS_SCOPE = "branches.users"
+BRANCH_MEMBERS_SCOPE = "branches.members"
+
 #: Users scanned per backfill transaction (P10/P11 batch precedent).
 DEFAULT_BATCH_SIZE = 200
 
-#: Semantic shape of a members-roster cursor (#31 batch 7 review F3).
+#: Semantic shape of a members-roster cursor.
 #: Cursors are only ever built from SERVED member_no values (domain
 #: format_member_no: 'GP-' + a zero-padded sequence of at least four
 #: digits), so anything else is a forged or corrupted cursor — a 400
@@ -118,11 +127,11 @@ class BranchBackfillResult:
 
 @dataclass(frozen=True)
 class BranchUserRosterRecord:
-    """One user on a branch roster (#31 (j).1) — identity facts only.
+    """One user on a branch roster — identity facts only.
 
     created_at is the keyset position ONLY (review F4: the house
     created_at+id cursor) — the API response model never serializes
-    it; the roster stays identity facts, least disclosure (gate 1.6).
+    it; the roster stays identity facts, least disclosure.
     """
 
     id: uuid.UUID
@@ -140,7 +149,7 @@ class BranchUserRosterPage:
 
 @dataclass(frozen=True)
 class BranchMemberRosterRecord:
-    """One member on a branch roster (#31 (j).1) — identity facts only."""
+    """One member on a branch roster — identity facts only."""
 
     id: uuid.UUID
     member_no: str
@@ -158,7 +167,7 @@ _BRANCH_COLUMNS = "b.id, b.name, b.version, b.created_at"
 
 
 def branches_page_sql(*, with_cursor: bool) -> str:
-    """Branches listing page (keyset on created_at DESC, id DESC — gate 1.3).
+    """Branches listing page (keyset on created_at DESC, id DESC — scalability).
 
     Served by idx_branches_created_keyset (0016, shipped with this
     query). Fragments are static literals chosen in code; every value
@@ -178,7 +187,7 @@ def branches_page_sql(*, with_cursor: bool) -> str:
 
 
 def branch_users_roster_sql(*, with_cursor: bool) -> str:
-    """USER roster of one branch (#31 (j).1) — house created_at+id keyset.
+    """USER roster of one branch — house created_at+id keyset.
 
     Review F4: the roster paginates on (created_at DESC, id DESC) via
     the shared P11 cursor helpers — the same convention as the
@@ -189,9 +198,9 @@ def branch_users_roster_sql(*, with_cursor: bool) -> str:
     still ships NO migration.
 
     Expand-only read model over the 0016 assignment column: WHO is
-    assigned, nothing more (least disclosure, gate 1.6 — no role, no
+    assigned, nothing more (least disclosure — no role, no
     last-active, no phone rides here; the full user record stays on
-    the P13.5 /users reads under the same access_control:view gate).
+    the /users reads under the same access_control:view gate).
     Served by idx_users_branch (0016: tenant_id, branch_id). Static
     fragments chosen in code; every value is a bound parameter (v1.1
     rule 6); explicit tenant predicate on top of forced RLS (v1.1
@@ -208,10 +217,10 @@ def branch_users_roster_sql(*, with_cursor: bool) -> str:
 
 
 def branch_members_roster_sql(*, with_cursor: bool) -> str:
-    """MEMBER roster of one branch (#31 ledger (j).1) — NUMERIC member_no keyset.
+    """MEMBER roster of one branch — NUMERIC member_no keyset.
 
     member_no is monotonic per tenant NUMERICALLY, not lexicographically
-    (senior review N1): the domain format is a constant 'GP-' prefix +
+    (review-hardened): the domain format is a constant 'GP-' prefix +
     a zero-padded sequence of AT LEAST four digits, so as TEXT
     'GP-10000' < 'GP-9999' and a bare member_no order breaks past
     9,999 members. Ordering by (length(member_no), member_no) is the
@@ -274,7 +283,7 @@ def _row_to_record(row: Any) -> BranchRecord:
 async def get_branch(
     session: AsyncSession, tenant_id: uuid.UUID, branch_id: uuid.UUID
 ) -> BranchRecord:
-    # Explicit tenant predicate on top of RLS (gate 1.6 v1.1).
+    # Explicit tenant predicate on top of RLS (defence in depth).
     row = (
         await session.execute(
             text(
@@ -315,7 +324,7 @@ async def create_branch(
     ).first()
     if claimed is None:
         # Least disclosure: the caller gets the category; the name
-        # involved lives only in this internal message (gate 1.6).
+        # involved lives only in this internal message (least disclosure).
         raise ConflictError(f"branch name already in use: {name}")
     await record_audit(
         session,
@@ -336,11 +345,16 @@ async def list_branches(
     cursor: str | None = None,
     limit: int = 20,
 ) -> BranchPage:
-    """Keyset-paginated listing on (created_at DESC, id DESC) (gate 1.3)."""
+    """Keyset-paginated listing on (created_at DESC, id DESC) (scalability)."""
     limit = max(1, min(limit, 100))
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if cursor:
-        c_ts, c_id = parse_created_id_cursor(cursor, entity="branch")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext parse stays as defense-in-depth.
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=BRANCHES_LIST_SCOPE, entity="branch"
+        )
+        c_ts, c_id = parse_created_id_cursor(inner, entity="branch")
         params["c_ts"] = c_ts
         params["c_id"] = c_id
     rows = (
@@ -350,7 +364,11 @@ async def list_branches(
     next_cursor = None
     if len(rows) > limit and items:
         last = items[-1]
-        next_cursor = build_created_id_cursor(last.created_at, last.id)
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last.created_at, last.id),
+            tenant_id=tenant_id,
+            endpoint=BRANCHES_LIST_SCOPE,
+        )
     return BranchPage(items=items, next_cursor=next_cursor)
 
 
@@ -362,13 +380,13 @@ async def list_branch_users(
     cursor: str | None = None,
     limit: int = 20,
 ) -> BranchUserRosterPage:
-    """Keyset USER roster of one branch (#31 (j).1) — read-only.
+    """Keyset USER roster of one branch — read-only.
 
     404-BEFORE-FACTS: the branch existence probe runs first, so an
     unknown or cross-tenant branch id surfaces 404 before any roster
-    row is read (least disclosure, gate 1.6). The API layer gates this
+    row is read (least disclosure). The API layer gates this
     on access_control:view — the entity being READ is the user record,
-    mirroring the batch-4 assignment permission split (assigning a
+    mirroring the assignment permission split (assigning a
     user is access_control:edit), never the settings registry gate.
     """
     await get_branch(session, tenant_id, branch_id)
@@ -379,9 +397,13 @@ async def list_branch_users(
         "limit": limit + 1,
     }
     if cursor:
-        # Review F4: the house cursor helper rejects malformed input
-        # with InvalidInputError — "invalid branch user roster cursor".
-        c_ts, c_id = parse_created_id_cursor(cursor, entity="branch user roster")
+        # Opaque signed cursor: verify+unseal first.
+        # Review F4: the house cursor helper then rejects malformed
+        # plaintext with InvalidInputError (defense-in-depth).
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=BRANCH_USERS_SCOPE, entity="branch user roster"
+        )
+        c_ts, c_id = parse_created_id_cursor(inner, entity="branch user roster")
         params["c_ts"] = c_ts
         params["c_id"] = c_id
     rows = (
@@ -400,7 +422,11 @@ async def list_branch_users(
     next_cursor = None
     if len(rows) > limit and items:
         last = items[-1]
-        next_cursor = build_created_id_cursor(last.created_at, last.id)
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last.created_at, last.id),
+            tenant_id=tenant_id,
+            endpoint=BRANCH_USERS_SCOPE,
+        )
     return BranchUserRosterPage(items=items, next_cursor=next_cursor)
 
 
@@ -412,11 +438,11 @@ async def list_branch_members(
     cursor: str | None = None,
     limit: int = 20,
 ) -> BranchMemberRosterPage:
-    """Keyset MEMBER roster of one branch (#31 (j).1) — read-only.
+    """Keyset MEMBER roster of one branch — read-only.
 
     404-BEFORE-FACTS: the branch existence probe runs first (least
-    disclosure, gate 1.6). The API layer gates this on members:view —
-    the entity being READ is the member record, mirroring the batch-4
+    disclosure). The API layer gates this on members:view —
+    the entity being READ is the member record, mirroring the earlier
     assignment permission split (assigning a member is members:edit),
     never the settings registry gate.
 
@@ -433,12 +459,18 @@ async def list_branch_members(
         "limit": limit + 1,
     }
     if cursor:
-        if (
-            len(cursor) > _MEMBER_NO_CURSOR_MAX_LEN
-            or _MEMBER_NO_CURSOR_RE.fullmatch(cursor) is None
-        ):
+        # Opaque signed cursor: verify+unseal BEFORE the
+        # F3 semantic guard — the guard keeps fencing the PLAINTEXT
+        # member_no shape as defense-in-depth after the tag check.
+        inner = decode_cursor(
+            cursor,
+            tenant_id=tenant_id,
+            endpoint=BRANCH_MEMBERS_SCOPE,
+            entity="branch member roster",
+        )
+        if len(inner) > _MEMBER_NO_CURSOR_MAX_LEN or _MEMBER_NO_CURSOR_RE.fullmatch(inner) is None:
             raise InvalidInputError("invalid branch member roster cursor")
-        params["cursor"] = cursor
+        params["cursor"] = inner
     rows = (
         await session.execute(
             text(branch_members_roster_sql(with_cursor=cursor is not None)), params
@@ -453,7 +485,11 @@ async def list_branch_members(
         )
         for r in rows[:limit]
     ]
-    next_cursor = items[-1].member_no if len(rows) > limit and items else None
+    next_cursor = None
+    if len(rows) > limit and items:
+        next_cursor = encode_cursor(
+            items[-1].member_no, tenant_id=tenant_id, endpoint=BRANCH_MEMBERS_SCOPE
+        )
     return BranchMemberRosterPage(items=items, next_cursor=next_cursor)
 
 
@@ -466,7 +502,7 @@ async def update_branch(
     version: int,
     name: str,
 ) -> BranchRecord:
-    """Optimistic-locked rename; stale versions surface 409 (gate 1.4)."""
+    """Optimistic-locked rename; stale versions surface 409 (concurrency safety)."""
     current = await get_branch(session, tenant_id, branch_id)
     try:
         result = cast(
@@ -521,7 +557,7 @@ async def _assign_branch(
     version: int,
     branch_id: uuid.UUID,
 ) -> tuple[BranchAssignment, dict[str, Any], dict[str, Any]]:
-    """Shared assignment path for users and members (gate 1.1).
+    """Shared assignment path for users and members (reuse-first).
 
     Order of checks: branch existence in the caller's tenant (a foreign
     branch id is a 404, never a cross-tenant link), then target
@@ -533,7 +569,7 @@ async def _assign_branch(
     each public wrapper with a static-literal entity= so the F4
     completeness scan (tests/test_audit_entity_map.py) can verify the
     redaction map statically; the wrapper shares this session, so the
-    write stays in the same transaction (gate 1.5).
+    write stays in the same transaction (data integrity).
     """
     label = _ASSIGN_TARGETS[table]
     branch = await get_branch(session, tenant_id, branch_id)
@@ -599,7 +635,7 @@ async def assign_user_branch(
     version: int,
     branch_id: uuid.UUID,
 ) -> BranchAssignment:
-    """Assign (or re-assign) a user to a branch; audited (gate 1.5)."""
+    """Assign (or re-assign) a user to a branch; audited (data integrity)."""
     assignment, before, after = await _assign_branch(
         session,
         tenant_id,
@@ -630,7 +666,7 @@ async def assign_member_branch(
     version: int,
     branch_id: uuid.UUID,
 ) -> BranchAssignment:
-    """Assign (or re-assign) a member to a branch; audited (gate 1.5)."""
+    """Assign (or re-assign) a member to a branch; audited (data integrity)."""
     assignment, before, after = await _assign_branch(
         session,
         tenant_id,
@@ -669,7 +705,7 @@ async def _process_backfill_batch(
     AND btrim(branch) = :name` — so concurrent runs, or a manual
     assignment landing between scan and link, are skipped instead of
     overwritten. Users are linked in ascending id order (the scan
-    order), consistent with the P13.5 ordered-lock convention.
+    order), consistent with the ordered-lock convention.
     """
     params: dict[str, object] = {"tid": str(tenant_id), "limit": batch_size}
     if after_id is not None:

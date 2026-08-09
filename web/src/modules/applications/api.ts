@@ -1,19 +1,19 @@
 /**
- * Loan-applications / committee API layer (P15 module 3 — P9 API) over
+ * Loan-applications / committee API layer (module 3 — P9 API) over
  * the GENERATED client.
  *
  * - Keyset pagination ONLY: opaque `cursor` echoed back verbatim; no
- *   offset/page parameters exist here (gate 1.3, tested).
+ *   offset/page parameters exist here (scalability, tested).
  * - Every mutation takes a caller-supplied Idempotency-Key following the
- *   stability/rotation contract (gate 1.4). Stage transitions send the
+ *   stability/rotation contract (concurrency safety). Stage transitions send the
  *   `version` the record was loaded with — a stale move surfaces as 409
  *   (never a silent overwrite). Votes carry no version: the server
  *   serialises voters under the application row lock and the UNIQUE
  *   one-vote-per-voter constraint makes double voting impossible.
  * - Ids travel as path parameters serialized by the generated client;
- *   tokens/PII never enter URLs (gate 1.6, tested).
+ *   tokens/PII never enter URLs (least disclosure, tested).
  * - Pricing is server-resolved from the product: create sends only the
- *   member, product, amount, term and purpose (v1.1 rule 1).
+ *   member, product, amount, term and purpose.
  */
 import { toApiError } from "@genesis/api-client";
 import { keysetPageSchema, type KeysetPage } from "@/modules/table/schemas";

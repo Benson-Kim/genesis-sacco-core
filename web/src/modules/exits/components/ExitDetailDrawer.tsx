@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Exit detail drawer (P15 module 7): the FULL server settlement record
- * (ExitOut) plus the P12 lifecycle writes this record's status allows —
+ * Exit detail drawer (module 7): the FULL server settlement record
+ * (ExitOut) plus the lifecycle writes this record's status allows —
  * committee votes and void. Settlement posting and the canonical
  * statement open their own surfaces from here (screen-level state).
  *
@@ -17,11 +17,10 @@
  * - MAKER-CHECKER (blocker (f)): vote affordances mount ONLY inside
  *   MakerCheckerPanel — checker controls exist only for a different,
  *   known principal (getOwnUserId; no override prop). The maker
- *   identity is the CONTRACT's requested_by first (issue #30 / !66
- *   follow-up — server truth), with the per-tab registry as the
+ *   identity is the CONTRACT's requested_by first (/ follow-up — server truth), with the per-tab registry as the
  *   fallback witness for unattributed (NULL) rows. The server bans
- *   self-votes and enforces one vote per voter regardless (gate 1.6).
- *   VOID deliberately sits OUTSIDE the panel: the P12 contract gates
+ *   self-votes and enforces one vote per voter regardless (least disclosure).
+ *   VOID deliberately sits OUTSIDE the panel: the contract gates
  *   POST /member-exits/{id}/void on members:approve (verified against
  *   backend member_exits.py — ApproveCtx) and permits an approve-holder
  *   to void their OWN request (it moves no money and only narrows
@@ -36,7 +35,7 @@
  * - A 409 (someone voted/voided/settled underneath, or the version
  *   drifted) renders the shared ConflictBanner's explicit
  *   reload-and-re-enter flow with an INFORMATIONAL notice + announce()
- *   (!60 F5) — NOTHING is replayed.
+ *    — NOTHING is replayed.
  * - TERMINAL statuses (settled/rejected) structurally WITHDRAW every
  *   write affordance (the server enforces the transition matrix
  *   regardless).
@@ -82,7 +81,7 @@ export function ExitDetailDrawer({
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [voteResult, setVoteResult] = useState<ExitVoteResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency keys (!60 F3): bumped on
+  // Freshness component for the idempotency keys: bumped on
   // every explicit post-conflict reload — a re-entered identical action
   // after a 409 is a NEW intent with a NEW key (some conflicts, e.g.
   // "someone else voted", do not bump the record version).
@@ -213,7 +212,7 @@ export function ExitDetailDrawer({
   const voteConflict = vote.isError && isConflict(vote.error);
   const voidConflict = voidMutation.isError && isConflict(voidMutation.error);
 
-  // SERVER TRUTH FIRST (issue #30 follow-up on !66/0036): requested_by
+  // SERVER TRUTH FIRST (follow-up on /0036): requested_by
   // is the contract's initiator attribution — the maker-checker record
   // itself, not a per-tab witness. The registry (the request THIS TAB
   // witnessed) is consulted only when the server record is
@@ -225,7 +224,7 @@ export function ExitDetailDrawer({
     record.requested_by !== null
       ? record.requested_by === ownId
         ? "You initiated this exit request (server attribution)."
-        : // Least disclosure (FM-D): the bare staff UUID via the
+        : // Least disclosure: the bare staff UUID via the
           // short-id convention — never a name or email.
           `Initiating officer ${record.requested_by.slice(0, 8)} (server attribution).`
       : witnessedMakerId === EXIT_MAKER_UNKNOWN
@@ -235,10 +234,10 @@ export function ExitDetailDrawer({
           : "Initiating officer (witnessed by this tab).";
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record (its status,
+    // Explicit reload flow: refetch the record (its status,
     // version or tally moved underneath) and the register; the stale
     // write is NEVER replayed — re-entering it is a NEW intent whose
-    // key rotates via the reload epoch (!60 F3).
+    // key rotates via the reload epoch.
     void queryClient.refetchQueries({ queryKey: ["exits", "detail", exitId] });
     void queryClient.invalidateQueries({ queryKey: ["exits", "list"] });
     setReloadEpoch((epoch) => epoch + 1);
@@ -258,7 +257,7 @@ export function ExitDetailDrawer({
       dismissOnOverlay={false}
     >
       {/* Informational, NOT success styling: the notice reports a
-          post-conflict reload (W59-4, the !60 F5 class). */}
+          post-conflict reload (W59-4, the F5 class). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
       <div className={styles.detailGrid}>
@@ -274,10 +273,10 @@ export function ExitDetailDrawer({
         <Kv label="Status">{exitStatusPill(record.status)}</Kv>
         <Kv label="Reason">{record.reason ?? "—"}</Kv>
         <Kv label="Requested by">
-          {/* Initiator attribution (issue #30 / !66 follow-up): the
+          {/* Initiator attribution (/ follow-up): the
               SERVER's bare staff UUID, short-id convention — least
-              disclosure (FM-D): no name/email is ever fetched for it.
-              NULL renders the honest unattributed affordance (FM-B):
+              disclosure: no name/email is ever fetched for it.
+              NULL renders the honest unattributed affordance:
               an actor is never invented. */}
           {record.requested_by !== null ? (
             <span className={styles.mono} title={record.requested_by}>
@@ -337,7 +336,7 @@ export function ExitDetailDrawer({
         </div>
       )}
 
-      {/* One copy of the 409 reload flow (gate 1.1): a moved status,
+      {/* One copy of the 409 reload flow (reuse-first): a moved status,
           drifted version or already-recorded vote is reloaded, NEVER
           replayed. */}
       <ConflictBanner error={vote.error} onReload={reloadRecord} />

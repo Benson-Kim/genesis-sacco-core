@@ -184,9 +184,12 @@ test("happy path: OTP login → settings tabs render verbatim money strings → 
 
   await page.getByRole("link", { name: "Settings" }).click();
   const dividend = page.getByLabel("Dividend on shares (% p.a.)");
-  // Decimal strings render byte-identically (blocker (a)).
+  // Decimal strings render byte-identically (blocker (a)); the tab
+  // opens READ-ONLY (#35 item 3) — Edit is the explicit way in.
   await expect(dividend).toHaveValue("14.00");
+  await expect(dividend).toBeDisabled();
   await expect(page.getByLabel("Interest on deposits (% p.a.)")).toHaveValue("9.00");
+  await page.getByRole("button", { name: "Edit interest rules" }).click();
 
   await dividend.fill("15.00");
   await page.getByRole("button", { name: "Save interest rules" }).click();
@@ -227,6 +230,7 @@ test("adversarial: stale settings edit → 409 conflict banner, EXACTLY ONE writ
   await page.getByRole("link", { name: "Settings" }).click();
   const dividend = page.getByLabel("Dividend on shares (% p.a.)");
   await expect(dividend).toHaveValue("14.00");
+  await page.getByRole("button", { name: "Edit interest rules" }).click();
   await dividend.fill("15.00");
   await page.getByRole("button", { name: "Save interest rules" }).click();
   const dialog = page.getByRole("dialog", { name: "Apply interest rules" });

@@ -1,19 +1,18 @@
 "use client";
 
 /**
- * P15 members module (P8 API): keyset member register with segmented
+ *  members module (P8 API): keyset member register with segmented
  * status/type filters and permission-gated registration.
  *
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). The register button is
+ *   the server enforces every call (least disclosure). The register button is
  *   NOT rendered without can(create) — the UI never offers what the API
  *   forbids.
- * - Keyset pagination only (opaque cursors — gate 1.3).
- * - The register opts in to the LIST aggregates (#31 batch 3 review:
- *   include=aggregates, one set-based server statement per page) and
+ * - Keyset pagination only (opaque cursors — scalability).
+ * - The register opts in to the LIST aggregates (review: include=aggregates, one set-based server statement per page) and
  *   renders the four advisory figures VERBATIM — the server strings
  *   for deposits, shares, loans, guarantees are never summed, derived
- *   or re-formatted here (P15 blocker (a): no client-side money math).
+ *   or re-formatted here (the money rule: no client-side money math).
  * - Every rendered string (names, emails, phones, figures) is
  *   attacker-influenced data and renders exclusively through React
  *   text interpolation.
@@ -39,13 +38,13 @@ import {
 } from "../schemas";
 import styles from "./Members.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): the registration
+// Drawer-level code splitting (speed): the registration
 // drawer chunk loads on first open, not with the register route.
 const MemberCreateDrawer = dynamic(
     () => import("./MemberCreateDrawer").then((m) => m.MemberCreateDrawer),
     { ssr: false },
 );
-// KYC surfaces (issue #31 batch 3): row drill-down drawer + the
+// KYC surfaces: row drill-down drawer + the
 // registration wizard continuation after a quick-create.
 const MemberKycDrawer = dynamic(
     () => import("./MemberKycDrawer").then((m) => m.MemberKycDrawer),
@@ -115,9 +114,9 @@ const COLUMNS: Column<MemberDetail>[] = [
             </div>
         ),
     },
-    // Advisory aggregates (#31 batch 3 review): SERVER decimal strings
+    // Advisory aggregates (review): SERVER decimal strings
     // rendered VERBATIM — never summed, never derived, never
-    // re-formatted (P15 blocker (a); the same figures the KYC drawer
+    // re-formatted (the money rule; the same figures the KYC drawer
     // shows on the detail read).
     {
         key: "deposits",
@@ -127,21 +126,15 @@ const COLUMNS: Column<MemberDetail>[] = [
     },
     {
         key: "shares",
-        header: "Share capital",
+        header: "Shares",
         align: "right",
         render: (member) => member.aggregates.shares_total,
     },
     {
         key: "loans",
-        header: "Loans outstanding",
+        header: "Loan",
         align: "right",
         render: (member) => member.aggregates.loans_outstanding,
-    },
-    {
-        key: "guarantees",
-        header: "Guarantees pledged",
-        align: "right",
-        render: (member) => member.aggregates.guarantees_pledged,
     },
     {
         key: "status",
@@ -253,8 +246,8 @@ export function MembersScreen() {
                     onCreated={(member) => {
                         setDrawerOpen(false);
                         setCreatedNo(member.member_no);
-                        // Prototype wizard continuation (issue #31
-                        // batch 3): identity captured — proceed to the
+                        // Prototype wizard continuation: identity
+                        // captured — proceed to the
                         // KYC profile + documents steps.
                         setWizardMember(member);
                     }}

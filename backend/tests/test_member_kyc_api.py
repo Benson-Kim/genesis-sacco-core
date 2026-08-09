@@ -30,6 +30,7 @@ from db_helpers import api_client, factory
 from export_helpers import add_user, count, seed_actor
 from genesis.application import member_kyc as kyc_service
 from genesis.application import members as members_service
+from genesis.application.pagination import encode_cursor
 from genesis.domain.members import MemberType
 from genesis.errors import NotFoundError
 from genesis.infrastructure.db import get_engine
@@ -659,7 +660,7 @@ def test_document_listing_query_count_is_flat() -> None:
 
 def test_document_listing_paginates_by_doc_type_keyset() -> None:
     async def run() -> None:
-        _, _, token = await seed_actor()
+        tid, _, token = await seed_actor()
         async with api_client() as client:
             mid = await _create_member(client, token, MemberType.PERSON)
             for doc_type in ("kra_pin", "national_id_copy", "passport_photo"):
@@ -676,7 +677,13 @@ def test_document_listing_paginates_by_doc_type_keyset() -> None:
                 headers=_headers(token),
             )
         assert [i["doc_type"] for i in page1.json()["items"]] == ["kra_pin", "national_id_copy"]
-        assert cursor == "national_id_copy"
+        # #31 batch 13: the served cursor is the OPAQUE signed seal
+        # of the same doc_type position (deterministic encode - an
+        # exact-equality oracle through the real codec and the
+        # exported scope symbol, never a re-typed literal).
+        assert cursor == encode_cursor(
+            "national_id_copy", tenant_id=tid, endpoint=kyc_service.DOCUMENTS_LIST_SCOPE
+        )
         assert [i["doc_type"] for i in page2.json()["items"]] == ["passport_photo"]
         assert page2.json()["next_cursor"] is None
 

@@ -684,7 +684,8 @@ def test_ledger_read_model_carries_posting_actor_least_disclosure() -> None:
         async with api_client() as client:
             posted = await client.post(
                 f"/members/{mid}/deposits",
-                json={"amount": "250.00", "channel": "mpesa"},
+                # external_ref required on external channels (#35 item 6).
+                json={"amount": "250.00", "channel": "mpesa", "external_ref": "SGH3KLM9QT"},
                 headers=headers,
             )
             assert posted.status_code == 201, posted.text

@@ -48,7 +48,7 @@ export interface paths {
         get?: never;
         /**
          * Put Role Permission
-         * @description Permission changes are audit-logged in-transaction (gate 1.5).
+         * @description Permission changes are audit-logged in-transaction (data integrity).
          */
         put: operations["put_role_permission_access_roles__role_id__permissions__module__put"];
         post?: never;
@@ -331,12 +331,12 @@ export interface paths {
         };
         /**
          * List Branch Members
-         * @description Keyset MEMBER roster of a branch (#31 (j).1, members:view).
+         * @description Keyset MEMBER roster of a branch ((j).1, members:view).
          *
          *     Expand-only read model over the 0016 assignment column, mirroring
-         *     the batch-4 assignment permission split: the entity being READ is
+         *     the assignment permission split: the entity being READ is
          *     the member record, so the roster sits behind members x view (the
-         *     P8 precedent) — settings rights alone must not disclose people
+         *     precedent) — settings rights alone must not disclose people
          *     records. 404-BEFORE-FACTS: an unknown or cross-tenant branch id
          *     surfaces 404 before any roster row is read.
          */
@@ -359,7 +359,7 @@ export interface paths {
         get?: never;
         /**
          * Assign Member
-         * @description Assign a member to a branch (members x edit — P8 precedent).
+         * @description Assign a member to a branch (members x edit — precedent).
          */
         put: operations["assign_member_branches__branch_id__members__member_id__put"];
         post?: never;
@@ -378,12 +378,12 @@ export interface paths {
         };
         /**
          * List Branch Users
-         * @description Keyset USER roster of a branch (#31 (j).1, access_control:view).
+         * @description Keyset USER roster of a branch ((j).1, access_control:view).
          *
          *     Expand-only read model over the 0016 assignment column, mirroring
-         *     the batch-4 assignment permission split: the entity being READ is
+         *     the assignment permission split: the entity being READ is
          *     the user record, so the roster sits behind access_control x view
-         *     (the P13.5 users precedent) — settings rights alone must not
+         *     (the users precedent) — settings rights alone must not
          *     disclose people records. 404-BEFORE-FACTS: an unknown or
          *     cross-tenant branch id surfaces 404 before any roster row is read.
          */
@@ -406,7 +406,7 @@ export interface paths {
         get?: never;
         /**
          * Assign User
-         * @description Assign a user to a branch (access_control x edit — P13.5 precedent).
+         * @description Assign a user to a branch (access_control x edit — precedent).
          */
         put: operations["assign_user_branches__branch_id__users__user_id__put"];
         post?: never;
@@ -445,8 +445,8 @@ export interface paths {
         };
         /**
          * List Repayment Adjustments
-         * @description The pending-adjustments checker register (issue #31 ledger
-         *     (a).1): keyset, PENDING FIRST then newest first — the checker's
+         * @description The pending-adjustments checker register: keyset, PENDING FIRST then newest first — the
+         *     checker's
          *     job order. Served under the existing corrections view gate;
          *     explicit tenant predicate doubling RLS; bound parameters only.
          */
@@ -454,7 +454,7 @@ export interface paths {
         put?: never;
         /**
          * Request Repayment Adjustment
-         * @description MAKER phase (issue #24): create a PENDING adjustment bound to
+         * @description MAKER phase: create a PENDING adjustment bound to
          *     the persisted approval snapshot — nothing posts until a distinct
          *     checker approves.
          */
@@ -493,7 +493,7 @@ export interface paths {
         put?: never;
         /**
          * Approve Repayment Adjustment
-         * @description CHECKER phase (issue #24): re-verify the snapshot under the full
+         * @description CHECKER phase: re-verify the snapshot under the full
          *     lock set (409 on drift, posting nothing), then reverse the
          *     repayment's complete allocation and restore loan state.
          */
@@ -517,7 +517,7 @@ export interface paths {
          * Reject Repayment Adjustment
          * @description Reject a pending adjustment (checker decision, optimistic-locked)
          *     — frees the one-live-adjustment slot for a fresh request. The
-         *     checker's rationale is REQUIRED (!52 F2) and recorded in the audit
+         *     checker's rationale is REQUIRED and recorded in the audit
          *     row.
          */
         post: operations["reject_repayment_adjustment_corrections_repayment_adjustments__adjustment_id__reject_post"];
@@ -536,7 +536,7 @@ export interface paths {
         };
         /**
          * List Write Offs
-         * @description The write-off committee register (issue #31 ledger (a).2):
+         * @description The write-off committee register:
          *     keyset, LIVE (requested/approved) FIRST then newest first — the
          *     committee's job order. Served under the existing corrections view
          *     gate; explicit tenant predicate doubling RLS; bound parameters
@@ -609,7 +609,7 @@ export interface paths {
         /**
          * Record Recovery Receipt
          * @description Record a bad-debt recovery receipt against a posted write-off
-         *     (issue #21): RC- posting + append-only receipt row, never a
+         *     RC- posting + append-only receipt row, never a
          *     resurrection of the loan.
          */
         post: operations["record_recovery_receipt_corrections_write_offs__write_off_id__recoveries_post"];
@@ -670,7 +670,7 @@ export interface paths {
         put?: never;
         /**
          * Revoke Member Credential
-         * @description Revoke a credential link (FM3). The row is kept (forensic
+         * @description Revoke a credential link. The row is kept (forensic
          *     history); every live use of the credential dies at its next
          *     per-request or in-transaction link re-check.
          */
@@ -690,7 +690,7 @@ export interface paths {
         };
         /**
          * Dashboard Summary
-         * @description The prototype dashboard figures, sliced per the caller's matrix.
+         * @description The dashboard figures, sliced per the caller's permission matrix.
          */
         get: operations["dashboard_summary_dashboard_summary_get"];
         put?: never;
@@ -870,7 +870,7 @@ export interface paths {
         put?: never;
         /**
          * Consent Guarantee Override
-         * @description Staff-attested consent OVERRIDE: pledged -> active (P14.5).
+         * @description Staff-attested consent OVERRIDE: pledged -> active.
          *
          *     Consent is an act of the MEMBER principal
          *     (POST /member/guarantees/{id}/consent); this staff path is an
@@ -896,9 +896,9 @@ export interface paths {
         put?: never;
         /**
          * Release Guarantee
-         * @description Release one guarantee per the P13.14 rules (prototype "Release").
+         * @description Release one guarantee per the rules (the "Release" action).
          *
-         *     STAFF-only since P14.5: applications:edit EXACTLY — the interim
+         *     STAFF-only since: applications:edit EXACTLY — the interim
          *     email-match self-service is retired; a guarantor withdraws their
          *     own unconsented pledge as a MEMBER principal
          *     (POST /member/guarantees/{id}/release). Staff release pledged
@@ -924,7 +924,7 @@ export interface paths {
         put?: never;
         /**
          * Substitute Guarantee
-         * @description Atomic swap for a disbursed loan's collateral (P13.14).
+         * @description Atomic swap for a disbursed loan's collateral.
          *
          *     Releases the guarantee and creates the replacement CONSENTED pledge
          *     in one transaction; any failure between the two writes leaves the
@@ -969,16 +969,16 @@ export interface paths {
          *
          *     The nightly scheduler calls the same service per tenant; this route
          *     exists for operations and backfills. Each batch commits its own
-         *     short transaction (gate 1.3).
+         *     short transaction (scalability).
          *
-         *     P13.8: the same run accrues arrears penalties into
+         *     the same run accrues arrears penalties into
          *     loans.penalty_due, write-once per (loan, UTC day) via the
          *     penalty_accruals claim. Configuration (rate/grace/basis) is
          *     resolved server-side from tenant settings only — this body accepts
-         *     none of it (extra="forbid"; v1.1 rule 1) — and an unconfigured
+         *     none of it (extra="forbid") — and an unconfigured
          *     tenant accrues nothing (penalty_configured=false, fail closed).
          *     Ledger boundary: penalty income stays recognised ON RECEIPT by the
-         *     P10 repayment allocation (income.penalties); this job maintains
+         *      repayment allocation (income.penalties); this job maintains
          *     only the receivable-side loans.penalty_due and posts no ledger
          *     rows.
          *
@@ -1010,9 +1010,9 @@ export interface paths {
          * @description Backfill branches from legacy users.branch text (batched, idempotent).
          *
          *     Runs for the caller's own tenant only; each batch commits its own
-         *     short transaction via the shared batch runner (gate 1.3). A
+         *     short transaction via the shared batch runner (scalability). A
          *     completed re-run scans nothing (anti-join on the branch_id claim
-         *     key) — a lock-free no-op (v1.1 rule 8).
+         *     key) — a lock-free no-op.
          */
         post: operations["run_branch_backfill_jobs_branch_backfill_post"];
         delete?: never;
@@ -1036,7 +1036,7 @@ export interface paths {
          *
          *     The quarterly scheduler calls the same service per tenant; this
          *     route exists for operations and catch-up. Each batch commits its
-         *     own short transaction (gate 1.3).
+         *     own short transaction (scalability).
          *
          *     Rate and period are resolved server-side (review finding 2): the
          *     annual rate comes from tenant_settings (409 when unconfigured) and
@@ -1092,7 +1092,7 @@ export interface paths {
         put?: never;
         /**
          * Run Period Rollup Backfill
-         * @description Backfill rollups for periods closed before 0028 (P13.17b / DSA-2/5).
+         * @description Backfill rollups for periods closed before 0028 (.17b / DSA-2/5).
          *
          *     Permission (P4 matrix, decided): transactions x APPROVE — the
          *     close-period authority; rollups ARE the closed-period figures the
@@ -1120,7 +1120,7 @@ export interface paths {
         put?: never;
         /**
          * Run Portfolio Snapshot Backfill
-         * @description Backfill month-end portfolio snapshots (P13.17a / DSA-1).
+         * @description Backfill month-end portfolio snapshots (.17a / DSA-1).
          *
          *     Permission (P4 matrix, decided): transactions x APPROVE — the
          *     close-period authority. Snapshots freeze the month-end figures the
@@ -1130,7 +1130,7 @@ export interface paths {
          *
          *     Batched through the shared batch runner (one month per short
          *     transaction); a completed re-run is a lock-free no-op (anti-join
-         *     on the claim key, v1.1 rule 8) proven by side-effect counts.
+         *     on the claim key) proven by side-effect counts.
          */
         post: operations["run_portfolio_snapshot_backfill_jobs_portfolio_snapshots_post"];
         delete?: never;
@@ -1236,7 +1236,7 @@ export interface paths {
         };
         /**
          * My Permissions
-         * @description Drives client route guards; the API still enforces every call (gate 1.6).
+         * @description Drives client route guards; the API still enforces every call (least disclosure).
          */
         get: operations["my_permissions_me_permissions_get"];
         put?: never;
@@ -1278,12 +1278,11 @@ export interface paths {
         /**
          * Get Exit Eligibility
          * @description Advisory eligibility facts BEFORE a request is submitted
-         *     (members:view; P15 batch 5, U6 — human-authorized expand-only,
-         *     read-only contract change).
+         *     (members:view; human-authorized expand-only, read-only contract change).
          *
          *     NO row locks: the checklist mirrors the blocker set the settlement
-         *     service enforces (same live-guarantee status set, same open-stage
-         *     list, the SAME unresolved-write-off SQL — gate 1.1), but the
+         *     service enforces (same live-guarantee status set, same open-stage list, the SAME
+         *     unresolved-write-off SQL — reuse-first), but the
          *     BINDING verdict remains the locked recompute at request and
          *     settlement time. Facts only — no amount ever travels here.
          */
@@ -1345,7 +1344,7 @@ export interface paths {
         };
         /**
          * Get Exit Statement
-         * @description Exit statement document (JSON; CSV/PDF arrives with P13 core/exports).
+         * @description Exit statement document (JSON; CSV/PDF arrives with core/exports).
          */
         get: operations["get_exit_statement_member_exits__exit_id__statement_get"];
         put?: never;
@@ -1428,7 +1427,7 @@ export interface paths {
         put?: never;
         /**
          * Verify Member Otp
-         * @description Verify the member OTP; issues MEMBER-audience tokens (FM1).
+         * @description Verify the member OTP; issues MEMBER-audience tokens.
          */
         post: operations["verify_member_otp_member_auth_otp_verify_post"];
         delete?: never;
@@ -1471,7 +1470,7 @@ export interface paths {
          * @description Guarantor consent as the MEMBER principal: pledged -> active.
          *
          *     The link is re-verified inside the transaction under the guarantee
-         *     row lock (FM2); the consent row carries the credential (FM4).
+         *     row lock; the consent row carries the credential.
          */
         post: operations["consent_guarantee_as_member_member_guarantees__guarantee_id__consent_post"];
         delete?: never;
@@ -1491,8 +1490,8 @@ export interface paths {
         put?: never;
         /**
          * Release Guarantee As Member
-         * @description Withdraw the member's OWN unconsented pledge (P13.14 rules;
-         *     the member-principal replacement for the retired email-match).
+         * @description Withdraw the member's OWN unconsented pledge (rules; the member-principal replacement for the
+         *     retired email-match).
          */
         post: operations["release_guarantee_as_member_member_guarantees__guarantee_id__release_post"];
         delete?: never;
@@ -1512,13 +1511,18 @@ export interface paths {
          * List Members
          * @description Keyset member register page (members:view).
          *
-         *     OPT-IN aggregates (#31 batch 3 review): with include=aggregates
+         *     OPT-IN aggregates: with include=aggregates
          *     every row carries the same four advisory decimal-string figures as
          *     the detail read, computed by ONE set-based statement per page (the
          *     keyset page drives, LEFT JOIN LATERAL supplies the probes — never
          *     a per-row fan-out). Without the parameter the response is
          *     byte-identical to the flat register. No rejection path (403, 422)
          *     computes or echoes an amount.
+         *
+         *     member_no (the posting-drawer unique-identifier
+         *     lookup): expand-only EXACT-match filter served by the 0001 UNIQUE
+         *     (tenant_id, member_no) key. An unknown number is an EMPTY page,
+         *     never a 404 — no existence oracle beyond the members:view grant.
          */
         get: operations["list_members_members_get"];
         put?: never;
@@ -1545,16 +1549,16 @@ export interface paths {
          *
          *     The nightly cycle (infrastructure/dormancy_worker.py) drives the
          *     same service per tenant; this route exists for operations and
-         *     backfills (the P10/P13.8 /jobs/arrears precedent). Members with no
+         *     backfills (the /jobs/arrears precedent). Members with no
          *     MEMBER-INITIATED ledger activity inside the tenant-configured
          *     window transition Active -> Dormant under their row lock; each
-         *     batch commits its own short transaction (gate 1.3).
+         *     batch commits its own short transaction (scalability).
          *
          *     Configuration (dormancy_period_months) is resolved server-side
          *     from tenant settings only — this body accepts none of it
          *     (extra="forbid"; v1.1 rule 1) — and an unconfigured or corrupt
          *     period REFUSES the run with 409 and zero transitions (fail closed,
-         *     P13.13 FM8; never a silent default).
+         *     never a silent default).
          *
          *     Permission (P4 matrix): members x EDIT — the job rewrites member
          *     status rows, the same power the manual status route carries; no
@@ -1576,7 +1580,7 @@ export interface paths {
         };
         /**
          * Get Member
-         * @description Single-member read with advisory aggregates (#31, members:view).
+         * @description Single-member read with advisory aggregates (members:view).
          *
          *     The existence check runs FIRST: unknown ids (including cross-tenant
          *     ids hidden by RLS) surface 404 before any aggregate is computed, so
@@ -1609,8 +1613,8 @@ export interface paths {
         put?: never;
         /**
          * Create Member Credential
-         * @description Link a login email to a member (FM3: audited admin mutation;
-         *     the active-email claim is atomic — a lost race is a 409).
+         * @description Link a login email to a member (audited admin mutation; the active-email claim is atomic — a
+         *     lost race is a 409).
          */
         post: operations["create_member_credential_members__member_id__credentials_post"];
         delete?: never;
@@ -1686,7 +1690,7 @@ export interface paths {
         };
         /**
          * Get Profile
-         * @description Profile read; every access writes an audit row (review K1).
+         * @description Profile read; every access writes an audit row.
          */
         get: operations["get_profile_members__member_id__profile_get"];
         /** Update Profile */
@@ -1730,7 +1734,7 @@ export interface paths {
         put?: never;
         /**
          * Request Share Transfer
-         * @description MAKER phase (issue #31 (l)): create a PENDING transfer bound to
+         * @description MAKER phase ((l)): create a PENDING transfer bound to
          *     the persisted approval snapshot — NO money moves until a distinct
          *     checker approves.
          */
@@ -1879,10 +1883,11 @@ export interface paths {
         };
         /**
          * Worklist
-         * @description Keyset worklist, most delinquent first (addendum A5).
+         * @description Keyset worklist, most delinquent first (review addendum).
          *
-         *     DECLARED filters only (issue #31 ledger (a).3 — the human-
-         *     authorized read-contract expansion): `status` narrows to one LIVE
+         *     DECLARED filters only (the human-authorized read-contract
+         *     expansion): `status` narrows to one
+         *     LIVE
          *     posture (default stays OPEN exactly as built), `classification` to
          *     one stored prudential label (domain LoanClass). Every value is
          *     bound; keyset and server ordering are preserved; an out-of-
@@ -1892,7 +1897,7 @@ export interface paths {
         put?: never;
         /**
          * Open Case
-         * @description Initiate recovery on an NPL-classified active loan (FM1/FM2).
+         * @description Initiate recovery on an NPL-classified active loan (/).
          */
         post: operations["open_case_recovery_cases_post"];
         delete?: never;
@@ -1929,7 +1934,7 @@ export interface paths {
         put?: never;
         /**
          * Assign Case
-         * @description Assign/reassign an open case to an active same-tenant user (A4).
+         * @description Assign/reassign an open case to an active same-tenant user.
          */
         post: operations["assign_case_recovery_cases__case_id__assign_post"];
         delete?: never;
@@ -1949,12 +1954,12 @@ export interface paths {
         put?: never;
         /**
          * Set Disposition
-         * @description Record a staff disposition (issue #23 N2; !53 F1/F2): pause a
+         * @description Record a staff disposition: pause a
          *     case as disputed or irrecoverable_pending_write_off (required
          *     `reason` -> audit payload), resume it to open, or close it as
          *     restructured (required `note` -> THE outcome note, written
          *     atomically in this same transaction) — through the single domain
-         *     gatekeeper; cure/write-off closes stay job-only (FM2).
+         *     gatekeeper; cure/write-off closes stay job-only.
          */
         post: operations["set_disposition_recovery_cases__case_id__disposition_post"];
         delete?: never;
@@ -1975,7 +1980,7 @@ export interface paths {
         put?: never;
         /**
          * Add Note
-         * @description Append a note (addendum A2: append-only, no edit route exists).
+         * @description Append a note (addendum: append-only, no edit route exists).
          */
         post: operations["add_note_recovery_cases__case_id__notes_post"];
         delete?: never;
@@ -1995,7 +2000,7 @@ export interface paths {
         put?: never;
         /**
          * Add Case Outcome Note
-         * @description Record THE post-closure outcome note (issue #23 N3): exactly one
+         * @description Record THE post-closure outcome note: exactly one
          *     per case, at/after closure only, still append-only — no edit or
          *     delete route exists.
          */
@@ -2036,7 +2041,7 @@ export interface paths {
         };
         /**
          * List Share Transfers
-         * @description The share-transfer history register (issue #31 ledger (m)):
+         * @description The share-transfer history register:
          *     keyset, PENDING FIRST then newest first — the checker's job order
          *     (the 0038 band pattern). Served under members:view (the house
          *     read-split); explicit tenant predicate doubling RLS; bound
@@ -2079,7 +2084,7 @@ export interface paths {
         put?: never;
         /**
          * Approve Share Transfer
-         * @description CHECKER phase (issue #31 (l)): a DISTINCT, non-assurance
+         * @description CHECKER phase ((l)): a DISTINCT, non-assurance
          *     principal re-verifies the snapshot under the full lock set (409 on
          *     drift, posting nothing), then posts BOTH ledger legs, updates both
          *     balances and notifies BOTH members via the outbox — atomically.
@@ -2103,7 +2108,7 @@ export interface paths {
         /**
          * Reject Share Transfer
          * @description Reject a pending transfer (checker decision, optimistic-locked)
-         *     — the checker's rationale is REQUIRED (!52 F2) and recorded in the
+         *     — the checker's rationale is REQUIRED and recorded in the
          *     audit row, never echoed.
          */
         post: operations["reject_share_transfer_share_transfers__transfer_id__rejection_post"];
@@ -2122,7 +2127,13 @@ export interface paths {
         };
         /**
          * List Ledger
-         * @description Ledger listing with the prototype filters (date, ref, member, type, DR/CR, channel).
+         * @description Ledger listing with filters (date, ref, member, type, DR/CR, channel).
+         *
+         *     search: expand-only declared free-text probe —
+         *     txn_ref PREFIX, or member match (member_no exact / name prefix)
+         *     via an EXISTS on members. Bound parameters only; LIKE
+         *     metacharacters are escaped code-side; keyset order preserved; the
+         *     0043 idx_txns_ref_prefix serves the ref-prefix branch portably.
          */
         get: operations["list_ledger_transactions_get"];
         put?: never;
@@ -2144,14 +2155,14 @@ export interface paths {
          * List Transaction Legs
          * @description The double-entry DR/CR legs of one posting (transactions:view).
          *
-         *     Expand-only read model (#31 ledger (g), audit #30 A3): the
+         *     Expand-only read model: the
          *     append-only ledger_entries truth behind a TransactionOut row, one
          *     item per leg, each amount a canonical decimal string rendered
-         *     verbatim by clients — never summed or netted (P15 blocker (a)).
+         *     verbatim by clients — never summed or netted (no client-side money math).
          *     404-BEFORE-FACTS: the existence probe runs before any leg is read,
          *     so unknown and cross-tenant ids (hidden by RLS) surface 404 with no
          *     account or amount echoed; 403 rejections carry no figures either
-         *     (least disclosure, gate 1.6).
+         *     (least disclosure).
          */
         get: operations["list_transaction_legs_transactions__transaction_id__legs_get"];
         put?: never;
@@ -2289,16 +2300,16 @@ export interface components {
         };
         /**
          * AdjustmentApproveBody
-         * @description Deliberately empty (issue #24): the checker approves the
+         * @description Deliberately empty: the checker approves the
          *     PERSISTED snapshot — every figure comes from the pending
-         *     adjustment row (v1.1 rule 3); extra="forbid" -> 422 on any
+         *     adjustment row; extra="forbid" -> 422 on any
          *     caller-supplied field.
          */
         AdjustmentApproveBody: Record<string, never>;
         /**
          * AdjustmentBody
          * @description The repayment being undone and the reason — NO amounts, ever
-         *     (FM5/v1.1 rule 1): the reversal derives every figure from the
+         *     (rule 1): the reversal derives every figure from the
          *     original transaction's append-only legs.
          */
         AdjustmentBody: {
@@ -2312,8 +2323,8 @@ export interface components {
         };
         /**
          * AdjustmentListOut
-         * @description Keyset page of the pending-adjustments checker register (issue
-         *     #31 ledger (a).1 — the human-authorized read-contract expansion):
+         * @description Keyset page of the pending-adjustments checker register (the human-authorized read-contract
+         *     expansion):
          *     the same rows the by-id read serialises, pending-first.
          */
         AdjustmentListOut: {
@@ -2349,7 +2360,8 @@ export interface components {
         };
         /**
          * AdjustmentRecordOut
-         * @description One adjustment workflow row (issue #24): the pending request a
+         * @description One adjustment workflow row: the pending request a
+         *
          *     checker reviews, or the terminal posted/rejected history.
          */
         AdjustmentRecordOut: {
@@ -2397,10 +2409,9 @@ export interface components {
         /**
          * AdjustmentRejectBody
          * @description The checker's decision: the optimistic version plus the REQUIRED
-         *     rejection rationale (!52 review F2 — four-eyes practice puts the
-         *     checker's reason on the record, especially since a rejected slot
-         *     frees for a fresh request). The reason is workflow metadata, never
-         *     a money parameter (v1.1 rule 1 is not implicated); it lands in the
+         *     rejection rationale (four-eyes practice puts the checker's reason on the record, especially
+         *     since a rejected slot frees for a fresh request). The reason is workflow metadata, never
+         *     a money parameter (is not implicated); it lands in the
          *     audit `after` payload, never in error envelopes (rule 7).
          */
         AdjustmentRejectBody: {
@@ -2412,8 +2423,8 @@ export interface components {
         /**
          * ApplicationCreateBody
          * @description extra="forbid": rate/pricing come from the product server-side;
-         *     a caller-sent rate_pct (or any unknown field) is a 422 (gate 1.6
-         *     v1.1, retroactive on touched code).
+         *     a caller-sent rate_pct (or any unknown field) is a 422 (least disclosure v1.1, retroactive on
+         *     touched code).
          */
         ApplicationCreateBody: {
             /** Amount */
@@ -2562,7 +2573,7 @@ export interface components {
         };
         /**
          * BackfillRunOut
-         * @description Side-effect counts (§4): what the run created and linked.
+         * @description Side-effect counts: what the run created and linked.
          */
         BackfillRunOut: {
             /** Batches */
@@ -2612,9 +2623,9 @@ export interface components {
         };
         /**
          * BranchMemberRosterOut
-         * @description One member assigned to a branch (#31 (j).1) — identity facts only.
+         * @description One member assigned to a branch ((j).1) — identity facts only.
          *
-         *     Least disclosure (gate 1.6): no contact details, no figures; the
+         *     Least disclosure: no contact details, no figures; the
          *     member record stays on the P8 /members reads under the same
          *     members:view gate.
          */
@@ -2655,11 +2666,11 @@ export interface components {
         };
         /**
          * BranchUserRosterOut
-         * @description One user assigned to a branch (#31 (j).1) — identity facts only.
+         * @description One user assigned to a branch ((j).1) — identity facts only.
          *
-         *     Least disclosure (gate 1.6): who is assigned, nothing more — no
+         *     Least disclosure: who is assigned, nothing more — no
          *     role, no last-active, no phone; the full user record stays on the
-         *     P13.5 /users reads under the same access_control:view gate.
+         *      /users reads under the same access_control:view gate.
          */
         BranchUserRosterOut: {
             /** Email */
@@ -2691,16 +2702,16 @@ export interface components {
         /**
          * CaseDispositionBody
          * @description extra="forbid": the caller supplies the optimistic version, the
-         *     target status and the target-paired rationale fields (!53 F1/F2).
+         *     target status and the target-paired rationale fields.
          *     The enum rejects unknown statuses at the boundary (422); job-only
          *     targets (closed_cured/closed_written_off) are refused by the
-         *     service (409, FM2); the single domain gatekeeper owns the legality
-         *     of the move (issue #23 N2). `reason` is REQUIRED by the service
-         *     for the two pause targets (audit-payload workflow metadata, !53
-         *     F2); `note` is REQUIRED for closed_restructured — THE outcome
-         *     note, written atomically in the same transaction (!53 F1). A
+         *     service (409); the single domain gatekeeper owns the legality
+         *     of the move. `reason` is REQUIRED by the service
+         *     for the two pause targets (audit-payload workflow metadata); `note` is REQUIRED for
+         *     closed_restructured — THE outcome
+         *     note, written atomically in the same transaction. A
          *     mismatched field-target pairing is a 422. Neither field is a money
-         *     parameter (v1.1 rule 1 not implicated).
+         *     parameter (not implicated).
          */
         CaseDispositionBody: {
             /** Note */
@@ -2713,7 +2724,7 @@ export interface components {
         };
         /**
          * CaseNoteBody
-         * @description Shared by the regular-note and outcome-note routes (issue #23):
+         * @description Shared by the regular-note and outcome-note routes:
          *     both carry exactly one text field, so one body model serves both
          *     (reuse-first, 1.1).
          */
@@ -2725,7 +2736,7 @@ export interface components {
          * CaseOpenBody
          * @description extra="forbid": no caller-supplied timestamps, classification or
          *     days-past-due — the NPL snapshot is read under the loan row lock
-         *     and every SLA timestamp is written server-side (addendum A7).
+         *     and every SLA timestamp is written server-side (review addendum).
          */
         CaseOpenBody: {
             /**
@@ -2794,11 +2805,11 @@ export interface components {
         };
         /**
          * ConsentOverrideBody
-         * @description Staff-attested consent override (P14.5 scope 4): consent is the
+         * @description Staff-attested consent override (scope 4): consent is the
          *     member principal's act on the /member routes; this body carries the
          *     optimistic-lock version plus the MANDATORY evidence citation — a
-         *     bare caller-asserted consent flag is a rejected design (the !29
-         *     lesson; there is no boolean to assert).
+         *     bare caller-asserted consent flag is a rejected design (the lesson; there is no boolean to
+         *     assert).
          */
         ConsentOverrideBody: {
             /** Consent Reference */
@@ -2808,7 +2819,8 @@ export interface components {
         };
         /**
          * CredentialCreateBody
-         * @description extra="forbid" (gate 1.6 v1.1): the member comes from the path,
+         * @description extra="forbid" (least disclosure v1.1): the member comes from the path,
+         *
          *     the status from the schema default — the email is the only input.
          */
         CredentialCreateBody: {
@@ -2835,7 +2847,8 @@ export interface components {
         };
         /**
          * DashboardChartsOut
-         * @description Server-computed chart geometry (issue #32); each sub-slice
+         * @description Server-computed chart geometry; each sub-slice
+         *
          *     follows its parent slice's grant and is omitted when ungranted.
          */
         DashboardChartsOut: {
@@ -2912,7 +2925,7 @@ export interface components {
         /**
          * DeclareBody
          * @description Only the batch size is caller-tunable: rates and the financial
-         *     year come exclusively from tenant configuration (v1.1 rule 1) —
+         *     year come exclusively from tenant configuration —
          *     extra="forbid" rejects any attempt to supply them (422).
          */
         DeclareBody: {
@@ -2933,7 +2946,7 @@ export interface components {
          * DisburseBody
          * @description extra="forbid": a caller-sent disbursed_at/occurred_at (or any
          *     money field this contract does not own) is a 422, never silently
-         *     ignored — the posting date is resolved server-side (issue #12).
+         *     ignored — the posting date is resolved server-side.
          */
         DisburseBody: {
             channel: components["schemas"]["Channel"];
@@ -2952,7 +2965,8 @@ export interface components {
         /**
          * DistributeBody
          * @description No money fields, ever: every figure derives from the persisted
-         *     approval snapshot; extra="forbid" -> 422 (v1.1 rule 1).
+         *
+         *     approval snapshot; extra="forbid" -> 422.
          */
         DistributeBody: {
             /**
@@ -3040,7 +3054,7 @@ export interface components {
         /**
          * DocumentUpdateBody
          * @description Omitted fields keep their stored values. expires_at follows
-         *     exclude-unset semantics (review K2): omitted keeps the current
+         *     exclude-unset semantics: omitted keeps the current
          *     expiry, an EXPLICIT null clears a wrongly-entered date.
          */
         DocumentUpdateBody: {
@@ -3083,9 +3097,9 @@ export interface components {
         /**
          * ExitEligibilityOut
          * @description Advisory blocker FACTS for the up-front eligibility checklist
-         *     (P15 batch 5, U6 — the prototype's vExit() criteria rows).
+         *     (the exit-eligibility criteria rows).
          *
-         *     Least disclosure (gate 1.6): counts and booleans only — NEVER an
+         *     Least disclosure: counts and booleans only — NEVER an
          *     amount; served under members:view like every other exit read.
          *     ADVISORY only: computed WITHOUT locks; the binding verdict stays
          *     with the request/settlement locked recomputes (which also enforce
@@ -3283,7 +3297,7 @@ export interface components {
         /**
          * FeeBody
          * @description A code-owned fee type and the cash channel — the AMOUNT resolves
-         *     exclusively from P13.7 tenant configuration server-side (FM5):
+         *     exclusively from tenant configuration server-side:
          *     extra="forbid" turns a caller-supplied amount into a 422.
          */
         FeeBody: {
@@ -3308,7 +3322,7 @@ export interface components {
         };
         /**
          * FeeType
-         * @description Code-owned fee vocabulary: each member maps to the P13.7 settings
+         * @description Code-owned fee vocabulary: each member maps to the tenant-settings
          *     key its amount is resolved from (v1.1 rule 1). A caller can only
          *     ever name a type from this enum — never an amount.
          * @enum {string}
@@ -3316,7 +3330,7 @@ export interface components {
         FeeType: "registration";
         /**
          * FlowBarScaleOut
-         * @description One month's grouped-bar heights (issue #32 route (a)): integer
+         * @description One month's grouped-bar heights (route (a)): integer
          *     percentages 0..100 of the window's axis_max, computed server-side
          *     in Decimal arithmetic — the client renders scale, never math.
          */
@@ -3366,8 +3380,9 @@ export interface components {
         };
         /**
          * GuaranteeReleaseBody
-         * @description No amounts, ever (P13.14): the released amount comes from the
-         *     guarantee row; version pins the optimistic lock (gate 1.4).
+         * @description No amounts, ever: the released amount comes from the
+         *
+         *     guarantee row; version pins the optimistic lock (concurrency safety).
          */
         GuaranteeReleaseBody: {
             /** Version */
@@ -3375,12 +3390,12 @@ export interface components {
         };
         /**
          * GuaranteeSubstituteBody
-         * @description Atomic-swap request (P13.14; P14.5 scope 4). consent_reference
+         * @description Atomic-swap request (scope 4). consent_reference
          *     cites the evidence the staff attestation rests on (e.g. the signed
          *     guarantorship form) — an unreferenced substitute is refused (422)
          *     and the attestation is written onto the replacement row and as a
-         *     first-class guarantee.consent_override audit fact. The pre-P14.5
-         *     caller-asserted `consented` boolean is REMOVED (the !29 lesson):
+         *     first-class guarantee.consent_override audit fact. The pre-
+         *     caller-asserted `consented` boolean is REMOVED (the lesson):
          *     consent is never a flag a caller asserts. amount may only meet or
          *     exceed the released amount (server-derived from the guarantee row
          *     when omitted).
@@ -3466,7 +3481,7 @@ export interface components {
         };
         /**
          * KpiTrendsOut
-         * @description Per-KPI trend series (#31 batch 8, ledger (k)); each series
+         * @description Per-KPI trend series; each series
          *     follows its KPI card's parent grant (par30 <- loan_book:view,
          *     members <- members:view) and is omitted when ungranted.
          */
@@ -3478,7 +3493,7 @@ export interface components {
         };
         /**
          * LedgerLegOut
-         * @description One DR or CR leg of a posting (#31 ledger (g), audit #30 A3).
+         * @description One DR or CR leg of a posting.
          *
          *     Verbatim ledger_entries facts: the chart-of-accounts key, the side
          *     and the leg amount as a canonical decimal string — one row per leg,
@@ -3502,13 +3517,13 @@ export interface components {
         LoanClass: "normal" | "watch" | "substandard" | "doubtful" | "loss";
         /**
          * LoanInterestBasis
-         * @description Stored only: the P6 engine extension is out of scope (P13.7).
+         * @description Stored only: the P6 engine extension is out of scope.
          * @enum {string}
          */
         LoanInterestBasis: "thirty_360" | "actual_365";
         /**
          * LoanInterestMethod
-         * @description Stored only: the P6 engine extension is out of scope (P13.7).
+         * @description Stored only: the P6 engine extension is out of scope.
          * @enum {string}
          */
         LoanInterestMethod: "reducing_balance" | "flat";
@@ -3563,10 +3578,9 @@ export interface components {
          * MemberActBody
          * @description Consent/self-release body: the optimistic-lock version ONLY.
          *
-         *     extra="forbid" (gate 1.6 v1.1): there is deliberately NO field for
+         *     extra="forbid" (least disclosure v1.1): there is deliberately NO field for
          *     who consents — the principal IS the authenticated credential; a
-         *     caller-asserted identity or consent flag is a rejected design (the
-         *     !29 lesson).
+         *     caller-asserted identity or consent flag is a rejected design (the lesson).
          */
         MemberActBody: {
             /** Version */
@@ -3574,11 +3588,11 @@ export interface components {
         };
         /**
          * MemberAggregatesOut
-         * @description Advisory financial aggregates on the single-member read (#31).
+         * @description Advisory financial aggregates on the single-member read.
          *
          *     All four figures are canonical decimal strings scaled by the
          *     database (numeric(18,2)); clients render them verbatim and never
-         *     compute money (P15 blocker (a)). Advisory only: every BINDING money
+         *     compute money (no client-side money math). Advisory only: every BINDING money
          *     decision recomputes under the established row locks.
          */
         MemberAggregatesOut: {
@@ -3593,14 +3607,14 @@ export interface components {
         };
         /**
          * MemberCreateBody
-         * @description extra="forbid" (gate 1.6): unknown fields are a 422, never
-         *     silently dropped. dividend_payout (#31 ledger (c)) is typed as a
+         * @description extra="forbid" (least disclosure): unknown fields are a 422, never
+         *     silently dropped. dividend_payout is typed as a
          *     bounded STRING, deliberately not the enum: the service resolves it
          *     against the CODE-OWNED vocabulary and an unknown value surfaces as
          *     the sanitized 422 category ONLY — a pydantic enum here would echo
          *     the permitted values in FastAPI's structural 422 (least
          *     disclosure). Stored PREFERENCE only; nothing routes money by it
-         *     (batch-8 fence).
+         *     (the preference-only fence).
          */
         MemberCreateBody: {
             /** Dividend Payout */
@@ -3620,7 +3634,7 @@ export interface components {
          *     Expand-only contract: every MemberOut field is unchanged. The
          *     register LIST serves the same object per row ONLY when the request
          *     opts in with include=aggregates (one set-based statement per page,
-         *     never a per-row fan-out — gate 1.3); without the parameter list
+         *     never a per-row fan-out — scalability); without the parameter list
          *     rows stay flat.
          */
         MemberDetailOut: {
@@ -3648,7 +3662,7 @@ export interface components {
         };
         /**
          * MemberListDetailResponse
-         * @description Register page whose rows carry the advisory aggregates (#31).
+         * @description Register page whose rows carry the advisory aggregates.
          *
          *     Served ONLY when the request opts in with include=aggregates; the
          *     flat MemberListResponse stays byte-identical otherwise.
@@ -3774,12 +3788,14 @@ export interface components {
          * MoneyBody
          * @description extra="forbid": a caller-sent occurred_at (or any money field this
          *     contract does not own) is a 422, never silently ignored — the
-         *     posting date is resolved server-side (issue #12, gate 1.6).
+         *     posting date is resolved server-side (least disclosure).
          */
         MoneyBody: {
             /** Amount */
             amount: number | string;
             channel: components["schemas"]["Channel"];
+            /** External Ref */
+            external_ref?: string | null;
         };
         /** MonthlyFlowOut */
         MonthlyFlowOut: {
@@ -3819,7 +3835,7 @@ export interface components {
         };
         /**
          * OtpInvalidateResponse
-         * @description Side-effect counts only — never challenge contents (gate 1.6).
+         * @description Side-effect counts only — never challenge contents (least disclosure).
          */
         OtpInvalidateResponse: {
             /** Voided Otp Challenges */
@@ -3832,24 +3848,34 @@ export interface components {
             /** Voided Otp Challenges */
             voided_otp_challenges: number;
         };
-        /** OtpRequestBody */
+        /**
+         * OtpRequestBody
+         * @description Request a one-time password for a sign-in identifier.
+         */
         OtpRequestBody: {
             /** Email */
-            email: string;
+            email?: string | null;
+            /** Identifier */
+            identifier?: string | null;
         };
-        /** OtpVerifyBody */
+        /**
+         * OtpVerifyBody
+         * @description Verify the six-digit one-time password for a sign-in identifier.
+         */
         OtpVerifyBody: {
             /** Code */
             code: string;
             /** Email */
-            email: string;
+            email?: string | null;
+            /** Identifier */
+            identifier?: string | null;
         };
         /**
          * Par30TrendPointOut
-         * @description One PAR-30 trend point (#31 batch 8, ledger (k)): the ratio is
+         * @description One PAR-30 trend point: the ratio is
          *     RECOMPUTED from posting-history truth at the month-end cutoff
-         *     (reconstruct_month at the code-owned PAR threshold — never the
-         *     mutable snapshot columns, §1.5) and serialized verbatim
+         *     (reconstruct_month at the code-owned PAR threshold — never the mutable snapshot columns) and
+         *     serialized verbatim
          *     (str(Decimal)); pct is share-of-window-peak geometry ONLY.
          */
         Par30TrendPointOut: {
@@ -3862,7 +3888,7 @@ export interface components {
         };
         /**
          * PenaltyChargedOn
-         * @description Basis the arrears penalty is charged on (prototype Interest tab).
+         * @description Basis the arrears penalty is charged on (the Interest settings tab).
          * @enum {string}
          */
         PenaltyChargedOn: "instalment_in_arrears" | "full_outstanding";
@@ -3951,7 +3977,7 @@ export interface components {
         };
         /**
          * ProductCreateBody
-         * @description extra="forbid" (gate 1.6 v1.1, retroactive on touched code).
+         * @description extra="forbid" (least disclosure v1.1, retroactive on touched code).
          *
          *     max_digits/decimal_places on the money-rule fields mirror the
          *     backing numeric(5,2) columns (0001), so an over-precise value is a
@@ -4069,7 +4095,7 @@ export interface components {
         RecoveryCaseStatus: "open" | "irrecoverable_pending_write_off" | "disputed" | "closed_cured" | "closed_written_off" | "closed_restructured";
         /**
          * RecoveryReceiptBody
-         * @description The cash actually received and its channel (issue #21). The
+         * @description The cash actually received and its channel. The
          *     CLAIM figures — total_written_off and the receipts already
          *     recorded — are server-resolved from the write-once snapshot and
          *     the append-only loan_recoveries rows under the write-off row lock;
@@ -4180,9 +4206,9 @@ export interface components {
         };
         /**
          * RollupBackfillBody
-         * @description Deliberately empty (P13.17b): the worklist is the server's own
+         * @description Deliberately empty (.17b): the worklist is the server's own
          *     closed-but-unrolled period set — no caller-supplied period
-         *     identifiers anywhere (v1.1 rule 1 + the insider rule);
+         *     identifiers anywhere (+ the insider rule);
          *     extra="forbid" makes any smuggled field a 422.
          */
         RollupBackfillBody: Record<string, never>;
@@ -4217,7 +4243,7 @@ export interface components {
          * @description The full settings view; null means "not configured" (fallbacks
          *     documented per key in the registry). Decimals travel as strings.
          *     ``corrupt_keys`` names stored band keys that failed read-side
-         *     revalidation (degraded to null in this view, review R3) — names
+         *     revalidation (degraded to null in this view) — names
          *     only, never the corrupt payload (least disclosure).
          */
         SettingsOut: {
@@ -4355,7 +4381,8 @@ export interface components {
         };
         /**
          * ShareTransferApproveBody
-         * @description NO money fields, ever (v1.1 rule 1): every figure derives from
+         * @description NO money fields, ever: every figure derives from
+         *
          *     the persisted pending transfer; extra="forbid" -> 422.
          */
         ShareTransferApproveBody: Record<string, never>;
@@ -4400,10 +4427,9 @@ export interface components {
         };
         /**
          * ShareTransferRecordOut
-         * @description The workflow record (issue #31 (l)/(m)): the register row and
-         *     the request/rejection responses. Least disclosure: bare UUIDs (the
-         *     !66/!70 precedent — resolving them stays behind the entitled
-         *     modules), the amount as the verbatim decimal string, and NO
+         * @description The workflow record: the register row and
+         *     the request/rejection responses. Least disclosure: bare UUIDs (the / precedent — resolving them
+         *     stays behind the entitled modules), the amount as the verbatim decimal string, and NO
          *     request-time balance snapshot (the approval re-verifies it
          *     server-side; the audit rows carry the exact figures). Maker and
          *     checker attribution are nullable-never-optional server truth: a
@@ -4439,7 +4465,8 @@ export interface components {
         /**
          * ShareTransferRejectBody
          * @description Version-pinned rejection with the MANDATORY checker rationale
-         *     (the !52 F2 posture); workflow metadata only, never money.
+         *
+         *     (the F2 posture); workflow metadata only, never money.
          */
         ShareTransferRejectBody: {
             /** Reason */
@@ -4454,8 +4481,8 @@ export interface components {
         Side: "debit" | "credit";
         /**
          * SnapshotBackfillBody
-         * @description Deliberately empty (P13.17a): the month worklist, cutoffs and
-         *     batching are ALL server-resolved (v1.1 rule 1 + the insider rule —
+         * @description Deliberately empty (.17a): the month worklist, cutoffs and
+         *     batching are ALL server-resolved (+ the insider rule —
          *     no caller-supplied dates or period identifiers anywhere);
          *     extra="forbid" makes any smuggled field a 422.
          */
@@ -4530,6 +4557,8 @@ export interface components {
             created_by: string | null;
             /** Direction */
             direction: string;
+            /** External Ref */
+            external_ref: string | null;
             /** Id */
             id: string;
             /** Is Reversal */
@@ -4681,9 +4710,9 @@ export interface components {
         };
         /**
          * WorklistRowOut
-         * @description Least disclosure (addendum A5): workflow fields, days-past-due
+         * @description Least disclosure (review addendum): workflow fields, days-past-due
          *     and the classification pill only — NO balances/penalty figures;
-         *     those live behind the P10 loan-detail endpoints.
+         *     those live behind the loan-detail endpoints.
          */
         WorklistRowOut: {
             /** Assignee Id */
@@ -4709,8 +4738,8 @@ export interface components {
         };
         /**
          * WriteOffListOut
-         * @description Keyset page of the write-off committee register (issue #31
-         *     ledger (a).2 — the human-authorized read-contract expansion):
+         * @description Keyset page of the write-off committee register (the human-authorized read-contract
+         *     expansion):
          *     the same rows the by-id read serialises, live-first.
          */
         WriteOffListOut: {
@@ -4755,7 +4784,7 @@ export interface components {
         /**
          * WriteOffPostBody
          * @description Deliberately empty: every figure comes from the persisted
-         *     write-once snapshot (v1.1 rule 3); extra="forbid" -> 422 on any
+         *     write-once snapshot; extra="forbid" -> 422 on any
          *     caller-supplied field.
          */
         WriteOffPostBody: Record<string, never>;
@@ -7404,6 +7433,7 @@ export interface operations {
                 limit?: number;
                 status?: components["schemas"]["MemberStatus"] | null;
                 type?: components["schemas"]["MemberType"] | null;
+                member_no?: string | null;
                 include?: "aggregates" | null;
             };
             header?: never;
@@ -8641,6 +8671,7 @@ export interface operations {
                 channel?: components["schemas"]["Channel"] | null;
                 direction?: components["schemas"]["Side"] | null;
                 ref?: string | null;
+                search?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
                 cursor?: string | null;

@@ -1,7 +1,7 @@
 /**
  * Design tokens — extracted VERBATIM from the `:root` CSS variables of the
  * canonical prototype (`genesis_prestige_app.html`). Do not add ad-hoc
- * colors in views (MASTER_PROMPT gate 1.1); the test suite asserts these
+ * colors in views (the house doctrine reuse-first); the test suite asserts these
  * values byte-for-byte against the prototype.
  */
 export const colorTokens = {

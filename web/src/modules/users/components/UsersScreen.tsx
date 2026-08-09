@@ -1,16 +1,15 @@
 "use client";
 
 /**
- * Users administration screen (P15 — prototype Access-control "Users"
- * tab), salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238
- * (itself ported from !25 onto the P14 scaffold).
+ * Users administration screen (prototype Access-control "Users" tab), salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238
+ * (itself ported from onto the scaffold).
  *
  * Security posture (carried forward):
  * - Every rendered string (names, emails, branches) is attacker-influenced
  *   data; it renders exclusively through React text interpolation — no
  *   parser sink exists in this module (eslint-guarded + tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). 403 renders a generic
+ *   the server enforces every call (least disclosure). 403 renders a generic
  *   "Not permitted." with a correlation id and no capability hints.
  * - Keyset pagination only (opaque cursors; no page numbers/offsets).
  */
@@ -27,7 +26,7 @@ import type { User } from "../schemas";
 import { statusPill } from "./StatusPill";
 import styles from "./Users.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load on
+// Drawer-level code splitting (speed): drawer chunks load on
 // first open, not with the list route.
 const UserCreateDrawer = dynamic(
   () => import("./UserCreateDrawer").then((m) => m.UserCreateDrawer),
@@ -42,7 +41,7 @@ export const ROLES_QUERY_KEY = ["access", "roles"] as const;
 
 export function useRoles() {
   // Role names degrade gracefully on failure; the list still works and a
-  // role change would 409/422 server-side regardless (!25 finding 6).
+  // role change would 409/422 server-side regardless (finding 6).
   return useQuery({
     queryKey: ROLES_QUERY_KEY,
     queryFn: fetchRoles,

@@ -1,16 +1,16 @@
-"""Guarantorship services: pledge, consent, release, substitution (P9/P13.14).
+"""Guarantorship services: pledge, consent, release, substitution (P9/).
 
 Capacity (deposit balance minus existing pledged/active guarantees) is
 computed while holding the guarantor's deposit-account row lock, so
 concurrent pledges - and future balance-changing operations that take
 the same lock - can never over-pledge a member.
 
-P13.14 adds the per-guarantee release/substitution the prototype's
+ adds the per-guarantee release/substitution the prototype's
 Guarantors screen exposes. Lock order (the established P9 pledge
 chain — no new lock-graph edges): application/loan row -> guarantor
 member FOR SHARE -> guarantor deposit account FOR UPDATE. The member
 row in this chain is always the GUARANTOR's, so it can never form a
-cycle with the P12 settlement chain (member -> accounts -> loans),
+cycle with the settlement chain (member -> accounts -> loans),
 which locks the EXITING member's own rows: a path holding a borrower's
 application/loan never waits on locks a guarantor's settlement holds
 while that settlement waits on ours — the guarantor's own loans are
@@ -53,16 +53,16 @@ _PLEDGEABLE = frozenset(
 )
 
 #: Statuses that make a guarantee LIVE, i.e. counted against the
-#: guarantor's capacity. Single source of truth (gate 1.1) shared by
-#: live_pledged_total (the P9 pledge / P11 withdrawal enforcement
-#: path) and the P13.9 dashboard aggregates (failure mode FM5): an
+#: guarantor's capacity. Single source of truth (reuse-first) shared by
+#: live_pledged_total (the P9 pledge / withdrawal enforcement
+#: path) and the dashboard aggregates (failure mode): an
 #: aggregate filtering a different set would show members capacity the
 #: pledge endpoint then refuses.
 LIVE_GUARANTEE_STATUSES: tuple[str, str] = ("pledged", "active")
 
-#: SQL behind live_pledged_total, module-level so the P13.9 EXPLAIN
+#: SQL behind live_pledged_total, module-level so the EXPLAIN
 #: capture can assert its plan (idx_guarantees_guarantor, 0001). Every
-#: value — the status set included — is a bound parameter (v1.1 rule 6).
+#: value — the status set included — is a bound parameter.
 LIVE_PLEDGED_SQL = (
     "SELECT COALESCE(SUM(amount), 0) FROM guarantees "
     "WHERE guarantor_member_id = CAST(:g AS uuid) "
@@ -72,12 +72,12 @@ LIVE_PLEDGED_SQL = (
 
 
 def live_guarantee_params() -> dict[str, str]:
-    """Bound parameters for the LIVE status set (v1.1 rule 6)."""
+    """Bound parameters for the LIVE status set."""
     return {"live0": LIVE_GUARANTEE_STATUSES[0], "live1": LIVE_GUARANTEE_STATUSES[1]}
 
 
 #: Undisbursed stages whose product cover rule guards an active-guarantee
-#: release (P13.14): while the application is in flight, releasing
+#: release: while the application is in flight, releasing
 #: consented collateral must never drop remaining cover below the P7
 #: gate. REJECTED is terminal (its pledges are bulk-released already);
 #: DISBURSED guarantees carry loan_id and can only be substituted.
@@ -111,9 +111,9 @@ async def live_pledged_total(
     Callers must hold the guarantor's deposit-account row lock whenever
     the result feeds a capacity decision (pledging or withdrawing), so
     the computation can never interleave with a concurrent balance
-    change (gate 1.4). Shared by P9 pledging and P11 withdrawals. The
+    change (concurrency safety). Shared by P9 pledging and withdrawals. The
     explicit tenant predicate doubles the RLS fence on this money path
-    (defence in depth, gate 1.6).
+    (defence in depth, least disclosure).
     """
     value = (
         await session.execute(
@@ -131,15 +131,15 @@ async def live_pledged_total(
 async def _guarantor_available_capacity(
     session: AsyncSession, tenant_id: uuid.UUID, guarantor_member_id: uuid.UUID
 ) -> Decimal:
-    """Available pledge capacity under the P9 lock chain (gates 1.1, 1.4).
+    """Available pledge capacity under the P9 lock chain (the house gates).
 
     Takes the guarantor member row FOR SHARE (holds off a concurrent
     terminal exit until the pledge commits) and the guarantor's
-    deposit-account row FOR UPDATE (the serialisation point every
-    capacity computation shares with P11 withdrawals), then returns
+    deposit-account row FOR UPDATE (the serialisation point every capacity computation shares with
+    withdrawals), then returns
     balance minus live pledges. The single implementation behind P9
-    pledging and P13.14 substitution — a second copy of this math is a
-    rejected MR (gate 1.1). Callers compare and raise their own
+    pledging and substitution — a second copy of this math is a
+    rejected MR (reuse-first). Callers compare and raise their own
     least-disclosure error; the capacity itself is never echoed.
     """
     guarantor_row = (
@@ -147,7 +147,7 @@ async def _guarantor_available_capacity(
             # FOR SHARE holds off a concurrent terminal member exit
             # (which locks the row FOR UPDATE) until this pledge commits,
             # closing the TOCTOU window between the status check and the
-            # insert (gate 1.4).
+            # insert (concurrency safety).
             text(
                 "SELECT status FROM members WHERE id = CAST(:m AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) FOR SHARE"
@@ -159,9 +159,9 @@ async def _guarantor_available_capacity(
         raise NotFoundError(f"guarantor member {guarantor_member_id} not found")
     guarantor_status = MemberStatus(str(guarantor_row[0]))
     if not member_may(guarantor_status, MoneyOperation.PLEDGE):
-        # Code-owned capability map (P13.13 FM2): pledging is strictly
+        # Code-owned capability map: pledging is strictly
         # active-only, so arrears/dormant/exited (and any future
-        # status) are refused by construction — the !29 R2 rule.
+        # status) are refused by construction — the R2 rule.
         raise ConflictError(
             f"guarantor {guarantor_member_id} is '{guarantor_status.value}': "
             "only active members may pledge"
@@ -193,7 +193,7 @@ async def pledge_guarantee(
     guarantor_member_id: uuid.UUID,
     amount: Decimal,
 ) -> GuaranteeRecord:
-    """Pledge under the guarantor's deposit-account row lock (gate 1.4)."""
+    """Pledge under the guarantor's deposit-account row lock (concurrency safety)."""
     amount = to_cents(amount)
     if amount <= ZERO:
         raise InvalidInputError("guarantee amount must be positive")
@@ -217,7 +217,7 @@ async def pledge_guarantee(
         raise InvalidInputError("a member cannot guarantee their own loan")
     available = await _guarantor_available_capacity(session, tenant_id, guarantor_member_id)
     if amount > available:
-        # Least disclosure (gate 1.6): the available capacity derives from
+        # Least disclosure (least disclosure): the available capacity derives from
         # the guarantor's deposit balance and is never echoed to callers.
         raise ConflictError(
             f"insufficient guarantor capacity: requested {amount} exceeds available capacity"
@@ -279,13 +279,13 @@ async def pledge_guarantee(
 
 
 # ---------------------------------------------------------------------------
-# P14.5 — consent core (pledged -> active), ONE implementation
+#  — consent core (pledged -> active), ONE implementation
 # ---------------------------------------------------------------------------
 
-#: Code-owned principal fragments for the consent write (v1.1 rule 6:
+#: Code-owned principal fragments for the consent write (
 #: the fragment is chosen by the code path, never caller input; every
 #: VALUE is a bound parameter). Consent rows carry their principal at
-#: the DB level (FM4): the member path stamps the consenting
+#: the DB level: the member path stamps the consenting
 #: credential; the staff override stamps the attesting user + the
 #: cited evidence. An UPDATE carrying NEITHER is refused by the 0035
 #: guarantee_consent_requires_principal trigger.
@@ -298,8 +298,8 @@ _CONSENT_ATTESTED_FRAGMENT = (
 async def _lock_pledged_guarantee(
     session: AsyncSession, tenant_id: uuid.UUID, guarantee_id: uuid.UUID
 ) -> _GuaranteeRow:
-    """Lock the guarantee row ALONE (lock-order.md §3 single-node
-    locker — the consent posture is unchanged by P14.5) and require
+    """Lock the guarantee row ALONE (lock-order.md single-node locker — the consent posture is
+    unchanged by) and require
     the pledged state."""
     g = await _read_guarantee(session, tenant_id, guarantee_id, for_update=True)
     if g is None:
@@ -318,7 +318,7 @@ async def _activate_guarantee(
     principal_fragment: str,
     principal_params: dict[str, str],
 ) -> int:
-    """The single pledged->active write (gates 1.4, 1.5): optimistic
+    """The single pledged->active write (the house gates): optimistic
     version fence, explicit tenant predicate on top of RLS, RETURNING
     so the response version is the database's word. The principal
     fragment is one of the code-owned literals above."""
@@ -364,13 +364,13 @@ async def consent_guarantee_as_member(
     *,
     version: int,
 ) -> GuaranteeRecord:
-    """Guarantor consent as an act of the MEMBER principal (P14.5 FM2).
+    """Guarantor consent as an act of the MEMBER principal.
 
     The credential->member LINK is re-verified INSIDE this transaction
     under the guarantee row lock (live_credential_by_id — the ONE
     implementation the auth paths use), so a link revoked or re-pointed
     after token issue can never consent: the LINK, never any email,
-    decides. Least disclosure (gate 1.6): every wrong-principal shape —
+    decides. Least disclosure (least disclosure): every wrong-principal shape —
     dead link, exited member, someone else's guarantee — gets the SAME
     single refusal; the audit actor is the credential id.
     """
@@ -423,7 +423,7 @@ async def consent_guarantee_override(
     version: int,
     consent_reference: str,
 ) -> GuaranteeRecord:
-    """STAFF-ATTESTED consent override (P14.5 scope 4).
+    """STAFF-ATTESTED consent override (scope 4).
 
     Consent is the member principal's act; this path exists for the
     cases where the member cannot act (no credential yet, paper
@@ -432,8 +432,8 @@ async def consent_guarantee_override(
     applications:edit), its own audit category
     (guarantee.consent_override), a MANDATORY consent_reference citing
     the evidence, and a confirmation notification to the guarantor so
-    an attestation made in their name never goes unseen (the !29
-    substitution-consent lesson; detection control).
+    an attestation made in their name never goes unseen (the substitution-consent lesson; detection
+    control).
     """
     consent_reference = consent_reference.strip()
     if not consent_reference:
@@ -482,13 +482,13 @@ async def release_guarantees_for_loan(
     actor_id: uuid.UUID | None,
     loan_id: uuid.UUID,
 ) -> int:
-    """Release every live guarantee behind a loan (P10 closure hook)."""
+    """Release every live guarantee behind a loan (closure hook)."""
     result = cast(
         CursorResult[Any],
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 — finding 15).
+                # (defence in depth, least disclosure — finding 15).
                 "UPDATE guarantees SET status = 'released', "
                 "version = version + 1, updated_at = now() "
                 "WHERE loan_id = CAST(:lid AS uuid) "
@@ -519,7 +519,7 @@ async def release_guarantees_for_loan(
 
 
 # ---------------------------------------------------------------------------
-# P13.14 — per-guarantee release & substitution
+#  — per-guarantee release & substitution
 # ---------------------------------------------------------------------------
 
 _G_COLS = (
@@ -562,7 +562,7 @@ async def _read_guarantee(
     """Guarantee row with an explicit tenant predicate on top of RLS.
 
     The lock suffix is a code-owned literal chosen by the boolean, never
-    caller input (v1.1 rule 6).
+    caller input.
     """
     suffix = " FOR UPDATE" if for_update else ""
     row = (
@@ -581,12 +581,12 @@ async def _read_guarantee(
 async def _lock_release_anchor(
     session: AsyncSession, tenant_id: uuid.UUID, g: _GuaranteeRow
 ) -> ApplicationStage | None:
-    """Application (then loan) row FOR UPDATE — the P13.14 lock anchor.
+    """Application (then loan) row FOR UPDATE — the lock anchor.
 
     Application before loan matches the only existing path that locks
     both (P7 disbursement); no path locks a loan before its application,
     so no cycle is possible. Explicit tenant predicates on both reads
-    (gate 1.6 v1.1).
+    (least disclosure v1.1).
     """
     stage: ApplicationStage | None = None
     if g.application_id is not None:
@@ -643,7 +643,7 @@ async def _release_locked_guarantee(
     *,
     version: int,
 ) -> GuaranteeRecord:
-    """The single release write/guard/audit/outbox core (gate 1.1).
+    """The single release write/guard/audit/outbox core (reuse-first).
 
     Caller holds the anchor + guarantee row locks
     (_lock_release_target). Rules decided here, identically for both
@@ -652,17 +652,17 @@ async def _release_locked_guarantee(
         path is substitute_guarantee (atomic swap).
       * active + undisbursed application: allowed only if remaining
         cover still satisfies the product rule, re-verified AT
-        EXECUTION under the borrower's deposit-account row lock (the
-        P7 gate math via application_max_eligible — gate 1.1, no
-        forked cover logic). The release write happens first, so the
+        EXECUTION under the borrower's deposit-account row lock (the P7 gate math via
+        application_max_eligible — reuse-first, no forked cover logic). The release write happens
+        first, so the
         check sees exactly the post-release state; a failure rolls the
         whole transaction back (TOCTOU-proof).
 
     ``actor_id`` is the acting principal's id — the staff user or the
-    member CREDENTIAL (P14.5): audit_log.actor_id carries whichever
+    member CREDENTIAL: audit_log.actor_id carries whichever
     principal acted.
 
-    Least disclosure (gate 1.6): no rejection ever echoes cover,
+    Least disclosure (least disclosure): no rejection ever echoes cover,
     capacity, or pledge figures; the audit row carries the numbers.
     """
     guarantee_id = g.id
@@ -677,9 +677,9 @@ async def _release_locked_guarantee(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1). RETURNING makes the
+                # (defence in depth, least disclosure v1.1). RETURNING makes the
                 # response version the database's word, never arithmetic
-                # on caller input (review R5).
+                # on caller input.
                 "UPDATE guarantees SET status = 'released', "
                 "version = version + 1, updated_at = now() "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
@@ -726,7 +726,7 @@ async def _release_locked_guarantee(
             "amount": str(g.amount),
         },
     )
-    # Outbox notifications for BOTH sides (gates 1.2, 1.5): the
+    # Outbox notifications for BOTH sides (the house gates): the
     # guarantor learns their capacity is freed; the borrower learns
     # their cover changed.
     for notify in (g.guarantor_member_id, g.borrower_member_id):
@@ -764,10 +764,10 @@ async def release_guarantee(
     *,
     version: int,
 ) -> GuaranteeRecord:
-    """STAFF release (P13.14 rules; P14.5 actor model).
+    """STAFF release (rules; actor model).
 
-    Gated applications:edit EXACTLY at the route — the P14.5 retirement
-    of the !29 interim email-match: a guarantor acting for themselves
+    Gated applications:edit EXACTLY at the route — the retirement
+    of the interim email-match: a guarantor acting for themselves
     is a MEMBER principal on the /member route
     (release_guarantee_as_member), never a staff user with a matching
     email. Rules and side effects live in the shared core.
@@ -783,14 +783,14 @@ async def release_guarantee_as_member(
     *,
     version: int,
 ) -> GuaranteeRecord:
-    """Guarantor withdraws their OWN unconsented pledge (P14.5 FM2).
+    """Guarantor withdraws their OWN unconsented pledge.
 
     The credential->member link is re-verified INSIDE the transaction
     under the guarantee row lock (the ONE live_credential_by_id
     implementation): the LINK, never any email, decides. Scope is
     deliberately minimal — the member's own PLEDGED guarantee only;
     consented (active) collateral needs the staff paths. Least
-    disclosure (gate 1.6): every wrong-principal shape — dead link,
+    disclosure (least disclosure): every wrong-principal shape — dead link,
     someone else's guarantee, an already-consented pledge — gets the
     SAME single refusal.
     """
@@ -816,7 +816,7 @@ async def substitute_guarantee(
     consent_reference: str,
     amount: Decimal | None = None,
 ) -> tuple[GuaranteeRecord, GuaranteeRecord]:
-    """Atomic swap for a disbursed loan's collateral (P13.14, gate 1.5).
+    """Atomic swap for a disbursed loan's collateral (data integrity).
 
     Release of the old guarantee and creation of the replacement
     CONSENTED pledge happen in this single transaction; any failure
@@ -825,15 +825,15 @@ async def substitute_guarantee(
     row, never the request; a caller-supplied replacement amount may
     only meet or exceed it. Replacement capacity is verified under the
     NEW guarantor's member FOR SHARE + deposit-account FOR UPDATE locks
-    via the single P9 capacity implementation (gate 1.1). Returns
+    via the single P9 capacity implementation (reuse-first). Returns
     (released, replacement).
 
-    Consent integrity (review R1, completed by P14.5): the substitute's
+    Consent integrity (completed by): the substitute's
     consent is a STAFF-ATTESTED override — never a caller-asserted
-    boolean (the !29 lesson made structural: no `consented` field
-    exists anywhere). The attestation must cite its evidence
+    boolean (the lesson made structural: no `consented` field exists anywhere). The attestation must
+    cite its evidence
     (consent_reference, e.g. the signed guarantorship form); the
-    replacement row CARRIES the attestation columns, so the 0035 FM4
+    replacement row CARRIES the attestation columns, so the 0035
     trigger refuses an active row written without a principal; a
     dedicated guarantee.consent_override audit row records WHO attested
     on WHAT basis; and a consent-confirmation outbox notification goes
@@ -877,9 +877,9 @@ async def substitute_guarantee(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1). RETURNING makes the
+                # (defence in depth, least disclosure v1.1). RETURNING makes the
                 # response version the database's word, never arithmetic
-                # on caller input (review R5).
+                # on caller input.
                 "UPDATE guarantees SET status = 'released', "
                 "version = version + 1, updated_at = now() "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
@@ -897,7 +897,7 @@ async def substitute_guarantee(
     # amount) prices capacity against the post-release state.
     available = await _guarantor_available_capacity(session, tenant_id, guarantor_member_id)
     if replacement_amount > available:
-        # Least disclosure (gate 1.6): neither the capacity nor the
+        # Least disclosure (least disclosure): neither the capacity nor the
         # shortfall is echoed.
         raise ConflictError("insufficient guarantor capacity for the replacement pledge")
     replacement_id = uuid.uuid4()
@@ -906,8 +906,8 @@ async def substitute_guarantee(
             await session.execute(
                 text(
                     # RETURNING version: the schema default is the source
-                    # of truth for the new row's version (review R5).
-                    # The row carries the staff attestation (P14.5 FM4):
+                    # of truth for the new row's version.
+                    # The row carries the staff attestation:
                     # the 0035 trigger refuses an active INSERT without
                     # a principal, so a substitution that lost these
                     # columns would fail AT THE DATABASE.
@@ -967,11 +967,11 @@ async def substitute_guarantee(
             "status": "active",
         },
     )
-    # Review R1, completed by P14.5: the consent attestation is a
+    # completed by: the consent attestation is a
     # first-class audited fact under the OVERRIDE category — WHO
     # attested, on WHAT basis — plus a confirmation notification to
     # the substitute guarantor so an attestation made in their name
-    # never goes unseen (gates 1.5, 1.2).
+    # never goes unseen (the house gates).
     await record_audit(
         session,
         tenant_id,
@@ -1000,7 +1000,7 @@ async def substitute_guarantee(
         },
     )
     # Outbox notifications for BOTH sides of the swap plus the borrower
-    # (gates 1.2, 1.5).
+    # (the house gates).
     for notify in (g.guarantor_member_id, guarantor_member_id, g.borrower_member_id):
         await enqueue_event(
             session,

@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Permissions matrix (P15; salvaged from
- * duo/feature/p13-5-frontend-followthrough @ 198a238) — left sidebar
+ * Permissions matrix (salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238) — left sidebar
  * lists roles; selecting one loads its per-module permission bits into a
  * table of checkboxes. Checkbox toggles edit a LOCAL draft; the save
  * button flushes every dirty module as one reviewed batch of
@@ -11,10 +10,10 @@
  *
  * Security posture:
  * - Role names render through React text nodes only — no parser sink.
- * - Permission edits require access_control:edit (gate 1.6); the server
+ * - Permission edits require access_control:edit (least disclosure); the server
  *   enforces this — the UI hides the checkboxes purely as UX.
- * - Every PUT is audit-logged server-side (gate 1.5) and carries an
- *   Idempotency-Key (gate 1.4) that is stable across retries of the same
+ * - Every PUT is audit-logged server-side (data integrity) and carries an
+ *   Idempotency-Key (concurrency safety) that is stable across retries of the same
  *   role/module/bits and rotates when the bits change.
  * - Failures render the sanitized least-disclosure banner
  *   ({category, correlation_id}) — never server internals.
@@ -82,7 +81,7 @@ export function PermissionsScreen() {
 
   // One Idempotency-Key slot per role/module cell: retries of an identical
   // {role, module, bits} submission reuse the key; changed bits rotate it
-  // (gate 1.4 — the idempotencyKeyFor contract).
+  // (concurrency safety — the idempotencyKeyFor contract).
   const keySlots = useRef<Record<string, IdempotencyKeySlot>>({});
 
   // When a new role is selected or server data arrives, reset the draft
@@ -182,7 +181,7 @@ export function PermissionsScreen() {
       {/* Role sidebar */}
       <Card padded={false}>
         {/* Toggle buttons with aria-pressed — conforming semantics for a
-            single-select side list (review finding F-A6: role=listbox with
+            single-select side list (review finding: role=listbox with
             interposed <li> broke the required owned relationship). */}
         <ul className={styles.roleList} aria-label="Roles">
           {rolesQuery.isPending &&
@@ -251,7 +250,7 @@ export function PermissionsScreen() {
                       <td className={styles.matrixTd}>{MODULE_LABELS[module]}</td>
                       {ACTIONS.map((a) => (
                         <td key={a.key} className={styles.matrixTd}>
-                          {/* >=44px hit target around the 24px visual box (issue #8) */}
+                          {/* >=44px hit target around the 24px visual box */}
                           <label className={styles.checkTarget}>
                             <input
                               type="checkbox"

@@ -1,8 +1,8 @@
-"""Member credential-link administration endpoints (P14.5 FM3).
+"""Member credential-link administration endpoints.
 
 Link create/revoke are AUDITED ADMIN MUTATIONS under the dedicated
 narrow member_identity module — never self-service, never implied by
-members:edit or applications:edit (deny by default, gate 1.6).
+members:edit or applications:edit (deny by default, least disclosure).
 Re-linking an email to another member is revoke + create: two audited
 mutations, each notifying the member.
 """
@@ -35,7 +35,8 @@ IdentityEditCtx = Annotated[AuthContext, Depends(_identity_edit)]
 
 
 class CredentialCreateBody(BaseModel):
-    """extra="forbid" (gate 1.6 v1.1): the member comes from the path,
+    """extra="forbid" (least disclosure v1.1): the member comes from the path,
+
     the status from the schema default — the email is the only input."""
 
     model_config = ConfigDict(extra="forbid")
@@ -85,8 +86,8 @@ async def create_member_credential(
     body: CredentialCreateBody,
     ctx: IdentityCreateCtx,
 ) -> CredentialOut:
-    """Link a login email to a member (FM3: audited admin mutation;
-    the active-email claim is atomic — a lost race is a 409)."""
+    """Link a login email to a member (audited admin mutation; the active-email claim is atomic — a
+    lost race is a 409)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         record = await identity_service.create_credential(
@@ -105,7 +106,7 @@ async def revoke_member_credential(
     body: CredentialRevokeBody,
     ctx: IdentityEditCtx,
 ) -> CredentialOut:
-    """Revoke a credential link (FM3). The row is kept (forensic
+    """Revoke a credential link. The row is kept (forensic
     history); every live use of the credential dies at its next
     per-request or in-transaction link re-check."""
     factory = get_sessionmaker(get_settings().database_url)

@@ -1,21 +1,18 @@
 /**
- * Member exit API layer (P15 module 7 — the P12 exit & settlement API)
+ * Member exit API layer (module 7 — the exit & settlement API)
  * over the GENERATED client.
  *
  * - Keyset pagination ONLY on the register read: opaque `cursor`
  *   echoed back verbatim; no offset or page parameters exist here
- *   (gate 1.3). The single list filter the contract declares (status)
+ *   (scalability). The single list filter the contract declares (status)
  *   is a SERVER query parameter — the client never filters locally.
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the stability/rotation contract (gate 1.4). Void and settlement
- *   PIN the record version (the P12 approved-snapshot rule): any drift
+ *   the stability/rotation contract (concurrency safety). Void and settlement
+ *   PIN the record version (the approved-snapshot rule): any drift
  *   since the operator's fresh read is a 409 with NOTHING posted —
  *   rendered via the explicit reload-and-re-enter flow, never
  *   replayed.
- * - NO money parameter exists in ANY request body (P12: the exit fee
- *   comes exclusively from tenant configuration; every settlement
- *   figure is computed server-side under locks; `extra="forbid"`
- *   server-side). The only caller-chosen values in this module are
+ * - NO money parameter exists in ANY request body (the exit fee comes exclusively from tenant configuration; every settlement figure is computed server-side under locks; `extra="forbid"` server-side). The only caller-chosen values in this module are
  *   the member, the optional reason, the vote and the CASH payout
  *   channel (the contract's require_cash_channel rejects
  *   accrual/internal).
@@ -50,7 +47,7 @@ export const EXITS_PAGE_SIZE = 20;
 const exitPageSchema = keysetPageSchema(exitSchema);
 
 export interface ExitListFilters {
-  /** The ONLY filter the P12 list contract declares. */
+  /** The ONLY filter the list contract declares. */
   status: ExitStatus | "";
 }
 
@@ -144,8 +141,7 @@ export async function voidExit(
 /**
  * Atomically post the APPROVED settlement (members:approve): the
  * server re-verifies every snapshot component under the full lock set
- * — any drift since approval is a 409 with NOTHING posted (the P12
- * quote/approve/post rule). The body carries the pinned version and
+ * — any drift since approval is a 409 with NOTHING posted (the quote/approve/post rule). The body carries the pinned version and
  * the CASH payout channel ONLY.
  */
 export async function postExitSettlement(
@@ -163,9 +159,9 @@ export async function postExitSettlement(
   return settlementResultSchema.parse(data);
 }
 
-/** The canonical P12 exit-statement JSON document (members:view) —
+/** The canonical exit-statement JSON document (members:view) —
  * rendered VERBATIM; its CSV/PDF export ships via the reports module
- * (P13 blocker (k)), never duplicated here. */
+ * (blocker (k)), never duplicated here. */
 export async function fetchExitStatement(exitId: string): Promise<ExitStatement> {
   const { data, error, response } = await api.GET("/member-exits/{exit_id}/statement", {
     params: { path: { exit_id: exitId } },
@@ -176,8 +172,7 @@ export async function fetchExitStatement(exitId: string): Promise<ExitStatement>
 
 /**
  * Advisory eligibility facts BEFORE a request is submitted
- * (`GET /member-exits/eligibility/{member_id}`, members:view — P15
- * batch 5, U6). COUNTS/BOOLEANS ONLY: the contract carries no amount,
+ * (`GET /member-exits/eligibility/{member_id}`, members:view). COUNTS/BOOLEANS ONLY: the contract carries no amount,
  * so nothing returned here can ever feed fmtKes. ADVISORY: the read is
  * lock-free — the server re-verdicts every blocker under locks at
  * request time and again at settlement; the binding verdict never

@@ -1,18 +1,18 @@
 "use client";
 
 /**
- * Loan-book register (P15 module 4 — prototype `vBook`).
+ * Loan-book register (module 4 — prototype `vBook`).
  *
  * Security posture (applications/users precedent):
  * - Every rendered string (product names, ids, txn refs) is
  *   attacker-influenced data; it renders exclusively through React text
  *   interpolation — no parser sink exists in this module (gate-tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). The disbursement queue
+ *   the server enforces every call (least disclosure). The disbursement queue
  *   mounts only with loan_book:create AND applications:view (its data
  *   is the approved-applications list, consumed READ-ONLY from the
  *   applications module).
- * - Keyset pagination only (opaque cursors — gate 1.3); status and
+ * - Keyset pagination only (opaque cursors — scalability); status and
  *   classification filters are SERVER query parameters.
  * - MONEY (blocker (a)): balances, penalties and portfolio aggregates
  *   are API decimal STRINGS rendered via fmtKes or verbatim. The
@@ -50,7 +50,7 @@ import { loanClassPill, loanStatusPill } from "./pills";
 import grid from "@/modules/layout/grid.module.css";
 import styles from "./Loans.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load on
+// Drawer-level code splitting (speed): drawer chunks load on
 // first open, not with the list route.
 const LoanDetailDrawer = dynamic(
   () => import("./LoanDetailDrawer").then((m) => m.LoanDetailDrawer),
@@ -163,8 +163,7 @@ type DrawerState =
 /**
  * Approved-applications queue. A separate component so its keyset hook
  * mounts ONLY for operators holding loan_book:create AND
- * applications:view — a stripped role fetches NOTHING (the useKeysetList
- * primitive is consumed unmodified, gate 1.1).
+ * applications:view — a stripped role fetches NOTHING (the useKeysetList primitive is consumed unmodified, reuse-first).
  */
 function DisburseQueue({
   columns,
@@ -227,8 +226,8 @@ export function LoansScreen() {
       key: "member",
       header: "Member",
       render: (loan) => (
-        // The P10 list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record (!58 precedent).
+        // The list carries member_id only (no joined name) — the
+        // detail drawer resolves the member record (precedent).
         <span className={styles.mono} title={loan.member_id}>
           {loan.member_id.slice(0, 8)}
         </span>

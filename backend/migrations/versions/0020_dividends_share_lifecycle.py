@@ -1,20 +1,19 @@
-"""dividends & share lifecycle (P13.11)
+"""dividends & share lifecycle
 
 Revision ID: 0020
 Revises: 0019
 Create Date: 2026-08-01
 
-Expand-only revision backing BUILD_PROMPTS P13.11: dividend on shares
+Expand-only revision backing the build plan: dividend on shares
 and deposit rebates (declaration -> committee approval -> distribution)
 plus share transfer at exit. RLS enabled + FORCED on every new table
 with the 0001/0019 tenant_isolation policy shape (ADR-0002); DB CHECKs
-on every bound (gate 1.5); the leakage suite is extended to all four
+on every bound (data integrity); the leakage suite is extended to all four
 tables.
 
   * tenant_settings.deposit_rebate_rate_pct — the deposit-rebate rate
-    the declaration reads (P13.7 pattern: nullable column, DB CHECK
-    mirroring the registry bounds; the settings API stays the single
-    legitimate writer, v1.1 rule 1). A tenant that pays no rebate
+    the declaration reads (pattern: nullable column, DB CHECK mirroring the registry bounds; the
+    settings API stays the single legitimate writer). A tenant that pays no rebate
     configures 0.00 explicitly — a missing key fails the declaration
     CLOSED (never a defaulted rate).
 
@@ -36,29 +35,29 @@ tables.
     WRITE-ONCE on its snapshot columns from the moment it is created
     (fy period, rates, count, bases, totals, requested_by): the
     committee approved THOSE figures, so any later mutation — even
-    manual SQL through the app role — must fail loudly (P13.11
-    failure mode 4; the 0017 role-rename trigger precedent). Status
+    manual SQL through the app role — must fail loudly (failure mode 4; the 0017 role-rename trigger
+    precedent). Status
     workflow columns (status, decided_at, distributed_at, version,
     updated_at) stay writable for the declared -> approved ->
     distributed transitions.
 
   * dividend_distributions — the per-(member, declaration) idempotency
-    CLAIM (v1.1 rule 5, the 0008/0019 precedent): the UNIQUE key is
+    CLAIM (the 0008/0019 precedent): the UNIQUE key is
     the database-level guarantee that a member is paid at most once
     per declaration; it doubles as the index behind the distribution
-    scan's NOT EXISTS anti-join (gate 1.3 — index ships with its
-    query). The row records the reconstructed bases, both rates and
+    scan's NOT EXISTS anti-join (scalability — index ships with its query). The row records the
+    reconstructed bases, both rates and
     both amounts verbatim, so every posted shilling is reconstructable
     after any config change. total_amount > 0: zero-entitlement
-    members are SKIPPED, never 0.00-posted (P13.11 failure mode 5 —
-    no noise rows). transaction_id is filled in the same transaction
+    members are SKIPPED, never 0.00-posted (failure mode 5 — no noise rows). transaction_id is
+    filled in the same transaction
     as the claim (claim + posting + audit are one atomic unit); it is
     nullable only because the claim insert precedes the posting inside
     that transaction.
 
   * idx_dividend_distributions_page — keyset page for the dividend &
     rebate schedule report (tenant_id, declaration_id, created_at,
-    id), shipped with the report query (gate 1.3).
+    id), shipped with the report query (scalability).
 
   * share_transfers — the transfer-at-exit record: transferor,
     transferee (self-transfer unrepresentable by CHECK), amount > 0,

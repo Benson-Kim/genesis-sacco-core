@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Loan products panel (P15 — prototype Settings "Loan products" tab):
+ * Loan products panel (prototype Settings "Loan products" tab):
  * product sidebar + optimistic-locked rule editing.
  *
  * Security posture:
@@ -9,14 +9,14 @@
  *   renders through React text interpolation — no parser sink.
  * - rate_pct / deposit_multiplier render VERBATIM and are submitted as
  *   decimal strings — the client never coerces or computes them
- *   (P15 blocker (a)).
+ *   .
  * - Rule changes and activation flips are money-adjacent: both flow
- *   through ConfirmDangerModal's typed confirmation (Phase B blocker
+ *   through ConfirmDangerModal's typed confirmation (blocker
  *   (f)); every mutation carries an actor-scoped Idempotency-Key and
  *   the loaded `version` — 409 renders the shared ConflictBanner's
  *   explicit reload-and-re-enter flow (never a silent overwrite).
  * - Affordances follow the P4 matrix (settings:create/edit) as pure
- *   UX; the API enforces every call (gate 1.6).
+ *   UX; the API enforces every call (least disclosure).
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,7 +37,7 @@ import { productRulesFormSchema, type Product } from "../schemas";
 import grid from "@/modules/layout/grid.module.css";
 import styles from "./Products.module.css";
 
-// Drawer-level code splitting (Phase B speed): the create drawer loads
+// Drawer-level code splitting (speed): the create drawer loads
 // on first open, not with the settings route.
 const ProductCreateDrawer = dynamic(
   () => import("./ProductCreateDrawer").then((m) => m.ProductCreateDrawer),

@@ -1,19 +1,19 @@
-"""Member KYC application services: profiles & documents (P13.12).
+"""Member KYC application services: profiles & documents.
 
-Persists the prototype's type-specific registration data (GAP_ANALYSIS
-§2.3): one profile row per member (per-type JSONB validated by
+Persists the prototype's type-specific registration data (the recorded gap
+analysis): one profile row per member (per-type JSONB validated by
 domain/member_kyc.py, DB-CHECKed by 0018), the member category, the
 DPA-2019 consent timestamp, and the per-type document checklist as
 metadata rows. Binary document content is deferred behind the storage
-decision in ADR-0003 — metadata-only is the recorded P13.12 fallback.
+decision in ADR-0003 — metadata-only is the recorded fallback.
 
-Reuse (gate 1.1): member lookups go through the P8 members service;
+Reuse (reuse-first): member lookups go through the P8 members service;
 audit rows through the shared record_audit writer; creation claims are
 INSERT ... ON CONFLICT DO NOTHING checked by rowcount (v1.1 rule 5);
 edits are optimistic-locked single-statement UPDATEs surfacing 409 on
-stale versions (gate 1.4); listings are keyset-paginated (gate 1.3).
+stale versions (concurrency safety); listings are keyset-paginated (scalability).
 No outbox events: KYC changes have no notification consumer — there is
-no side-effect to dispatch (the P13.6 precedent; gate 1.2 concerns
+no side-effect to dispatch (the branches-registry precedent; reliability concerns
 delivery, not mutation).
 
 Consent immutability & TOCTOU: consent is granted inside the same
@@ -23,13 +23,13 @@ stale writer gets 409, so there is no check-then-set window. The 0018
 trigger is the DB backstop: not even raw SQL can rewrite or delete a
 captured consent.
 
-PII discipline (gate 1.6): KYC fields are returned only through routes
+PII discipline (least disclosure): KYC fields are returned only through routes
 gated by members:view; they never appear in error messages (validation
 errors carry field locations and types only) or logs (handlers log
 sanitized categories). Audit before/after payloads DO carry the exact
 values — that is the trail — and are disclosed by the audit-log viewer
 only to roles holding members:view (ENTITY_MODULES redaction,
-P13.5 precedent). Document access is audited like exports (P13
+the admin-audit precedent). Document access is audited like exports (P13
 blocker f): every checklist read writes an in-transaction audit row
 recording who accessed which member's documents — and the profile
 body, the platform's highest-value PII read (ID numbers, KRA PINs,
@@ -41,15 +41,15 @@ browse endpoints means audit_log grows with READ traffic, not just
 mutations — a polling admin UI multiplies rows per (actor, member)
 unboundedly. Accepted for now: DPA-2019 traceability of PII reads
 outweighs the storage cost, audit_log is append-only and cheap to
-write, and no consumer scans it unindexed. Recorded follow-up (P13.12
-MR follow-ups list): an audit_log retention/partitioning policy with
+write, and no consumer scans it unindexed. Recorded follow-up (the
+follow-ups list): an audit_log retention/partitioning policy with
 per-(actor, member, day) aggregation for *.access rows before the
 row count becomes operationally significant.
 
 Lock ordering: these paths take NO explicit row locks — every write is
 a single version-guarded UPDATE or an atomic-claim INSERT on leaf
 tables outside the P12 settlement chain (member -> deposit account ->
-loans) and the P13.5 admin-set chain, so they cannot participate in a
+loans) and the admin-set chain, so they cannot participate in a
 lock cycle.
 
 All reads AND writes carry explicit bound tenant_id predicates on top
@@ -72,6 +72,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application import members as members_service
 from genesis.application.audit import record_audit
+from genesis.application.pagination import decode_cursor, encode_cursor
 from genesis.domain.member_kyc import (
     DocumentStatus,
     DocumentTypeError,
@@ -83,6 +84,10 @@ from genesis.domain.member_kyc import (
 )
 from genesis.domain.members import MemberType
 from genesis.errors import ConflictError, NotFoundError, UnprocessableError
+
+#: Cursor scope id: signed cursors are bound to this
+#: endpoint and this tenant - no cross-scope replay (tenant isolation).
+DOCUMENTS_LIST_SCOPE = "member_kyc.documents"
 
 
 class Unset(enum.Enum):
@@ -150,7 +155,7 @@ def profile_lookup_sql() -> str:
 
 def documents_page_sql(*, with_cursor: bool) -> str:
     """Documents checklist page, keyset on doc_type within one member
-    (gate 1.3), served by uq_member_documents_checklist (0018 — the
+    (scalability), served by uq_member_documents_checklist (0018 — the
     claim constraint's index IS the listing index). Fragments are
     static literals chosen in code; every value is a bound parameter
     (v1.1 rule 6)."""
@@ -259,7 +264,7 @@ async def create_profile(
 
     The payload is validated against the MEMBER ROW's type — the type
     is never caller-supplied — and a mismatch surfaces as 422 with no
-    echoed values (gate 1.6). The (tenant_id, member_id) claim is
+    echoed values (least disclosure). The (tenant_id, member_id) claim is
     atomic (v1.1 rule 5). Consent, when given, is timestamped by the
     database at capture; the 0018 trigger makes it immutable from then
     on.
@@ -471,7 +476,7 @@ async def list_documents(
     read writes an in-transaction audit row capturing who accessed
     which member's documents (the export-download precedent, P13
     blocker f). doc_type is unique per member, so it doubles as the
-    cursor and every page is one scan of the claim index (gate 1.3).
+    cursor and every page is one scan of the claim index (scalability).
     """
     await members_service.get_member(session, tenant_id, member_id)
     limit = max(1, min(limit, 100))
@@ -481,12 +486,20 @@ async def list_documents(
         "limit": limit + 1,
     }
     if cursor:
-        params["cursor"] = cursor
+        # Opaque signed cursor: verify+unseal before
+        # the keyset predicate; the plaintext doc_type is unchanged.
+        params["cursor"] = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=DOCUMENTS_LIST_SCOPE, entity="document"
+        )
     rows = (
         await session.execute(text(documents_page_sql(with_cursor=cursor is not None)), params)
     ).all()
     items = [_row_to_document(r) for r in rows[:limit]]
-    next_cursor = items[-1].doc_type if len(rows) > limit and items else None
+    next_cursor = None
+    if len(rows) > limit and items:
+        next_cursor = encode_cursor(
+            items[-1].doc_type, tenant_id=tenant_id, endpoint=DOCUMENTS_LIST_SCOPE
+        )
     await record_audit(
         session,
         tenant_id,
@@ -539,7 +552,7 @@ async def update_document(
 ) -> DocumentRecord:
     """Optimistic-locked status/expiry update; stale versions surface 409.
 
-    Status moves through the domain transition map only (gate 1.4).
+    Status moves through the domain transition map only (concurrency safety).
     Omitted fields keep their current values; an EXPLICIT null expiry
     CLEARS a wrongly-entered date (review K2) — UNSET keeps, None
     clears, a date sets.

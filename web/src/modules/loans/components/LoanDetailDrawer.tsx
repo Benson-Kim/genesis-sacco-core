@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Loan detail drawer (P15 module 4 — prototype `vBook` drawer): terms,
+ * Loan detail drawer (module 4 — prototype `vBook` drawer): terms,
  * balances, repayment schedule, early settlement quote and repayment
  * recording.
  *
@@ -20,8 +20,7 @@
  *   flow — never a silent overwrite, never an auto-retry.
  * - The repayment affordance follows the P4 matrix: the API guards
  *   POST /loans/{id}/repayments with transactions:create, so the form
- *   mounts only with that grant AND only on an ACTIVE loan (the UI
- *   never offers what the API forbids — gate 1.6).
+ *   mounts only with that grant AND only on an ACTIVE loan (the UI never offers what the API forbids — least disclosure).
  */
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -75,7 +74,7 @@ export function LoanDetailDrawer({
   const [quoteRequested, setQuoteRequested] = useState(false);
   const [notice, setNotice] = useState<string>("");
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
-  // Per-posting intent counter (W59-3, the !61 T2 class): bumped on every
+  // Per-posting intent counter (W59-3, the T2 class): bumped on every
   // SUCCESSFUL posting so a teller re-entering an IDENTICAL repayment
   // (routine — e.g. two equal instalment payments the same day) is a NEW
   // posting intent with a NEW key. Stability across retries of one
@@ -120,7 +119,7 @@ export function LoanDetailDrawer({
         input,
         idempotencyKeyFor(
           keySlot.current,
-          // Key material = intent + FRESHNESS (W59-2, the !60 F3 class):
+          // Key material = intent + FRESHNESS (W59-2, the F3 class):
           // the version of the fresh (staleTime 0) loan read anchors the
           // key to the record state the operator acted on — stable
           // across pure retries, rotated when the entry changes OR when
@@ -194,8 +193,8 @@ export function LoanDetailDrawer({
     void queryClient.refetchQueries({ queryKey: ["loans", "schedule", loanId] });
     repay.reset();
     setNotice("Record reloaded — re-check the loan before acting again.");
-    // Every async outcome is announced (issue #8): the post-conflict
-    // reload is an outcome, not a success (W59-4, the !60 F5 class).
+    // Every async outcome is announced: the post-conflict
+    // reload is an outcome, not a success (W59-4, the F5 class).
     announce("Record reloaded after the conflict — re-check the loan.");
   }
 
@@ -234,7 +233,7 @@ export function LoanDetailDrawer({
       dismissOnOverlay={false}
     >
       {/* Informational, NOT success styling: the notice reports a
-          post-conflict reload (W59-4, the !60 F5 class). */}
+          post-conflict reload (W59-4, the F5 class). */}
       {notice !== "" && <Banner variant="info">{notice}</Banner>}
       <div className={styles.detailGrid}>
         <Kv label="Member">
@@ -292,7 +291,7 @@ export function LoanDetailDrawer({
         </div>
       )}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={repay.error} onReload={reloadRecord} />
       {repay.isError && !conflict && !renderedInline && <ErrorBanner error={repay.error} />}
 

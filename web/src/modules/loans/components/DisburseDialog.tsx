@@ -1,18 +1,16 @@
 "use client";
 
 /**
- * Disbursement dialog (P15 module 4 — the MONEY-MOVEMENT surface !58
- * deferred to this batch): funds a committee-APPROVED application via
+ * Disbursement dialog (module 4 — the MONEY-MOVEMENT surface deferred to this batch): funds a committee-APPROVED application via
  * `POST /applications/{id}/disburse` (the P7 atomic contract,
  * loan_book:create).
  *
  * - The dialog fetches the application FRESH (record class, staleTime
  *   0) and offers the action ONLY while the stage is `approved` — the
- *   UI never offers what the API forbids (gate 1.6). The committee
- *   decision is the approval step (P9 maker-checker voting, !58); the
+ *   UI never offers what the API forbids (least disclosure). The committee
+ *   decision is the approval step (P9 maker-checker voting); the
  *   disburse contract now ALSO enforces user-level SoD server-side
- *   (issue #30): neither the application's initiator (created_by,
- *   !66/0036) nor its committee recommender (recommended_by, 0037) can
+ *   neither the application's initiator (created_by, /0036) nor its committee recommender (recommended_by, 0037) can
  *   post the disbursement — both are 403. The guard here remains the
  *   typed confirmation + the server's stage transition; the 403 renders
  *   through the shared ErrorBanner.
@@ -98,7 +96,7 @@ export function DisburseDialog({
         chosen,
         idempotencyKeyFor(
           keySlot.current,
-          // Key material = intent + FRESHNESS (W59-2, the !60 F3 class):
+          // Key material = intent + FRESHNESS (W59-2, the F3 class):
           // the version of the fresh (staleTime 0) application read
           // anchors the key to the record state the operator acted on.
           // Pure retries of one intent keep the key STABLE; a changed
@@ -162,8 +160,8 @@ export function DisburseDialog({
     void queryClient.invalidateQueries({ queryKey: ["applications", "list"] });
     disburse.reset();
     setNotice("Record reloaded — re-check the application stage before acting again.");
-    // Every async outcome is announced (issue #8): the post-conflict
-    // reload is an outcome, not a success (W59-4, the !60 F5 class).
+    // Every async outcome is announced: the post-conflict
+    // reload is an outcome, not a success (W59-4, the F5 class).
     announce("Record reloaded after the conflict — re-check the application stage.");
   }
 
@@ -181,7 +179,7 @@ export function DisburseDialog({
   return (
     <Modal title="Disburse loan" onClose={onClose} closeDisabled={disburse.isPending} variant="dialog">
       {/* Informational, NOT success styling: the notice reports a
-          post-conflict reload (W59-4, the !60 F5 class). */}
+          post-conflict reload (W59-4, the F5 class). */}
       {notice !== "" && <Banner variant="info">{notice}</Banner>}
       <div className={styles.detailGrid}>
         <Kv label="Member">
@@ -202,7 +200,7 @@ export function DisburseDialog({
         <Kv label="Stage">{app.stage}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={disburse.error} onReload={reloadRecord} />
       {disburse.isError && !conflict && <ErrorBanner error={disburse.error} />}
 

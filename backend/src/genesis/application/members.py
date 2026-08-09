@@ -1,12 +1,12 @@
-"""Members application services (P8, gates 1.1-1.6).
+"""Members application services .
 
 Numbering reuses the P7 advisory-lock + per-tenant sequence + UNIQUE
-pattern (gate 1.1): txn_ref_sequences keyed by the 'GP-' prefix. Member
+pattern (reuse-first): txn_ref_sequences keyed by the 'GP-' prefix. Member
 creation opens the share and deposit accounts in the same transaction
-(gate 1.5); the welcome notification goes through the transactional
-outbox only (gate 1.2). Edits and status changes are optimistic-locked
-and surface 409 on stale versions (gate 1.4). List and statement reads
-use keyset pagination so every page is one indexed query (gate 1.3).
+(data integrity); the welcome notification goes through the transactional
+outbox only (reliability). Edits and status changes are optimistic-locked
+and surface 409 on stale versions (concurrency safety). List and statement reads
+use keyset pagination so every page is one indexed query (scalability).
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from genesis.application.guarantees import live_guarantee_params
 from genesis.application.ledger import _ADVISORY_NS, _advisory_key
 from genesis.application.outbox import enqueue_event
+from genesis.application.pagination import decode_cursor, encode_cursor
 from genesis.domain.lending import LoanStatus
 from genesis.domain.members import (
     MEMBER_NO_PREFIX,
@@ -33,9 +34,34 @@ from genesis.domain.members import (
     MemberStatus,
     MemberType,
     format_member_no,
+    normalize_kenya_msisdn,
     transition,
 )
 from genesis.errors import ConflictError, InvalidInputError, NotFoundError, UnprocessableError
+
+#: Cursor scope ids: every signed cursor is bound to ONE
+#: endpoint — the two shapes of GET /members (plain / aggregates) share
+#: one scope because they share one endpoint and one keyset.
+MEMBERS_LIST_SCOPE = "members.list"
+STATEMENT_SCOPE = "members.statement"
+
+
+def parse_phone(raw: str | None) -> str | None:
+    """Normalize a caller-supplied phone to E.164 storage.
+
+    None stays None (phone is optional). An invalid value surfaces as
+    422 via UnprocessableError with the sanitized category ONLY — the
+    offending identifier is NEVER echoed or logged (least disclosure; the
+    parse_dividend_payout precedent, and exactly why this validation
+    lives here rather than in a Pydantic field: FastAPI's structural
+    422 would echo the input back).
+    """
+    if raw is None:
+        return None
+    normalized = normalize_kenya_msisdn(raw)
+    if normalized is None:
+        raise UnprocessableError("invalid phone format")
+    return normalized
 
 
 @dataclass(frozen=True)
@@ -48,15 +74,15 @@ class MemberRecord:
     email: str | None
     status: MemberStatus
     version: int
-    #: Branch attribution (#31 ledger (j).2): the 0016 nullable FK
-    #: written ONLY by the batch-4 assignment route (PUT
-    #: /branches/{id}/members/{member_id}) and the P13.6 service it
+    #: Branch attribution: the 0016 nullable FK
+    #: written ONLY by the assignment route (PUT
+    #: /branches/{id}/members/{member_id}) and the registry service it
     #: calls — never invented here. NULL is the honest "unassigned"
     #: state every member starts in (expand-only read fact).
     branch_id: uuid.UUID | None
-    #: Stored dividend payout PREFERENCE (#31 ledger (c)); NULL is the
-    #: honest "not chosen" state. Preference ONLY — the P13.11
-    #: distribution engine does not consume it (batch-8 fence).
+    #: Stored dividend payout PREFERENCE; NULL is the
+    #: honest "not chosen" state. Preference ONLY — the
+    #: distribution engine does not consume it (the preference-only fence).
     dividend_payout: DividendPayout | None
 
 
@@ -95,7 +121,7 @@ class StatementPage:
 
 @dataclass(frozen=True)
 class MemberAggregates:
-    """Per-member financial aggregates for the single-member read (#31).
+    """Per-member financial aggregates for the single-member read.
 
     deposits_total, shares_total read the balance columns the P11
     account services maintain under the account row locks (one row per
@@ -115,9 +141,9 @@ class MemberAggregates:
 
 
 #: SQL behind member_aggregates, module-level so the EXPLAIN capture
-#: can assert its plan (the P13.9 convention). One SELECT of four
+#: can assert its plan (the EXPLAIN-capture convention). One SELECT of four
 #: scalar subqueries, each carrying an explicit tenant predicate that
-#: doubles the RLS fence (gate 1.6); every value is a bound parameter
+#: doubles the RLS fence (least disclosure); every value is a bound parameter
 #: (v1.1 rule 6). Each subquery is servable by an index that shipped
 #: with its table in 0001: the deposit/share (tenant_id, member_id)
 #: UNIQUE-key probes, idx_loans_member, idx_guarantees_guarantor —
@@ -125,7 +151,7 @@ class MemberAggregates:
 #: empty-SUM zero to column scale so a zero-activity member serializes
 #: '0.00', never bare '0'.
 MEMBER_AGGREGATES_SQL = (
-    # Columns carry explicit AS labels (#31 remediation N2): the read
+    # Columns carry explicit AS labels: the read
     # path maps them BY NAME, so a reordered or widened SELECT list
     # can never silently misalign a money figure.
     "SELECT "
@@ -148,9 +174,9 @@ MEMBER_AGGREGATES_SQL = (
 
 #: SQL template behind list_members, module-level so the EXPLAIN gate
 #: (tests/test_member_no_numeric_order.py) asserts the exact production
-#: statement (the P13.9 convention). Ordering is NUMERIC-aware for the
+#: statement (the EXPLAIN-capture convention). Ordering is NUMERIC-aware for the
 #: fixed domain member_no format 'GP-' + zero-padded sequence of AT
-#: LEAST four digits (senior review N1): as bare TEXT,
+#: LEAST four digits (review-hardened): as bare TEXT,
 #: 'GP-10000' < 'GP-9999', so past 9,999 members a lexicographic order
 #: is wrong and its keyset walk skips/duplicates rows.
 #: (length(member_no), member_no) IS the numeric order for this format
@@ -159,7 +185,7 @@ MEMBER_AGGREGATES_SQL = (
 #: row-value predicate in _member_list_clauses walks it exhaustively
 #: across the 4->5 digit boundary. Served by the 0041 expression index
 #: (tenant_id, length(member_no), member_no), shipped with this query
-#: (gate 1.3); the EXPLAIN gate proves the plan carries NO Sort node.
+#: (scalability); the EXPLAIN gate proves the plan carries NO Sort node.
 #: The {where} slot only ever receives the static clause literals from
 #: _member_list_clauses; every value is a bound parameter (v1.1 rule 6).
 MEMBER_LIST_SQL = (
@@ -170,27 +196,27 @@ MEMBER_LIST_SQL = (
 )
 
 
-#: SQL template behind list_members_with_aggregates (#31 batch 3
-#: review — the authorized LIST expansion), module-level so the EXPLAIN
-#: capture can assert its plan (the P13.9 convention). ONE set-based
+#: SQL template behind list_members_with_aggregates (the
+#: authorized LIST expansion), module-level so the EXPLAIN
+#: capture can assert its plan (the EXPLAIN-capture convention). ONE set-based
 #: statement per page: the keyset members page is the driving relation
 #: and each row LEFT JOIN LATERALs onto the four aggregate probes, so
 #: page rows and their figures come from a single snapshot (no
 #: two-statement skew) and there is NO per-row round trip. Every
 #: relation carries an explicit tenant predicate doubling the RLS
-#: fence (gate 1.6); every value is a bound parameter (v1.1 rule 6);
+#: fence (least disclosure); every value is a bound parameter (v1.1 rule 6);
 #: the {where} slot only ever receives the static clause literals
 #: assembled in _member_list_clauses below. Each probe is servable by
 #: an index that shipped with its table in 0001: the deposit/share
 #: (tenant_id, member_id) UNIQUE-key probes, idx_loans_member,
 #: idx_guarantees_guarantor, and the driving keyset rides the 0041
 #: expression index (tenant_id, length(member_no), member_no) — the
-#: NUMERIC member_no order (senior review N1; see MEMBER_LIST_SQL for
+#: NUMERIC member_no order (see MEMBER_LIST_SQL for
 #: the derivation). The CAST normalises the empty aggregate to column
 #: scale so zero-activity rows serialize '0.00', never bare '0'.
 MEMBER_LIST_AGGREGATES_SQL = (
-    # Aggregate columns carry explicit AS labels (#31 remediation N2):
-    # the read path maps BY NAME, so a widened SELECT list (e.g. !79's
+    # Aggregate columns carry explicit AS labels:
+    # the read path maps BY NAME, so a widened SELECT list (e.g.
     # dividend_payout) can never silently misalign a money figure.
     "SELECT m.id, m.member_no, m.type, m.name, m.phone, m.email, m.status, m.version, "
     "m.branch_id, m.dividend_payout, "
@@ -222,11 +248,11 @@ async def member_aggregates(
     Every BINDING money decision (pledge capacity, exit settlement)
     recomputes its figures under the established row locks; these
     aggregates only inform the register's member drawer. Least
-    disclosure (gate 1.6): served only by the members:view route, the
+    disclosure (least disclosure): served only by the members:view route, the
     response carries the four amounts and nothing else, and no
     rejection path echoes them.
     """
-    # Named column access (#31 remediation N2): a widened SELECT list
+    # Named column access: a widened SELECT list
     # can never silently misalign a money figure.
     result = await session.execute(
         text(MEMBER_AGGREGATES_SQL),
@@ -247,11 +273,11 @@ async def member_aggregates(
 
 
 def _row_to_record(row: RowMapping) -> MemberRecord:
-    """Build a MemberRecord by COLUMN NAME (#31 remediation N2).
+    """Build a MemberRecord by COLUMN NAME.
 
     Positional indexes silently misalign whenever a column joins the
-    SELECT list — batch 7 had to shift them for branch_id and !79
-    shifts them again for dividend_payout. Named access makes an added
+    SELECT list — past widenings shifted them, and new columns
+    shift them again. Named access makes an added
     column a no-op here and a missing one a LOUD KeyError, so a money
     aggregate can never be read from the wrong slot. Callers pass
     .mappings() rows (behaviour-identical: every existing member suite
@@ -277,11 +303,11 @@ def _row_to_record(row: RowMapping) -> MemberRecord:
 
 def parse_dividend_payout(raw: str | None) -> DividendPayout | None:
     """Resolve a caller-supplied preference against the CODE-OWNED
-    vocabulary (#31 ledger (c)).
+    vocabulary.
 
     An unknown value surfaces as 422 via UnprocessableError — the
     client receives the sanitized category ONLY: the vocabulary is
-    never echoed (least disclosure, gate 1.6 — the P13.12 precedent;
+    never echoed (least disclosure — the established precedent;
     this is exactly why the API body types the field as a bounded
     string, not the enum: FastAPI's structural 422 would enumerate the
     permitted values). None stays None — the honest "not chosen".
@@ -295,7 +321,7 @@ def parse_dividend_payout(raw: str | None) -> DividendPayout | None:
 
 
 async def _next_member_no(session: AsyncSession, tenant_id: uuid.UUID) -> str:
-    """Race-safe GP-XXXX allocation reusing the P7 pattern (gate 1.4).
+    """Race-safe GP-XXXX allocation reusing the P7 pattern (concurrency safety).
 
     pg_advisory_xact_lock serialises allocators per tenant+prefix; the
     monotonic upsert hands out the next value; UNIQUE (tenant_id,
@@ -363,13 +389,17 @@ async def create_member(
 
     Numbering is serialised by an advisory lock; the UNIQUE constraint is
     the final safety net and surfaces as 409 so the client retries with a
-    fresh request (gate 1.4). Welcome notification is outbox-only
-    (gate 1.2). The dividend payout PREFERENCE (#31 ledger (c))
+    fresh request (concurrency safety). Welcome notification is outbox-only
+    (reliability). The dividend payout PREFERENCE
     resolves against the code-owned vocabulary — an unknown value is a
     422 BEFORE any row is written; omitted stays NULL, the honest
     "not chosen" state (never a backfilled default).
     """
     payout = parse_dividend_payout(dividend_payout)
+    # E.164 storage normalization on write: every accepted
+    # spelling stores the same +254… string; invalid input is a
+    # sanitized 422 BEFORE any row is written.
+    phone = parse_phone(phone)
     member_no = await _next_member_no(session, tenant_id)
     member_id = uuid.uuid4()
     try:
@@ -419,7 +449,7 @@ async def create_member(
             "name": name,
             "status": MemberStatus.ACTIVE.value,
             # The stored preference is part of the mutation's audit
-            # truth (#31 ledger (c)); None records the honest
+            # truth; None records the honest
             # "not chosen" state.
             "dividend_payout": payout.value if payout is not None else None,
         },
@@ -439,7 +469,7 @@ async def create_member(
         email=email,
         status=MemberStatus.ACTIVE,
         version=1,
-        # Every member starts unassigned; only the batch-4 assignment
+        # Every member starts unassigned; only the assignment
         # route writes the 0016 column (attribution never invented).
         branch_id=None,
         dividend_payout=payout,
@@ -450,7 +480,7 @@ async def get_member(
     session: AsyncSession, tenant_id: uuid.UUID, member_id: uuid.UUID
 ) -> MemberRecord:
     # Explicit tenant predicate on top of RLS (defence in depth,
-    # gate 1.6 v1.1; issue #17).
+    # tenant scoping).
     result = await session.execute(
         text(
             "SELECT id, member_no, type, name, phone, email, status, version, "
@@ -472,6 +502,7 @@ def _member_list_clauses(
     limit: int,
     status: MemberStatus | None,
     member_type: MemberType | None,
+    member_no: str | None = None,
     col: str = "",
 ) -> tuple[list[str], dict[str, object]]:
     """Shared keyset WHERE builder for the members register page.
@@ -480,11 +511,20 @@ def _member_list_clauses(
     bound parameter, so string assembly is injection-safe. `col`
     prefixes the column references (the aggregates variant qualifies
     them with the driving-relation alias).
+
+    member_no (the posting-drawer lookup) is an
+    EXACT-match probe served by the 0001 UNIQUE (tenant_id, member_no)
+    key — no new index, no new statement; an unknown number yields an
+    empty page (200, zero rows — no existence oracle beyond what the
+    members:view grant already discloses).
     """
     clauses: list[str] = [f"{col}tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
+    if member_no is not None:
+        clauses.append(f"{col}member_no = :member_no")
+        params["member_no"] = member_no
     if cursor:
-        # Senior review N1: the NUMERIC row-value keyset for the fixed
+        # The NUMERIC row-value keyset for the fixed
         # 'GP-' + zero-padded-digits format (see MEMBER_LIST_SQL) — a
         # bare text comparison would skip every 5-digit member_no when
         # resuming from a 4-digit cursor. length() runs on the BOUND
@@ -508,30 +548,48 @@ async def list_members(
     limit: int = 20,
     status: MemberStatus | None = None,
     member_type: MemberType | None = None,
+    member_no: str | None = None,
 ) -> MemberPage:
-    """Keyset-paginated listing in NUMERIC member_no order (gate 1.3).
+    """Keyset-paginated listing in NUMERIC member_no order (scalability).
 
-    member_no is monotonic per tenant NUMERICALLY (senior review N1):
+    member_no is monotonic per tenant NUMERICALLY:
     the (length(member_no), member_no) order in MEMBER_LIST_SQL is the
     numeric order for the fixed 'GP-' + zero-padded-digits format, and
     the served member_no doubles as a stable cursor. Exactly one
     indexed query per page regardless of table size (the 0041
-    expression index).
+    expression index). The optional member_no EXACT-match probe (the
+    posting-drawer lookup) rides the 0001 UNIQUE
+    (tenant_id, member_no) key.
     """
     limit = max(1, min(limit, 100))
+    # Opaque signed cursor: verify+unseal BEFORE the
+    # keyset predicate; the plaintext member_no keyset is unchanged.
+    if cursor:
+        cursor = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=MEMBERS_LIST_SCOPE, entity="member"
+        )
     clauses, params = _member_list_clauses(
-        tenant_id, cursor=cursor, limit=limit, status=status, member_type=member_type
+        tenant_id,
+        cursor=cursor,
+        limit=limit,
+        status=status,
+        member_type=member_type,
+        member_no=member_no,
     )
     # The {where} slot only ever receives the static clause literals
     # from _member_list_clauses; every value is a bound parameter.
-    # Named row access (#31 remediation N2) via .mappings().
+    # Named row access via .mappings().
     result = await session.execute(
         text(MEMBER_LIST_SQL.format(where=" AND ".join(clauses))),
         params,
     )
     rows = result.mappings().all()
     items = [_row_to_record(r) for r in rows[:limit]]
-    next_cursor = items[-1].member_no if len(rows) > limit and items else None
+    next_cursor = None
+    if len(rows) > limit and items:
+        next_cursor = encode_cursor(
+            items[-1].member_no, tenant_id=tenant_id, endpoint=MEMBERS_LIST_SCOPE
+        )
     return MemberPage(items=items, next_cursor=next_cursor)
 
 
@@ -543,29 +601,42 @@ async def list_members_with_aggregates(
     limit: int = 20,
     status: MemberStatus | None = None,
     member_type: MemberType | None = None,
+    member_no: str | None = None,
 ) -> MemberAggregatesPage:
-    """Register page WITH the four advisory aggregates (#31 batch 3 review).
+    """Register page WITH the four advisory aggregates.
 
     ONE set-based statement per page (MEMBER_LIST_AGGREGATES_SQL): the
     keyset members page drives, LEFT JOIN LATERAL supplies the four
     probes, so page rows and their figures come from a single snapshot
-    and there is never a per-row round trip (gate 1.3). Read-only
+    and there is never a per-row round trip (scalability). Read-only
     advisory figures, NO row locks — every BINDING money decision
     (pledge capacity, exit settlement) recomputes its deposits, shares,
     loans, guarantees figures under the established row locks. Least
-    disclosure (gate 1.6): served only by the members:view route and no
+    disclosure (least disclosure): served only by the members:view route and no
     rejection path echoes an amount.
     """
     limit = max(1, min(limit, 100))
+    # Opaque signed cursor: same scope as the plain
+    # shape — one endpoint, one keyset, interchangeable positions.
+    if cursor:
+        cursor = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=MEMBERS_LIST_SCOPE, entity="member"
+        )
     clauses, params = _member_list_clauses(
-        tenant_id, cursor=cursor, limit=limit, status=status, member_type=member_type, col="m."
+        tenant_id,
+        cursor=cursor,
+        limit=limit,
+        status=status,
+        member_type=member_type,
+        member_no=member_no,
+        col="m.",
     )
     params["loan_active"] = LoanStatus.ACTIVE.value
     params.update(live_guarantee_params())
     # The {where} slot only ever receives the static clause literals
     # from _member_list_clauses; every value is a bound parameter.
-    # Named row access (#31 remediation N2): the four money aggregates
-    # are read by their AS labels, so a widened SELECT list (!79's
+    # Named row access: the four money aggregates
+    # are read by their AS labels, so a widened SELECT list (e.g.
     # dividend_payout) can never silently shift them.
     result = await session.execute(
         text(MEMBER_LIST_AGGREGATES_SQL.format(where=" AND ".join(clauses))),
@@ -585,7 +656,11 @@ async def list_members_with_aggregates(
         )
         for row in page_rows
     ]
-    next_cursor = items[-1].record.member_no if len(rows) > limit and items else None
+    next_cursor = None
+    if len(rows) > limit and items:
+        next_cursor = encode_cursor(
+            items[-1].record.member_no, tenant_id=tenant_id, endpoint=MEMBERS_LIST_SCOPE
+        )
     return MemberAggregatesPage(items=items, next_cursor=next_cursor)
 
 
@@ -601,18 +676,21 @@ async def update_member(
     email: str | None = None,
     dividend_payout: str | None = None,
 ) -> MemberRecord:
-    """Optimistic-locked edit; a stale version surfaces as 409 (gate 1.4).
+    """Optimistic-locked edit; a stale version surfaces as 409 (concurrency safety).
 
     Omitted fields keep their current values; clearing a field is a
     deliberate follow-up feature, not an accidental null overwrite.
-    The dividend payout PREFERENCE (#31 ledger (c)) updates ONLY
+    The dividend payout PREFERENCE updates ONLY
     through this versioned optimistic-lock path — an unknown value is
     a 422 BEFORE the compare-and-swap; a stale version is a 409.
     """
     payout = parse_dividend_payout(dividend_payout)
     current = await get_member(session, tenant_id, member_id)
     new_name = name if name is not None else current.name
-    new_phone = phone if phone is not None else current.phone
+    # E.164 normalization on write; an untouched field
+    # keeps its stored value (legacy formats are read-tolerated — the
+    # 0042 backfill migrates them; clearing stays a follow-up feature).
+    new_phone = parse_phone(phone) if phone is not None else current.phone
     new_email = email if email is not None else current.email
     new_payout = payout if payout is not None else current.dividend_payout
     result = cast(
@@ -620,7 +698,7 @@ async def update_member(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1; issue #17).
+                # (defence in depth).
                 "UPDATE members SET name = :name, phone = :phone, email = :email, "
                 "dividend_payout = :payout, "
                 "version = version + 1, updated_at = now() "
@@ -673,7 +751,7 @@ async def update_member(
         status=current.status,
         version=current.version + 1,
         # The profile edit never touches branch attribution (the
-        # batch-4 assignment route is the sole writer of the column).
+        # assignment route is the sole writer of the column).
         branch_id=current.branch_id,
         dividend_payout=new_payout,
     )
@@ -688,11 +766,11 @@ async def change_member_status(
     version: int,
     new_status: MemberStatus,
 ) -> MemberRecord:
-    """Transition member status under a row lock (gate 1.4).
+    """Transition member status under a row lock (concurrency safety).
 
     The pure transition function validates the move; the version check
     surfaces 409 on stale edits; the change is audited and announced via
-    the outbox (gates 1.2, 1.5).
+    the outbox (the house gates).
     """
     row = (
         await session.execute(
@@ -708,7 +786,7 @@ async def change_member_status(
     current_status = MemberStatus(str(row[0]))
     if new_status is MemberStatus.EXITED:
         # P12: the settlement workflow (application/member_exits.py) is
-        # the sole writer of the terminal state (issue #14 resolution).
+        # the sole writer of the terminal state (the documented resolution).
         # Direct status changes can never bypass eligibility, committee
         # approval, and the atomic settlement posting.
         raise ConflictError(
@@ -716,7 +794,7 @@ async def change_member_status(
             "not by direct status change"
         )
     if new_status is MemberStatus.DORMANT:
-        # P13.13: the nightly dormancy job (application/dormancy.py) is
+        # The nightly dormancy job (application/dormancy.py) is
         # the sole writer of the dormant state — it derives inactivity
         # from the ledger (v1.1 rule 2); a manual flag would let staff
         # park an account outside its real activity window.
@@ -725,7 +803,7 @@ async def change_member_status(
             "not by direct status change"
         )
     if current_status is MemberStatus.DORMANT:
-        # P13.13: reactivation happens automatically inside the deposit
+        # Reactivation happens automatically inside the deposit
         # transaction (with its own audit row and member notification —
         # the insider-fraud detection control) or terminally via the
         # P12 exit workflow; never by a bare status edit.
@@ -742,7 +820,7 @@ async def change_member_status(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6).
+                # (defence in depth).
                 "UPDATE members SET status = :st, version = version + 1, updated_at = now() "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
                 "AND version = :ver"
@@ -787,7 +865,7 @@ async def mark_member_exited(
     Runs inside the settlement transaction while the caller already
     holds the member row FOR UPDATE (re-acquiring it here is a no-op in
     the same transaction). The pure transition function validates the
-    move (gate 1.4); the blockers query is defence in depth — by the
+    move (concurrency safety); the blockers query is defence in depth — by the
     time the settlement service calls this, it has already netted the
     loans and released the guarantees under the full lock set, so any
     hit means a logic error upstream, not a user-facing state.
@@ -878,17 +956,17 @@ async def reactivate_dormant_member(
     *,
     txn_ref: str,
 ) -> None:
-    """Dormant -> Active, called ONLY inside the deposit transaction (P13.13).
+    """Dormant -> Active, called ONLY inside the deposit transaction.
 
     The caller (application/transactions.record_deposit) already holds
     the member row FOR UPDATE, so this status write can never race the
     dormancy job (which locks the same row SKIP LOCKED) — exactly one
     final state. The pure transition function validates the move (gate
     1.4); the audit row and the outbox notification TO THE MEMBER
-    commit atomically with the deposit posting (gates 1.2/1.5). The
+    commit atomically with the deposit posting (the house gates). The
     notification is the insider-fraud detection control: a fraudster
     reactivating a dormant account to drain it leaves a trace the
-    victim sees — removing this enqueue fails the P13.13 outbox-count
+    victim sees — removing this enqueue fails the outbox-count
     test.
 
     Version note: the row was read FOR UPDATE by the caller in THIS
@@ -903,7 +981,7 @@ async def reactivate_dormant_member(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1; issue #17).
+                # (defence in depth).
                 "UPDATE members SET status = :st, version = version + 1, updated_at = now() "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
                 "AND status = :from_st"
@@ -952,7 +1030,7 @@ async def member_statement(
     cursor: str | None = None,
     limit: int = 20,
 ) -> StatementPage:
-    """Keyset-paginated member statement, newest first (gate 1.3).
+    """Keyset-paginated member statement, newest first (scalability).
 
     Mirrors the prototype statement columns (date, ref, type, channel,
     amount). The cursor is '<occurred_at ISO>|<txn id>' so every page is
@@ -970,6 +1048,12 @@ async def member_statement(
     }
     keyset = ""
     if cursor:
+        # Opaque signed cursor: verify+unseal first;
+        # the inner '<occurred_at ISO>|<txn id>' parse stays as
+        # defense-in-depth on the plaintext.
+        cursor = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=STATEMENT_SCOPE, entity="statement"
+        )
         ts_raw, _, id_raw = cursor.partition("|")
         try:
             params["c_ts"] = datetime.fromisoformat(ts_raw)
@@ -1006,5 +1090,7 @@ async def member_statement(
     next_cursor = None
     if len(rows) > limit and page_rows:
         last = page_rows[-1]
-        next_cursor = f"{last[0].isoformat()}|{last[1]}"
+        next_cursor = encode_cursor(
+            f"{last[0].isoformat()}|{last[1]}", tenant_id=tenant_id, endpoint=STATEMENT_SCOPE
+        )
     return StatementPage(items=items, next_cursor=next_cursor)

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Deposit-interest run dialog (P15 module 6 — the P11 quarterly
+ * Deposit-interest run dialog (the P11 quarterly
  * accrual's operations catch-up route, `POST /jobs/deposit-interest`,
  * transactions:edit).
  *
@@ -11,14 +11,14 @@
  *   period is resolved server-side in strict quarter order (v1.1 rule
  *   1) — no rate, no period, no as-of can even be sent. Re-running a
  *   fully accrued tenant is an idempotent server-side no-op.
- * - Money-adjacent write: typed ConfirmDangerModal (!60 F7), ONE
+ * - Money-adjacent write: typed ConfirmDangerModal, ONE
  *   idempotent write (`retry: 0`, pending short-circuit), SPENT
  *   affordance (the result panel replaces the action; a fresh dialog
  *   is a new intent with a new key slot).
  * - A 409 here is a CREATE-style conflict (unconfigured tenant rate or
  *   no fully elapsed quarter) — there is no record version to reload
  *   and re-enter, so it renders the least-disclosure ErrorBanner with
- *   an operator note, not the ConflictBanner (!56 F-B4 precedent).
+ *   an operator note, not the ConflictBanner.
  *   Nothing is retried or replayed either way.
  * - Every result figure (period, rate, counts, total interest) is the
  *   SERVER's, rendered verbatim (blocker (a)).
@@ -41,7 +41,7 @@ export function InterestRunDialog({ onClose }: Readonly<{ onClose: () => void }>
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<InterestRun | null>(null);
-  // Freshness component (review T3, the !60 F3 class): a 409 here means
+  // Freshness component: a 409 here means
   // the run was structurally rejected (rate unconfigured / quarter not
   // elapsed) — once the operator fixes the cause and retries in the
   // SAME dialog, that retry is a NEW intent and must not be served a
@@ -85,7 +85,7 @@ export function InterestRunDialog({ onClose }: Readonly<{ onClose: () => void }>
       // W56-3: a stray overlay click must never silently discard the armed
       // money-write flow (typed confirmation + conflict-epoch state) —
       // dismissal is the explicit ✕ or Escape. (This module predates the
-      // !62 W56-3 sweep; convention completed here.)
+      // focus-dismissal sweep; convention completed here.)
       dismissOnOverlay={false}
     >
       {run.isError && <ErrorBanner error={run.error} />}

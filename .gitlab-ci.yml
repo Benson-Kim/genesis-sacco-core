@@ -227,6 +227,7 @@ backend:test:
     - cat backend/perf/explain_remediation_n1.txt || true
     - cat backend/perf/explain_batch8.txt || true
     - cat backend/perf/explain_batch10.txt || true
+    - cat backend/perf/explain_signin_phone.txt || true
   coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always

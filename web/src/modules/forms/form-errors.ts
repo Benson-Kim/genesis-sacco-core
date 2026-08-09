@@ -1,11 +1,11 @@
 /**
- * Field-error resolution for forms (P15 Phase B — one copy, gate 1.1):
+ * Field-error resolution for forms (one copy, reuse-first):
  * merges client-side Zod validation issues and server-side 422 messages
  * (ApiError.fields, parsed least-disclosure by toApiError) into a single
  * field → message map for FormField.
  *
  * Server messages WIN over client messages for the same field: the API
- * is the enforcer (gate 1.6) and its verdict supersedes the local guess.
+ * is the enforcer (least disclosure) and its verdict supersedes the local guess.
  */
 import { ApiError } from "@genesis/api-client";
 import type { ZodError } from "zod";

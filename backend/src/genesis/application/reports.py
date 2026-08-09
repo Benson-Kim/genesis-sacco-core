@@ -1,23 +1,23 @@
-"""Report definitions and queries for P13 exports (gates 1.3, 1.5, 1.6).
+"""Report definitions and queries for exports (the house gates).
 
-Each report declares its columns (with per-column PII entitlement,
-P13 blocker e), its permitted filters, and a builder that binds the
+Each report declares its columns (with per-column PII entitlement, blocker e), its permitted
+filters, and a builder that binds the
 report query to a session/tenant/filter set. The export engine
 (genesis.application.exports.run_export) drives every report through
-keyset batches with a hard server-side row cap (P13 blocker d) —
+keyset batches with a hard server-side row cap (blocker d) —
 never OFFSET in SQL, never an unbounded scan. Aggregate reports
 (trial balance, NPL trend, exit statement) have cardinality bounded
 by construction (chart-of-accounts size / configured month count /
 one document) and are computed once, then paged from memory.
 
 Every read carries an explicit bound tenant_id predicate on top of
-forced RLS (P13 blocker c; gate 1.6 v1.1). Money figures are computed
+forced RLS (blocker c; least disclosure v1.1). Money figures are computed
 from the append-only ledger or server-maintained balances — never from
-request input (P13 blocker a).
+request input (blocker a).
 
-The SQL builder functions are module-level so the P13 EXPLAIN test
+The SQL builder functions are module-level so the EXPLAIN test
 captures plans for the exact statements this module executes
-(P13 blocker j).
+(blocker j).
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ class ReportColumn:
 
 @dataclass(frozen=True)
 class ExportFilters:
-    """The only caller-suppliable report scope (P13 blocker a).
+    """The only caller-suppliable report scope (blocker a).
 
     Ids and date ranges narrow WHICH rows a caller may read (further
     gated by RequirePermission + RLS + tenant predicates); money, cost,
@@ -174,7 +174,7 @@ class ReportDefinition:
 
 
 def validate_filters(definition: ReportDefinition, filters: ExportFilters) -> None:
-    """Reject scopes the report does not define (least surprise, gate 1.6)."""
+    """Reject scopes the report does not define (least surprise, least disclosure)."""
     provided = filters.provided_keys()
     unknown = provided - definition.allowed_filters
     if unknown:
@@ -203,7 +203,7 @@ async def assert_scope_exists(
     """Fail fast (404) when a scoped filter targets a missing row.
 
     Both lookups carry explicit tenant predicates inside the reused
-    services (get_member / the P12 get_exit), so a foreign tenant's id
+    services (get_member / the get_exit), so a foreign tenant's id
     is indistinguishable from a missing one (least disclosure).
     """
     if report is ReportName.MEMBER_STATEMENT and filters.member_id is not None:
@@ -220,7 +220,7 @@ def _memory_query(
     """Page an already-computed, cardinality-bounded row list.
 
     In-memory slicing only — this is NOT SQL OFFSET pagination
-    (P13 blocker d): the underlying statements ran exactly once with
+    (blocker d): the underlying statements ran exactly once with
     bounded output (accounts / configured months / one document).
     """
 
@@ -244,7 +244,7 @@ def _memory_query(
 
 
 def member_statement_page_sql(*, with_from: bool, with_to: bool, with_cursor: bool) -> str:
-    """Keyset page of one member's transactions, oldest first (gate 1.3).
+    """Keyset page of one member's transactions, oldest first (scalability).
 
     Served by idx_txns_member_keyset (tenant_id, member_id,
     occurred_at DESC, id DESC; 0008) scanned backwards. Static
@@ -272,12 +272,12 @@ def member_statement_opening_sql(*, with_from: bool) -> str:
     """Opening-balance aggregate: activity before the statement window.
 
     Grouped by (type, is_reversal) so the signed direction is applied
-    via the P11 domain single source of truth (member_direction) in
+    via the domain single source of truth (member_direction) in
     Python — the DR/CR convention is never duplicated in SQL. Since
-    P13.17(b) this delegates to period_rollups.member_movement_sql
+    (b) this delegates to period_rollups.member_movement_sql
     (byte-identical output for these configurations), the SAME
     statement the DSA-5 rollup writer and the anchored opening run —
-    no dual-maintained math (gate 1.1).
+    no dual-maintained math (reuse-first).
     """
     return member_movement_sql(with_from=with_from, with_start=False)
 
@@ -295,9 +295,9 @@ async def _build_member_statement(
 
     opening = ZERO
     if filters.date_from is not None:
-        # P13.17(b) / DSA-5: anchored on the member's latest rolled
-        # period when one exists (delta scan only), else the P13
-        # full-history scan — same figures either way (FM2 equality
+        # (b) / DSA-5: anchored on the member's latest rolled
+        # period when one exists (delta scan only), else the
+        # full-history scan — same figures either way (equality
         # gate, tests/test_p1317_period_rollups.py).
         opening = await member_balance_before(
             session,
@@ -312,8 +312,8 @@ async def _build_member_statement(
         "mid": str(member_id),
         "as_of": as_of,
     }
-    # UTC period contract (the !40 R3 convention, extended to the
-    # statement window in P13.17b): bind explicit UTC midnights — a
+    # UTC period contract (the R3 convention, extended to the
+    # statement window in.17b): bind explicit UTC midnights — a
     # bare date is promoted to midnight of the SESSION TimeZone, which
     # would shift the window (and the anchored opening's boundary)
     # under any non-UTC session. Identical output under UTC sessions.
@@ -341,7 +341,7 @@ async def _build_member_statement(
         return (raw[4], str(raw[0]))
 
     # Running balance is sequential state across batches: opening +
-    # sum(credits) - sum(debits) under the P11 member_direction
+    # sum(credits) - sum(debits) under the member_direction
     # convention (single source of truth for the DR/CR pill; the
     # prototype's static demo rows are illustrative, not a formula).
     running = opening
@@ -373,9 +373,9 @@ async def _build_member_statement(
 # ---------------------------------------------------------------------------
 
 #: Full-scan aggregate over the append-only ledger as of the export
-#: instant. Since P13.17(b) the builder reads TRIAL_BALANCE_ROLLUP_SQL
+#: instant. Since (b) the builder reads TRIAL_BALANCE_ROLLUP_SQL
 #: (closed rollups + live remainder); this statement is RETAINED as the
-#: reconstruction ORACLE the FM2 equality gate compares against
+#: reconstruction ORACLE the equality gate compares against
 #: (tests/test_p1317_period_rollups.py) — it is the pre-existing math,
 #: unchanged. Bounded by the chart-of-accounts cardinality. Served by
 #: idx_ledger_account (tenant_id, account, created_at; 0001) with the
@@ -398,8 +398,8 @@ async def _build_trial_balance(
     filters: ExportFilters,
     as_of: datetime,
 ) -> ReportQuery:
-    """Closed rollups + live remainder (P13.17b / DSA-2): equal to the
-    full scan to the cent (FM2 merge gate) — the live CTE covers every
+    """Closed rollups + live remainder (.17b / DSA-2): equal to the
+    full scan to the cent (merge gate) — the live CTE covers every
     posting not inside a rolled closed period, so tenants without
     closed periods render exactly as before."""
     raw = (
@@ -411,10 +411,10 @@ async def _build_trial_balance(
     total_debits = ZERO
     total_credits = ZERO
     for account, debits_raw, credits_raw in raw:
-        # Canonical cents (P13.17b): a zero coming from the rolled CTE
+        # Canonical cents (.17b): a zero coming from the rolled CTE
         # is numeric '0.00' while the live CTE's integer COALESCE is
         # '0' — quantizing makes the rendered artifact byte-identical
-        # whichever path served an account (values unchanged; the FM2
+        # whichever path served an account (values unchanged; the
         # equality tests compare the full rendered document).
         debits = to_cents(Decimal(str(debits_raw)))
         credits = to_cents(Decimal(str(credits_raw)))
@@ -431,7 +431,7 @@ async def _build_trial_balance(
 
 
 def loan_book_page_sql(*, with_cursor: bool) -> str:
-    """Keyset page over the loan book, newest first (gate 1.3).
+    """Keyset page over the loan book, newest first (scalability).
 
     Served by idx_loans_created_keyset (0007); the member join runs on
     the members primary key. Static fragments chosen in code.
@@ -498,7 +498,7 @@ async def _build_loan_book(
 
 
 def disbursement_collections_page_sql(*, with_from: bool, with_to: bool, with_cursor: bool) -> str:
-    """Keyset page over disbursement/repayment transactions (gate 1.3).
+    """Keyset page over disbursement/repayment transactions (scalability).
 
     Served by idx_txns_type_occurred (0013, shipped with this query).
     Type values travel as bound parameters, never interpolated.
@@ -565,9 +565,9 @@ async def _build_disbursement_collections(
 # ---------------------------------------------------------------------------
 
 #: The month reconstruction (NPL_TREND_MONTH_SQL) and the month-end
-#: walk moved to application/portfolio_reconstruction.py in P13.17a —
+#: walk moved to application/portfolio_reconstruction.py in.17a —
 #: the single source of truth shared with the DSA-1 snapshot writer
-#: (gate 1.1: the math is never dual-maintained).
+#: (reuse-first: the math is never dual-maintained).
 
 
 async def _build_npl_trend(
@@ -576,13 +576,13 @@ async def _build_npl_trend(
     filters: ExportFilters,
     as_of: datetime,
 ) -> ReportQuery:
-    """Snapshots + current month only (P13.17a / DSA-1).
+    """Snapshots + current month only (.17a / DSA-1).
 
     Fully elapsed months are served from portfolio_month_snapshots —
     written once at close_period or by the backfill job with the SAME
     reconstruction statement this builder used to run per month, so
-    the rendered figures are unchanged to the cent (FM1 equality
-    property, tests/test_p1317_portfolio_snapshots.py). A month whose
+    the rendered figures are unchanged to the cent (equality property,
+    tests/test_p1317_portfolio_snapshots.py). A month whose
     snapshot does not exist yet (backfill not run, period never
     closed) falls back to the reconstruction — identical output,
     documented cost. Only the current, incomplete month is always
@@ -634,7 +634,7 @@ async def _build_npl_trend(
 
 
 # ---------------------------------------------------------------------------
-# Member exit statement (issue #16)
+# Member exit statement
 # ---------------------------------------------------------------------------
 
 
@@ -647,8 +647,8 @@ async def _build_member_exit_statement(
     exit_id = filters.exit_id
     if exit_id is None:  # pragma: no cover - validate_filters refuses this
         raise InvalidInputError("member_exit_statement requires exit_id")
-    # The P12 JSON statement service stays the canonical data source
-    # (issue #16): the export renders the same document verbatim.
+    # The JSON statement service stays the canonical data source
+    # the export renders the same document verbatim.
     doc = await exits_service.exit_statement(session, tenant_id, exit_id)
     row: tuple[Cell, ...] = (
         str(doc.exit_id),
@@ -672,12 +672,12 @@ async def _build_member_exit_statement(
 
 
 # ---------------------------------------------------------------------------
-# Dividend & rebate schedule (P13.11 / P13.10 catalogue entry)
+# Dividend & rebate schedule (/ catalogue entry)
 # ---------------------------------------------------------------------------
 
 
 def dividend_schedule_page_sql(*, with_cursor: bool) -> str:
-    """Keyset page over one declaration's distribution claims (gate 1.3).
+    """Keyset page over one declaration's distribution claims (scalability).
 
     Served by idx_dividend_distributions_page (tenant_id,
     declaration_id, created_at, id; 0020 — shipped with this query);
@@ -748,7 +748,7 @@ async def _build_dividend_rebate_schedule(
             Decimal(str(raw[8])),
             Decimal(str(raw[9])),
             str(raw[10]) if raw[10] is not None else None,
-            # Disposition (issue #19 P3): 'paid' or 'unclaimed' — the
+            # Disposition (P3): 'paid' or 'unclaimed' — the
             # report is part of the unclaimed-payable alert surface.
             str(raw[11]),
         )
@@ -757,12 +757,12 @@ async def _build_dividend_rebate_schedule(
 
 
 # ---------------------------------------------------------------------------
-# Portfolio-at-risk aging (P13.10)
+# Portfolio-at-risk aging
 # ---------------------------------------------------------------------------
 
 #: PAR aging buckets over WHOLE-DAY days-past-due (Postgres date
 #: subtraction yields integer days). "current" is its OWN bucket
-#: (!40 review R1): a loan with NO unmet installment at the cutoff
+#: a loan with NO unmet installment at the cutoff
 #: has dpd 0 and is performing — lumping it into an arrears bucket
 #: would make the PAR>0 / PAR30 ratios underivable from the report
 #: (SASRA, WOCCU PEARLS P1 and CGAP all report current separately).
@@ -784,22 +784,22 @@ PAR_BUCKET_LABELS: tuple[str, ...] = (
 )
 
 #: One as-of snapshot of the loan book bucketed by days past due,
-#: reconstructed ENTIRELY from the append-only record (v1.1 rule 2 —
+#: reconstructed ENTIRELY from the append-only record (
 #: the NPL-trend method; never loans.balance / days_past_due /
 #: classification, which are mutable state):
 #:   * outstanding principal per loan = disbursed principal minus the
 #:     loans.receivable credit legs of its repayments up to as-of
-#:     (apportioned per repayment row — see the CTE comment, R4);
+#:     (apportioned per repayment row — see the CTE comment);
 #:   * days past due = as-of date minus the earliest installment whose
 #:     cumulative schedule due exceeds the cash repaid by as-of.
 #: Loans closed on or before as-of are excluded (terminal postings
-#: zeroed them). written_off stays OUT of the buckets — the P13.15/!46
+#: zeroed them). written_off stays OUT of the buckets — the /
 #: write-off flow derecognises the receivable (CR loans.receivable),
 #: so the claim is no longer portfolio outstanding — but the excluded
-#: exposure is DISCLOSED as an explicit memo row (the !40 correction
+#: exposure is DISCLOSED as an explicit memo row (the correction
 #: note, 3646076743): written-off exposure must never silently vanish
 #: from the report; recoveries against it are tracked as income
-#: (issue #21) and never resurrect the receivable.
+#:  and never resurrect the receivable.
 #: Cardinality bounded by construction: at most 6 bucket rows.
 PAR_AGING_SQL = """
 WITH paid AS (
@@ -810,7 +810,7 @@ WITH paid AS (
     GROUP BY r.loan_id
 ),
 principal_paid AS (
-    -- Principal attribution WITHOUT join fan-out (!40 review R4):
+    -- Principal attribution WITHOUT join fan-out (review-hardened):
     -- repayments.transaction_id carries NO DB-level UNIQUE (0001
     -- ships only the FK; 0014 only a NON-unique index), so joining
     -- ledger legs to repayments on transaction_id alone would
@@ -885,7 +885,7 @@ ORDER BY 1
 #: The written-off disclosure behind the PAR memo row: count and total
 #: of committee-approved write-offs POSTED on or before as-of, read
 #: from the write-once loan_write_offs snapshot (append-only record,
-#: v1.1 rule 2 — total_written_off is the claim derecognised at
+#:  — total_written_off is the claim derecognised at
 #: posting time; recoveries are income and never reduce it). The
 #: bucket predicate excludes on the loans row's CURRENT status (a
 #: write-off posted after as-of hides the loan from a historical
@@ -918,7 +918,7 @@ async def _build_par_aging(
                 "tid": str(tenant_id),
                 "as_of": as_of,
                 "d_date": as_of.astimezone(UTC).date(),
-                # Identifier from the code-owned chart (v1.1 rule 6).
+                # Identifier from the code-owned chart.
                 "receivable_account": Account.LOANS_RECEIVABLE.value,
             },
         )
@@ -932,7 +932,7 @@ async def _build_par_aging(
     for index, label in enumerate(PAR_BUCKET_LABELS):
         loans, outstanding = by_bucket.get(index, (0, ZERO))
         buckets.append((label, loans, to_cents(outstanding)))
-    # '% of Portfolio' must FOOT (!40 review R2): rounding every
+    # '% of Portfolio' must FOOT: rounding every
     # bucket share independently with to_cents can print a column
     # summing to 99.99/100.01 against a TOTAL row of 100.00 (three
     # equal buckets -> 33.33 * 3 = 99.99). Largest-remainder
@@ -963,7 +963,7 @@ async def _build_par_aging(
             Decimal("100.00") if total_outstanding > ZERO else Decimal("0.00"),
         )
     )
-    # Written-off disclosure (the !40 correction note): the exposure
+    # Written-off disclosure (the correction note): the exposure
     # the bucket predicate excludes, as an explicit MEMO row after
     # TOTAL — count + the derecognised claim from the write-once
     # snapshot. It deliberately does NOT foot into TOTAL or the
@@ -988,15 +988,15 @@ async def _build_par_aging(
 
 
 # ---------------------------------------------------------------------------
-# Membership register (P13.10)
+# Membership register
 # ---------------------------------------------------------------------------
 
 
 def membership_register_page_sql(*, with_cursor: bool) -> str:
-    """Keyset page over the members register, admission order (gate 1.3).
+    """Keyset page over the members register, admission order (scalability).
 
     Served by idx_members_register_keyset (tenant_id, created_at, id;
-    0023 — shipped with this query). Renders the FULL post-!32 status
+    0023 — shipped with this query). Renders the FULL current status
     vocabulary (active/arrears/dormant/exited) verbatim from the
     status column. Static fragments chosen in code; all values are
     bound parameters.
@@ -1019,7 +1019,7 @@ async def _build_membership_register(
 ) -> ReportQuery:
     """As-of semantics: members admitted up to the snapshot as-of, in
     (created_at, id) keyset order; the snapshot transaction guarantees
-    one consistent register (P13 blocker h)."""
+    one consistent register (blocker h)."""
 
     async def fetch(cursor: ReportCursor | None, limit: int) -> list[Any]:
         params: dict[str, object] = {"tid": str(tenant_id), "as_of": as_of, "limit": limit}
@@ -1047,14 +1047,14 @@ async def _build_membership_register(
 
 
 # ---------------------------------------------------------------------------
-# Income statement (P13.10)
+# Income statement
 # ---------------------------------------------------------------------------
 
 
 #: account_activity_sql moved VERBATIM to
-#: application/period_rollups.py in P13.17(b) — the single aggregate
+#: application/period_rollups.py in (b) — the single aggregate
 #: behind the income statement, the SASRA return AND the close_period
-#: account rollups (gate 1.1) — and is imported above.
+#: account rollups (reuse-first) — and is imported above.
 
 
 async def _account_activity(
@@ -1065,7 +1065,7 @@ async def _account_activity(
 ) -> dict[str, tuple[Decimal, Decimal]]:
     """(debits, credits) per account string over the filter period."""
     params: dict[str, object] = {"tid": str(tenant_id), "as_of": as_of}
-    # UTC period contract (!40 review R3): date_from/date_to are UTC
+    # UTC period contract: date_from/date_to are UTC
     # calendar dates. Bind explicit UTC datetimes — a bare Python date
     # compared against occurred_at (timestamptz) is promoted by
     # Postgres to midnight of the SESSION TimeZone, so the period
@@ -1107,7 +1107,7 @@ async def _build_income_statement(
     filters: ExportFilters,
     as_of: datetime,
 ) -> ReportQuery:
-    """P&L grouping over the income/expense chart accounts (P13.10).
+    """P&L grouping over the income/expense chart accounts.
 
     Period semantics (explicit, documented): date_from/date_to are
     INCLUSIVE calendar dates evaluated against transactions.occurred_at
@@ -1120,7 +1120,7 @@ async def _build_income_statement(
     accounts on the OPPOSITE sides, so credits-minus-debits (income) /
     debits-minus-credits (expense) nets original and reversal exactly.
 
-    Fail-loud coverage (gate 1.5): every account with activity must be
+    Fail-loud coverage (data integrity): every account with activity must be
     covered by the code-owned ACCOUNT_CLASS map; an unknown account
     raises (the export job is marked failed) instead of silently
     dropping a P&L line.
@@ -1151,7 +1151,7 @@ async def _build_income_statement(
 
 
 # ---------------------------------------------------------------------------
-# SASRA return skeleton (P13.10)
+# SASRA return skeleton
 # ---------------------------------------------------------------------------
 
 
@@ -1161,14 +1161,14 @@ async def _build_sasra_return(
     filters: ExportFilters,
     as_of: datetime,
 ) -> ReportQuery:
-    """Trial balance mapped to the regulator's line items (P13.10).
+    """Trial balance mapped to the regulator's line items.
 
     The mapping is VERSIONED and code-owned (genesis.domain.sasra —
     v1.1 rules 1/6: never caller-supplied); every rendered row carries
     the version tag. As-of semantics: cumulative balances at the
     snapshot as-of (the trial-balance convention).
 
-    Fail-loud coverage (gate 1.5): any ledger account with activity
+    Fail-loud coverage (data integrity): any ledger account with activity
     that the versioned mapping does not cover raises (the export job
     is marked failed) — a future account can never silently vanish
     from a filed return.

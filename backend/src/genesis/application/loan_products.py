@@ -1,8 +1,8 @@
 """Loan product services (P9, settings module).
 
 Products carry the pricing rules (rate, deposit multiplier, max term)
-that applications must obey. Edits are optimistic-locked (gate 1.4) and
-audited in-transaction (gate 1.5).
+that applications must obey. Edits are optimistic-locked (concurrency safety) and
+audited in-transaction (data integrity).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class LoanProduct:
     rate_pct: Decimal
     deposit_multiplier: Decimal
     max_term_months: int
-    #: P13.7 stored configuration (prototype Settings > Loan products);
+    #:  stored configuration (prototype Settings > Loan products);
     #: disbursement-time enforcement is a recorded follow-up.
     guarantors_required: int
     active: bool
@@ -115,7 +115,7 @@ async def get_product(
     session: AsyncSession, tenant_id: uuid.UUID, product_id: uuid.UUID
 ) -> LoanProduct:
     # Explicit tenant predicate on top of RLS (defence in depth,
-    # gate 1.6 v1.1; issue #17).
+    # least disclosure v1.1).
     row = (
         await session.execute(
             text(
@@ -156,7 +156,7 @@ async def update_product(
     guarantors_required: int | None = None,
     active: bool | None = None,
 ) -> LoanProduct:
-    """Optimistic-locked product edit; stale version surfaces 409 (gate 1.4)."""
+    """Optimistic-locked product edit; stale version surfaces 409 (concurrency safety)."""
     current = await get_product(session, tenant_id, product_id)
     new_rate = rate_pct if rate_pct is not None else current.rate_pct
     new_mult = deposit_multiplier if deposit_multiplier is not None else current.deposit_multiplier
@@ -170,7 +170,7 @@ async def update_product(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1; issue #17).
+                # (defence in depth, least disclosure v1.1).
                 "UPDATE loan_products SET rate_pct = :rate, deposit_multiplier = :mult, "
                 "max_term_months = :term, guarantors_required = :guarantors, "
                 "active = :active, "

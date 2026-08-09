@@ -1,8 +1,7 @@
 /**
- * Per-tab exit maker registry (P15 module 7 — separation of duties,
- * UX side; the applications makerRegistry precedent).
+ * Per-tab exit maker registry (module 7 — separation of duties, UX side; the applications makerRegistry precedent).
  *
- * STATUS (issue #30 follow-up on !66 / migration 0036): the limitation
+ * STATUS (follow-up on / migration 0036): the limitation
  * this registry originally worked around is CLOSED for attributed
  * rows — ExitOut now carries `requested_by` (the initiator, as the
  * bare staff UUID), and SERVER TRUTH SUPERSEDES this per-tab witness
@@ -20,15 +19,15 @@
  * for those the maker is UNKNOWN (a distinct sentinel that never
  * equals a real user id, so MakerCheckerPanel's self-check simply
  * cannot match). The ENFORCED invariants are server-side regardless
- * (gate 1.6): the initiator can never vote on their own request and
+ * (least disclosure): the initiator can never vote on their own request and
  * can never post its money-moving settlement (both 403, keyed on the
  * persisted requested_by), and the decision needs a two-voter quorum
  * (the P9 machinery).
  *
- * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
+ * Storage: the shared createSessionScopedRegistry
  * primitive — teardown on BOTH session-death paths (the query-path 401
  * dual-cache teardown and explicit sign-out) is wired by construction
- * (W58-2, the !60 F2 class). This wrapper keeps the module's exported
+ * (W58-2, the F2 class). This wrapper keeps the module's exported
  * vocabulary byte-compatible.
  */
 import { createSessionScopedRegistry } from "@/modules/auth/createSessionScopedRegistry";

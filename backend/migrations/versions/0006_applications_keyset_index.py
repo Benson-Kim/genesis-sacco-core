@@ -1,4 +1,4 @@
-"""keyset index for the loan applications listing (P9, gate 1.3)
+"""keyset index for the loan applications listing (P9, scalability)
 
 Revision ID: 0006
 Revises: 0005

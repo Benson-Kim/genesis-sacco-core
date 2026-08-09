@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Response of GET /me/permissions — drives route guards and nav (gate 1.6). */
+/** Response of GET /me/permissions — drives route guards and nav (least disclosure). */
 export const modulePermissionsSchema = z.object({
   module: z.string(),
   can_view: z.boolean(),

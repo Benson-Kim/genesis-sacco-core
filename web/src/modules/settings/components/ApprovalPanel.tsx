@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Approval matrix tab (P15 Settings): committee size/quorum and the
+ * Approval matrix tab: committee size/quorum and the
  * per-authority approval bands (cumulative-ceiling semantics — the
  * band at index i covers amounts above the previous band's ceiling).
  *
@@ -35,7 +35,10 @@ interface BandRow {
 
 const AMOUNT_MSG = "Amount like 500000 or 500000.50 (max 2dp)";
 
-export function ApprovalPanel({ settings }: Readonly<{ settings: Settings }>) {
+export function ApprovalPanel({
+  settings,
+  editing,
+}: Readonly<{ settings: Settings; editing: boolean }>) {
   const permissions = usePermissions();
   const mayEdit = can(permissions.data, "settings", "edit");
   const flow = useSettingsSaveFlow("approval");
@@ -241,7 +244,7 @@ export function ApprovalPanel({ settings }: Readonly<{ settings: Settings }>) {
         </div>
         <SettingsSaveControls
           flow={flow}
-          mayEdit={mayEdit}
+          mayEdit={mayEdit && editing}
           buttonLabel="Save matrix"
           confirmTitle="Apply approval matrix"
           confirmPhrase="approval"

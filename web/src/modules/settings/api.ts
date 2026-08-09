@@ -1,10 +1,10 @@
 /**
- * Tenant-settings API layer (P15, Settings module) over the GENERATED
- * client. Settings ARE the money parameters (P13.7): this API is their
+ * Tenant-settings API layer over the GENERATED
+ * client. Settings ARE the money parameters: this API is their
  * single legitimate writer, every write is optimistic-locked
  * (`version`; a stale write surfaces as 409 — never a silent
  * overwrite) and carries a caller-supplied Idempotency-Key following
- * the stability/rotation contract (gate 1.4).
+ * the stability/rotation contract (concurrency safety).
  *
  * PUT /settings semantics (mirrored from the backend contract): absent
  * keys keep their stored values; an explicit null CLEARS a key. Panels

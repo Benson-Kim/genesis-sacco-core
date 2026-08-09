@@ -1,16 +1,16 @@
 /**
- * Users administration API layer (P15, Access-control module) over the
+ * Users administration API layer (Access-control module) over the
  * GENERATED client — salvaged from duo/feature/p13-5-frontend-followthrough
  * @ 198a238.
  *
  * - Keyset pagination ONLY: opaque `cursor` echoed back verbatim; no
- *   offset/page parameters exist here (gate 1.3, tested).
+ *   offset/page parameters exist here (scalability, tested).
  * - Every mutation takes a caller-supplied Idempotency-Key following the
- *   stability/rotation contract (gate 1.4) and sends the `version` the
+ *   stability/rotation contract (concurrency safety) and sends the `version` the
  *   record was loaded with — a stale write surfaces as 409 (never a
  *   silent overwrite).
  * - Ids travel as path parameters serialized by the generated client;
- *   tokens/PII never enter URLs (gate 1.6, tested).
+ *   tokens/PII never enter URLs (least disclosure, tested).
  */
 import { toApiError } from "@genesis/api-client";
 import { keysetPageSchema, type KeysetPage } from "@/modules/table/schemas";
@@ -88,8 +88,7 @@ export async function createUser(input: CreateUserInput, idempotencyKey: string)
 /**
  * Profile-only update (role/status have dedicated guarded routes). Fields
  * left undefined are NOT sent: the API treats absent/null as "keep the
- * current value" (!24 review note — clearing a saved optional field is not
- * yet supported server-side; the form surfaces this honestly).
+ * current value" (review note — clearing a saved optional field is not yet supported server-side; the form surfaces this honestly).
  */
 export interface UpdateUserInput {
   version: number;

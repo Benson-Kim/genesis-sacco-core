@@ -1,4 +1,4 @@
-"""loan servicing: penalties bucket, closure timestamp, servicing indexes (P10)
+"""loan servicing: penalties bucket, closure timestamp, servicing indexes
 
 Revision ID: 0007
 Revises: 0006
@@ -8,18 +8,18 @@ Additive only (expand phase; gate on backward-compatible migrations):
 
   * loans.penalty_due — the penalties bucket consumed first by the
     documented repayment allocation order (penalties → interest →
-    principal). DB CHECK keeps it non-negative (gate 1.5).
+    principal). DB CHECK keeps it non-negative (data integrity).
   * loans.closed_at — set once when the balance reaches zero and the
     status machine moves the loan to 'closed'.
   * idx_loans_created_keyset — the loan book listing paginates on
     (created_at, id) DESC; leading with tenant_id matches the RLS
-    predicate so keyset pages stay index-backed at any depth (gate 1.3).
+    predicate so keyset pages stay index-backed at any depth (scalability).
   * idx_loans_active_scan — the nightly arrears job walks active loans
     in id keyset batches; the partial index covers exactly that scan.
   * idx_schedules_unpaid — days-past-due and the interest-due bucket
     both aggregate unpaid installments (paid_amount < total_due) per
     loan; the partial index serves the arrears join and the repayment
-    allocation query (gate 1.3: index shipped with the query).
+    allocation query (scalability: index shipped with the query).
 """
 
 from alembic import op

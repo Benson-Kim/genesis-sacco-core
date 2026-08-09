@@ -1,9 +1,9 @@
-"""Nightly arrears job: days-past-due -> classification -> provisioning (P10)
-and penalty-on-arrears accrual (P13.8).
+"""Nightly arrears job: days-past-due -> classification -> provisioning
+and penalty-on-arrears accrual.
 
 Runs per tenant in bounded batches through the shared batch runner
 (genesis.application.batch_runner), each batch inside its own short
-transaction (gate 1.3: no long transactions). The caller injects a
+transaction (scalability: no long transactions). The caller injects a
 session scope (e.g. functools.partial(tenant_session, factory, tenant_id))
 so this module stays free of infrastructure imports; the worker or an
 admin endpoint owns scheduling.
@@ -13,25 +13,25 @@ Idempotent by construction: a loan is written only when its computed
 stored, so re-running for the same as_of date changes nothing.
 
 Classification thresholds and provision percentages come exclusively
-from genesis.domain.lending.classify (gate 1.1: single source of truth).
+from genesis.domain.lending.classify (reuse-first: single source of truth).
 Derived prudential fields do not bump the optimistic version — like
 cover_pct on applications, the job must never invalidate a concurrent
 edit (documented precedent from P9).
 
-Penalty accrual (P13.8) extends this same job path — same scan, same
+Penalty accrual extends this same job path — same scan, same
 loan row lock, same short batch transactions:
 
-  * Config comes EXCLUSIVELY from the P13.7 tenant settings
+  * Config comes EXCLUSIVELY from the tenant settings
     (penalty_rate_pct_per_month, penalty_grace_days,
     penalty_charged_on; 0017 columns) resolved once per run (v1.1
     rule 1: never caller-supplied, no hardcoded default rate). A tenant
     missing ANY of the three keys accrues NOTHING (skipped, fail
-    closed); corrupted stored values raise 409, the P13.7 precedent.
+    closed); corrupted stored values raise 409, the precedent.
   * The accrual PERIOD is one UTC calendar day — the job's as_of date,
     the same day boundary the days-past-due derivation below already
     uses. Each run accrues at most the as-of day for each loan,
     write-once via the penalty_accruals (tenant, loan, accrual_date)
-    claim: INSERT ... ON CONFLICT DO NOTHING checked by rowcount (v1.1
+    claim: INSERT... ON CONFLICT DO NOTHING checked by rowcount (v1.1
     rule 5). Re-runs and concurrent double-runs accrue nothing new
     (a NOT EXISTS anti-join keeps re-runs cheap; the claim stays the
     authoritative guard).
@@ -41,7 +41,7 @@ loan row lock, same short batch transactions:
     as_of (paid_amount's only writer is record_repayment, under this
     same lock); full_outstanding is the principal receivable. NEITHER
     basis includes loans.penalty_due, so penalty never compounds on
-    penalty (v1.1 rule 2; failure mode 4).
+    penalty (failure mode 4).
   * Grace boundary (failure mode 2): a loan accrues only when
     days_past_due > penalty_grace_days — exactly AT grace accrues
     nothing. days_past_due reuses THIS job's existing derivation
@@ -53,17 +53,17 @@ loan row lock, same short batch transactions:
     partial accrual state. The audit row records the exact config and
     basis figures used, so every accrued penny stays reconstructable
     after a config change; already-claimed days are never recomputed
-    (failure mode 5, the P13.7 quorum precedent).
-  * Ledger boundary (documented per P13.8): penalty INCOME recognition
-    stays ON RECEIPT — P10's repayment allocation posts
+    (failure mode 5, the quorum precedent).
+  * Ledger boundary (documented per): penalty INCOME recognition
+    stays ON RECEIPT — repayment allocation posts
     income.penalties when cash arrives. This job maintains ONLY the
     receivable-side loans.penalty_due and writes no ledger rows.
   * Lock ordering: the job locks LOANS ONLY (ORDER BY l.id, FOR UPDATE
-    SKIP LOCKED), the exact P10 arrears pattern. loans is the terminal
-    node of the P12 settlement chain (member -> accounts -> loans), so
+    SKIP LOCKED), the exact arrears pattern. loans is the terminal
+    node of the settlement chain (member -> accounts -> loans), so
     no new lock-graph edge is introduced and no cycle is possible; a
     concurrent repayment serialises on the same loan row lock (failure
-    mode 8). EPQ/snapshot nuance (review V2): under READ COMMITTED the
+    mode 8). EPQ/snapshot nuance: under READ COMMITTED the
     FOR UPDATE re-evaluation (EvalPlanQual) refreshes only the locked
     loans tuple (balance, penalty_due), while the correlated schedule
     subqueries (oldest_unpaid, arrears_amount) evaluate against the
@@ -74,7 +74,7 @@ loan row lock, same short batch transactions:
     that cures the arrears before the job runs -> no accrual" is a
     snapshot-level guarantee, not a lock-level one.
 
-Recovery auto-close (P13.16): after the classify/accrue batches, the
+Recovery auto-close: after the classify/accrue batches, the
 recovery close pass (application/recovery) closes open recovery cases
 whose loan has left NPL — keyed off the classification THIS job just
 persisted (single source of truth, 1.1; addendum A6), locking case
@@ -118,10 +118,10 @@ __all__ = [
 #: transaction short; large enough to keep round trips reasonable.
 DEFAULT_BATCH_SIZE = 200
 
-#: Penalty configuration read (P13.8): a single PK probe of the
+#: Penalty configuration read: a single PK probe of the
 #: one-row-per-tenant settings table, resolved server-side once per
-#: run (v1.1 rule 1). Explicit tenant predicate on top of forced RLS
-#: (v1.1 rule 4). Exported for the EXPLAIN capture
+#: run. Explicit tenant predicate on top of forced RLS
+#: Exported for the EXPLAIN capture
 #: (tests/test_p138_explain.py).
 PENALTY_CONFIG_SQL = (
     "SELECT penalty_rate_pct_per_month, penalty_grace_days, penalty_charged_on "
@@ -146,16 +146,16 @@ class PenaltyConfig:
 def parse_penalty_config(
     rate_raw: object, grace_raw: object, basis_raw: object
 ) -> PenaltyConfig | None:
-    """Fail-closed parse of the stored penalty configuration (P13.8).
+    """Fail-closed parse of the stored penalty configuration.
 
     None (accrue NOTHING, skipped — never a default rate, never a 500)
     when ANY of the three keys is unconfigured: a partially configured
     tenant is exactly as unconfigured as one with no settings row.
     Corrupted stored values — reachable only by manual SQL bypassing
-    the 0017 DB CHECKs — raise ConflictError (409), the P13.7
+    the 0017 DB CHECKs — raise ConflictError (409), the
     fail-closed consumer precedent: a money guard is never silently
     disabled. Least disclosure: the message names the defect category,
-    never a member figure (gate 1.6).
+    never a member figure (least disclosure).
     """
     if rate_raw is None or grace_raw is None or basis_raw is None:
         return None
@@ -185,14 +185,14 @@ async def resolve_penalty_config(
 
 
 def arrears_scan_sql(*, with_after: bool, with_penalty: bool) -> str:
-    """The arrears batch scan (P10 shape, P13.8 penalty extras).
+    """The arrears batch scan (shape, penalty extras).
 
     Walks idx_loans_active_scan (tenant_id, id WHERE status='active');
     the schedule subqueries are served by idx_schedules_unpaid and the
     penalty anti-join by uq_penalty_accruals_claim (0019). Fragments
     are static literals chosen in code; every value is a bound
-    parameter (v1.1 rule 6). Explicit tenant predicate on top of
-    forced RLS (v1.1 rule 4). Exported so the EXPLAIN capture
+    parameter. Explicit tenant predicate on top of
+    forced RLS. Exported so the EXPLAIN capture
     (tests/test_p138_explain.py) asserts against the production SQL.
     """
     after = "AND l.id > CAST(:after AS uuid) " if with_after else ""
@@ -200,7 +200,7 @@ def arrears_scan_sql(*, with_after: bool, with_penalty: bool) -> str:
     if with_penalty:
         penalty_cols = (
             ", l.balance, l.penalty_due, "
-            # Basis reconstruction (v1.1 rule 2): unpaid amounts of
+            # Basis reconstruction: unpaid amounts of
             # instalments already due, from the schedule + repayment
             # bookkeeping — penalty_due is structurally excluded
             # (schedules carry principal + interest dues only).
@@ -209,7 +209,7 @@ def arrears_scan_sql(*, with_after: bool, with_penalty: bool) -> str:
             " AND s.due_date <= :as_of AND s.paid_amount < s.total_due) AS arrears_amount, "
             # Anti-join: a fully accrued re-run claims nothing and the
             # claim insert is not even attempted; the ON CONFLICT claim
-            # remains the authoritative guard (v1.1 rule 5).
+            # remains the authoritative guard.
             "NOT EXISTS (SELECT 1 FROM penalty_accruals pa "
             " WHERE pa.tenant_id = l.tenant_id AND pa.loan_id = l.id "
             " AND pa.accrual_date = :as_of) AS penalty_unclaimed"
@@ -217,7 +217,7 @@ def arrears_scan_sql(*, with_after: bool, with_penalty: bool) -> str:
     return (
         # Static fragments chosen in code; all values are bound parameters.
         # Explicit tenant predicate on top of RLS (defence in depth,
-        # gate 1.6); also the leading column of idx_loans_active_scan.
+        # least disclosure); also the leading column of idx_loans_active_scan.
         "SELECT l.id, l.days_past_due, l.classification, l.provision_pct, "  # noqa: S608
         "(SELECT MIN(s.due_date) FROM loan_schedules s "
         " WHERE s.tenant_id = l.tenant_id AND s.loan_id = l.id AND s.due_date <= :as_of "
@@ -237,11 +237,11 @@ class ArrearsRunResult:
     updated: int
     batches: int
     #: False when the tenant has not configured all three penalty keys
-    #: — the run then accrued nothing by design (fail closed, P13.8).
+    #: — the run then accrued nothing by design (fail closed).
     penalty_configured: bool
     penalties_accrued: int
     penalty_total: Decimal
-    #: P13.16: recovery cases auto-closed by this run's close pass —
+    #: recovery cases auto-closed by this run's close pass —
     #: cure (the loan left NPL per THIS job's persisted classification,
     #: or fully closed) vs write-off. Idempotent: a re-run closes
     #: nothing new (side-effect counts).
@@ -259,7 +259,7 @@ async def _classify_loan(
     stored_cls: str,
     stored_prov: Decimal,
 ) -> int:
-    """P10 classification write for one locked loan; returns 0 or 1.
+    """classification write for one locked loan; returns 0 or 1.
 
     Idempotency: identical stored state is never rewritten, so a
     re-run for the same as_of changes nothing.
@@ -276,7 +276,7 @@ async def _classify_loan(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of
-                # RLS (defence in depth, gate 1.6 v1.1; issue #17) —
+                # RLS (defence in depth, least disclosure v1.1) —
                 # the batch scan is tenant-scoped; the write matches.
                 "UPDATE loans SET days_past_due = :dpd, classification = :cls, "
                 "provision_pct = :prov, updated_at = now() "
@@ -340,7 +340,7 @@ async def _accrue_penalty(
     penalty_due: Decimal,
     arrears_amount: Decimal,
 ) -> Decimal:
-    """Accrue the as-of day's penalty for one LOCKED loan (P13.8).
+    """Accrue the as-of day's penalty for one LOCKED loan.
 
     Returns the accrued amount (ZERO when nothing accrued). Runs inside
     the batch transaction while the caller holds the loan row lock, so
@@ -354,7 +354,7 @@ async def _accrue_penalty(
     from the schedule dues, full_outstanding is the principal
     receivable.
 
-    Snapshot nuance (review V2): balance and penalty_due are
+    Snapshot nuance: balance and penalty_due are
     lock-fresh (EPQ re-read of the locked loans tuple), but dpd and
     arrears_amount come from the scan STATEMENT's snapshot — a
     repayment committing between statement start and lock acquisition
@@ -379,7 +379,7 @@ async def _accrue_penalty(
                 # Single atomic claim on the UNIQUE idempotency key
                 # (tenant_id, loan_id, accrual_date): rowcount 0 means
                 # this day is already accrued — no SELECT-then-INSERT
-                # race, no IntegrityError mid-batch (v1.1 rule 5). The
+                # race, no IntegrityError mid-batch. The
                 # config figures are recorded verbatim so the accrual
                 # stays reconstructable after a config change.
                 "INSERT INTO penalty_accruals "
@@ -413,7 +413,7 @@ async def _accrue_penalty(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1; issue #17). Unlike
+                # (defence in depth, least disclosure v1.1). Unlike
                 # the derived classification fields, penalty_due is
                 # money state, so the version bumps like every other
                 # penalty_due writer (repayment, settlement).
@@ -470,7 +470,7 @@ async def _process_batch(
     idx_schedules_unpaid and the penalty anti-join by
     uq_penalty_accruals_claim.
 
-    Rows are read FOR UPDATE SKIP LOCKED (gate 1.4): days-past-due and
+    Rows are read FOR UPDATE SKIP LOCKED (concurrency safety): days-past-due and
     the penalty accrual are computed and written under the loan row
     lock, so they can never interleave with a concurrent repayment
     (which takes the same lock). A loan mid-repayment is skipped and
@@ -495,7 +495,7 @@ async def _process_batch(
     for row in rows:
         loan_id = str(row[0])
         oldest_unpaid = row[4]
-        # The single days-past-due derivation (P10, reused verbatim for
+        # The single days-past-due derivation (reused verbatim for
         # the penalty grace check): UTC calendar-date difference — the
         # as_of date is a UTC day resolved by the caller, due_date is a
         # DATE column; no DST/timezone-dependent math anywhere.
@@ -561,12 +561,12 @@ async def run_arrears_for_tenant(
     """Reclassify + accrue penalties for one tenant in short batches.
 
     The penalty configuration is resolved ONCE, before the first
-    batch, from tenant settings only (v1.1 rule 1): a tenant without a
+    batch, from tenant settings only: a tenant without a
     complete penalty configuration accrues nothing (fail closed) while
     classification still runs. A config change mid-run affects the
     NEXT run; every claim/audit row records the values actually used.
 
-    P13.16: after the classify/accrue batches, the recovery close pass
+    after the classify/accrue batches, the recovery close pass
     runs (application/recovery.run_recovery_close_pass) — it reads the
     classification THIS run just persisted (single source of truth,
     1.1), so a loan curing today closes its open recovery case today.

@@ -1,10 +1,9 @@
 /**
- * Accounting-periods API layer (issue #31 batch 4 — the P12.5 period
- * machinery; audit #30 finding A5) over the GENERATED client.
+ * Accounting-periods API layer (the period machinery) over the GENERATED client.
  *
  * - Keyset pagination ONLY on the register read (transactions:view):
  *   the opaque `cursor` is echoed back verbatim; no offset or page
- *   parameters exist here (gate 1.3). The list contract declares NO
+ *   parameters exist here (scalability). The list contract declares NO
  *   filters — the client sends none and filters nothing locally.
  * - The ONLY mutation is close (transactions:approve — the P4-matrix
  *   decision recorded on the router: the people who post must not be
@@ -13,21 +12,21 @@
  *   consumed — a fake checker leg would be dishonest UI). The body
  *   carries ONLY the calendar year/month; the period bounds, the
  *   "fully elapsed" rule and every posting-date check are resolved
- *   server-side (issue #12: never caller-backdatable); extra="forbid"
+ *   server-side (never caller-backdatable); extra="forbid"
  *   server-side turns anything else into a 422. There is NO version
  *   field on this contract: the (tenant, period_start) slot is the
  *   server's own idempotent claim — concurrent closes collapse to one
  *   closed row and the loser gets a clean 409.
  * - There is NO "open"/reopen mutation on the contract: absence of a
- *   row IS the open state (issue #12 design) — this console renders
+ *   row IS the open state (design) — this console renders
  *   that honestly instead of inventing a reopen affordance.
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the web/README.md MATERIAL rule (gate 1.4), travelling as a
- *   HEADER only (gate 1.6).
+ *   the web/README.md MATERIAL rule (concurrency safety), travelling as a
+ *   HEADER only (least disclosure).
  * - NO money field exists anywhere on this contract (see schemas.ts).
  *
  * DELIBERATELY NOT SURFACED here: POST /jobs/portfolio-snapshots and
- * POST /jobs/period-rollups (P13.17a/b) share the router file but are
+ * POST /jobs/period-rollups (.17a/b) share the router file but are
  * one-off migration-era backfill jobs, not period visibility/close
  * governance — out of this batch's recorded scope (noted on the MR).
  */

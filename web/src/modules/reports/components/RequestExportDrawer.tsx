@@ -1,35 +1,28 @@
 "use client";
 
 /**
- * Request-export drawer (P15 module 8 — `POST /exports`, reports:view).
+ * Request-export drawer (module 8 — `POST /exports`, reports:view).
  *
  * - The form offers ONLY the filters the chosen report declares
  *   (schemas.REPORT_FILTERS, mirroring the backend registry): ids and
- *   dates — the sole caller-suppliable scope (P13 blocker (a)). No
+ *   dates — the sole caller-suppliable scope (blocker (a)). No
  *   format, column, limit or storage control exists anywhere in this
  *   UI because none exists in the contract.
  * - EXACTLY ONE write per intent: pending short-circuit + disabled
  *   controls, `retry: 0` (the Providers mutation default), one
- *   Idempotency-Key per logical intent (stable across pure retries;
- *   rotated when the report/filters change, after an acknowledged 409
- *   via the conflict epoch (!60 F3), and on every success via the
- *   intent counter (review T2) so "Request another" of an identical
- *   scope is a NEW export job, never a server-side dedup into the
- *   first response). No typed ConfirmDangerModal: requesting an export
+ *   Idempotency-Key per logical intent (stable across pure retries; rotated when the report/filters change, after an acknowledged 409 via the conflict epoch, and on every success via the intent counter so "Request another" of an identical scope is a NEW export job, never a server-side dedup into the first response). No typed ConfirmDangerModal: requesting an export
  *   moves no money and destroys nothing — the server audits every
- *   request/render/download regardless (P13 blocker (f)).
+ *   request/render/download regardless (blocker (f)).
  * - SPENT affordance: the result panel (the SERVER's frozen scope,
  *   column allow-list and as-of, verbatim) replaces the form.
  * - A 409 here is a CREATE-style conflict (a concurrent identical
  *   request holding the idempotency claim) — there is no export record
  *   to reload and re-enter, so it renders the least-disclosure
- *   ErrorBanner with an operator note, not the ConflictBanner (!56
- *   F-B4 precedent). Nothing is retried or replayed either way.
+ *   ErrorBanner with an operator note, not the ConflictBanner (F-precedent). Nothing is retried or replayed either way.
  * - The id-filter pickers mount ONLY for operators holding the grant
  *   their list read requires (members:view for members/exits,
  *   transactions:view for declarations) — a stripped role fetches
- *   NOTHING and falls back to a plain UUID field (the server
- *   authorizes the export itself on reports:view alone; gate 1.6).
+ *   NOTHING and falls back to a plain UUID field (the server authorizes the export itself on reports:view alone; least disclosure).
  */
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -65,8 +58,7 @@ import styles from "./Reports.module.css";
 
 /**
  * Member picker — a separate component so its keyset hook mounts ONLY
- * for operators holding members:view (a stripped role fetches NOTHING;
- * the useKeysetList primitive is consumed unmodified, gate 1.1).
+ * for operators holding members:view (a stripped role fetches NOTHING; the useKeysetList primitive is consumed unmodified, reuse-first).
  */
 function MemberPickerField({
   value,
@@ -265,12 +257,12 @@ export function RequestExportDrawer({
   const [draft, setDraft] = useState<ExportFilterDraft>(EMPTY_FILTER_DRAFT);
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<ExportOut | null>(null);
-  // Freshness component (!60 F3 / review T3): after an acknowledged
+  // Freshness component (F3 /): after an acknowledged
   // 409 the NEXT attempt is a new intent — the epoch rotates the key
   // so a backend idempotency store pinned to the conflicted claim can
   // never serve its stale outcome. Pure 5xx retries keep the SAME key.
   const [conflictEpoch, setConflictEpoch] = useState(0);
-  // Per-request intent counter (review T2): bumped on every SUCCESS so
+  // Per-request intent counter: bumped on every SUCCESS so
   // "Request another" with an identical scope is a NEW export job —
   // without it the server would dedup the repeat into the first
   // response while the operator believes a fresh snapshot was queued.

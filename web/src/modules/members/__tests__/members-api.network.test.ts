@@ -93,6 +93,15 @@ async function fetchStub(input: Request | string | URL, init?: RequestInit): Pro
     return json(401, { category: "unauthenticated", correlation_id: "corr-a" });
   }
   if (path === "/members" && request.method === "GET") {
+    // #35 item 14: the unique-identifier lookup — an unknown number is
+    // an EMPTY page (the server never 404s an existence probe).
+    const memberNoParam = new URL(request.url).searchParams.get("member_no");
+    if (memberNoParam !== null) {
+      return json(200, {
+        items: memberNoParam === memberOut.member_no ? [memberOut] : [],
+        next_cursor: null,
+      });
+    }
     if (listUnknownStatus) {
       return json(200, { items: [{ ...memberOut, status: "suspended" }], next_cursor: null });
     }
@@ -425,4 +434,23 @@ test("an unknown member type is a contract violation and is REJECTED at the boun
   expect(thrown).toBeInstanceOf(Error);
   expect(thrown).not.toBeInstanceOf(ApiError);
   expect(String(thrown)).toContain("type");
+});
+
+test("#35 item 14: lookupMemberByNo probes the declared member_no EXACT param with limit 1; a miss resolves an honest null (never a 404)", async () => {
+  const hit = await membersApi.lookupMemberByNo("GP-0001");
+  expect(hit?.id).toBe(MEMBER_ID);
+  expect(hit?.member_no).toBe("GP-0001");
+
+  const url = new URL(calls[0]!.url);
+  expect(url.pathname).toBe("/members");
+  expect(url.searchParams.get("member_no")).toBe("GP-0001");
+  expect(url.searchParams.get("limit")).toBe("1");
+  expect(url.searchParams.has("cursor")).toBe(false);
+  expect(url.searchParams.has("offset")).toBe(false);
+
+  // Miss: the empty page resolves null — the drawer renders the honest
+  // not-found note instead of throwing (falsifiable: 404 the miss and
+  // this rejects instead of resolving).
+  const miss = await membersApi.lookupMemberByNo("GP-9999");
+  expect(miss).toBeNull();
 });

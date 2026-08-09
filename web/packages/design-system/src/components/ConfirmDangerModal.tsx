@@ -2,18 +2,16 @@
 
 /**
  * Typed-confirmation dialog for destructive / money-adjacent actions
- * (P15 Phase B security primitive — one copy, gate 1.1).
+ * (security primitive — one copy, reuse-first).
  *
  * The confirm button stays disabled until the operator TYPES the exact
  * confirmation phrase (byte-identical, case-sensitive) — a deliberate
  * speed bump that makes reflex-clicking through a destructive action
  * structurally impossible. While the action is pending every dismissal
- * path is blocked and the confirm button short-circuits (exactly one
- * effect per confirmation — gate 1.4 UX; the Idempotency-Key on the
- * mutation does the wire-level work).
+ * path is blocked and the confirm button short-circuits (exactly one effect per confirmation — concurrency safety UX; the Idempotency-Key on the mutation does the wire-level work).
  *
  * Everything renders as React text nodes — attacker-influenced phrases
- * (member names, account labels) stay inert (gate 1.6).
+ * (member names, account labels) stay inert (least disclosure).
  */
 import { useId, useState, type ReactNode } from "react";
 import { Banner } from "./Banner";

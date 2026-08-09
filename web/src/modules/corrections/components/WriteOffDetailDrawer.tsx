@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Write-off record drawer (P15 batch 1 — the P13.15 committee workflow
- * plus the issue-#21 recovery trail): the full write-once snapshot
+ * Write-off record drawer (the committee workflow plus the issue- recovery trail): the full write-once snapshot
  * (WriteOffOut) with the lifecycle writes its status allows —
  * committee votes and void (requested), posting (approved), and the
  * recovery receipts trail (posted). Votes/void/posting are
@@ -14,13 +13,12 @@
  *   anchors the void body and every key material.
  * - MAKER-CHECKER (blocker (f)): vote and posting affordances mount
  *   ONLY inside MakerCheckerPanel. WriteOffOut does NOT serialise
- *   requested_by (0025 has the column; the gap is recorded as a
- *   contract follow-up on issue #31), so the maker identity is the
- *   per-tab REGISTRY witness only — the documented !70 FALLBACK leg
+ *   requested_by (0025 has the column; the gap is recorded as a contract follow-up on), so the maker identity is the
+ *   per-tab REGISTRY witness only — the documented FALLBACK leg
  *   (server truth would supersede it if the field existed): a request
  *   witnessed by this tab structurally withholds the checker controls
  *   for its maker; an unwitnessed record renders them with the honest
- *   label, and the server 403 stays the enforcer (gate 1.6).
+ *   label, and the server 403 stays the enforcer (least disclosure).
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase,
  *   pending short-circuit, `retry: 0`; vote/post key material folds
  *   the fresh record VERSION + reload epoch (rule 4 — the posting
@@ -30,7 +28,7 @@
  * - A 409 (snapshot drift at posting — the server re-verifies
  *   component-by-component and posts NOTHING; or a vote/void raced)
  *   renders the shared ConflictBanner's explicit reload-and-re-enter
- *   flow (!60 F5) with the P13.15 remedy stated: void the drifted
+ *   flow with the remedy stated: void the drifted
  *   snapshot and raise a fresh request. NOTHING is replayed.
  * - MONEY (blocker (a)): every figure (snapshot components, posting
  *   result, receipts, recovered/outstanding position) is the SERVER's
@@ -73,7 +71,7 @@ import {
 import { writeOffStatusPill } from "./pills";
 import styles from "./Corrections.module.css";
 
-/** Bare staff UUID under least disclosure (the !70 short-id convention). */
+/** Bare staff UUID under least disclosure (the short-id convention). */
 function ShortId({ id }: Readonly<{ id: string }>) {
   return (
     <span className={styles.mono} title={id}>
@@ -100,7 +98,7 @@ export function WriteOffDetailDrawer({
   const [voteResult, setVoteResult] = useState<WriteOffVoteResult | null>(null);
   const [postResult, setPostResult] = useState<WriteOffPostResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency keys (!60 F3).
+  // Freshness component for the idempotency keys.
   const [reloadEpoch, setReloadEpoch] = useState(0);
   const voteKeySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
   const voidKeySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
@@ -116,7 +114,7 @@ export function WriteOffDetailDrawer({
   });
 
   const vote = useMutation({
-    // STRUCTURAL freshness guard (F-M1): the vote never fires without
+    // STRUCTURAL freshness guard: the vote never fires without
     // the loaded fresh record.
     mutationFn: (choice: WriteOffVote) => {
       const fresh = detail.data;
@@ -198,7 +196,7 @@ export function WriteOffDetailDrawer({
   });
 
   const post = useMutation({
-    // STRUCTURAL freshness guard (F-M1): the TERMINAL money write
+    // STRUCTURAL freshness guard: the TERMINAL money write
     // refuses to fire without the loaded fresh record.
     mutationFn: () => {
       const fresh = detail.data;
@@ -212,7 +210,7 @@ export function WriteOffDetailDrawer({
         idempotencyKeyFor(
           postKeySlot.current,
           // Money-mover material (README rule 4): the wire body is
-          // DELIBERATELY EMPTY (v1.1 rule 3), so the KEY pins the
+          // DELIBERATELY EMPTY, so the KEY pins the
           // acted-on snapshot — fresh record version + reload epoch.
           // Posting is once-per-record, so no per-success counter.
           JSON.stringify({
@@ -265,7 +263,7 @@ export function WriteOffDetailDrawer({
   const voidConflict = voidMutation.isError && isConflict(voidMutation.error);
   const postConflict = post.isError && isConflict(post.error);
 
-  // FALLBACK-ONLY attribution (the !70 pattern, honestly): the
+  // FALLBACK-ONLY attribution (the pattern, honestly): the
   // contract does not serialise requested_by, so the per-tab witness
   // is the only maker signal — a request witnessed by this tab
   // withholds the checker controls for its maker; everything else is
@@ -274,15 +272,15 @@ export function WriteOffDetailDrawer({
   const ownId = getOwnUserId();
   const makerLabel =
     witnessedMakerId === WRITE_OFF_MAKER_UNKNOWN
-      ? "Requesting officer — not on the record (the contract does not attribute the requester; follow-up recorded on issue #31); no request witnessed by this tab. The server still bans the requester from voting or posting."
+      ? "Requesting officer — not on the record (the contract does not attribute the requester); no request witnessed by this tab. The server still bans the requester from voting or posting."
       : witnessedMakerId === ownId
         ? "You requested this write-off (witnessed by this tab)."
         : "Requesting officer (witnessed by this tab).";
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record; the stale
+    // Explicit reload flow: refetch the record; the stale
     // write is NEVER replayed — re-entering it is a NEW intent whose
-    // key rotates via the reload epoch (!60 F3).
+    // key rotates via the reload epoch.
     void queryClient.refetchQueries({ queryKey: ["corrections", "write-off", writeOffId] });
     setReloadEpoch((epoch) => epoch + 1);
     vote.reset();
@@ -371,7 +369,7 @@ export function WriteOffDetailDrawer({
         </div>
       )}
 
-      {/* One copy of the 409 reload flow (gate 1.1). */}
+      {/* One copy of the 409 reload flow (reuse-first). */}
       <ConflictBanner error={vote.error} onReload={reloadRecord} />
       {vote.isError && !voteConflict && <ErrorBanner error={vote.error} />}
       <ConflictBanner error={voidMutation.error} onReload={reloadRecord} />
@@ -594,8 +592,8 @@ export function WriteOffDetailDrawer({
 }
 
 /**
- * The issue-#21 recovery trail for a POSTED write-off: keyset receipts
- * (oldest first, gate 1.3) with the SERVER-reconstructed
+ * The issue- recovery trail for a POSTED write-off: keyset receipts
+ * (oldest first, scalability) with the SERVER-reconstructed
  * recovered/outstanding position. Mounted only when the record is
  * posted, so the read never fires for other statuses. The position
  * lines come from the latest page's response figures — the table is
@@ -623,7 +621,7 @@ function ReceiptsTrail({ writeOffId }: Readonly<{ writeOffId: string }>) {
 
   return (
     <>
-      <div className={styles.subhead}>Recovery trail (issue #21 — the surviving claim)</div>
+      <div className={styles.subhead}>Recovery trail (the surviving claim)</div>
       {position !== null && (
         <div className={styles.detailGrid}>
           <Kv label="Recovered so far">

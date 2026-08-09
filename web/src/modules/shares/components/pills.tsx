@@ -3,9 +3,9 @@ import { Pill } from "@genesis/design-system";
 import { TRANSFER_STATUS_LABELS, type TransferStatus } from "../schemas";
 
 /**
- * Share-transfer workflow status pill (issue #31 (l)/(m)). One copy
- * for the register and the drawer (gate 1.1). Never color alone: the
- * pill text carries the meaning (issue #8).
+ * Share-transfer workflow status pill. One copy
+ * for the register and the drawer (reuse-first). Never color alone: the
+ * pill text carries the meaning.
  */
 export function transferStatusPill(status: TransferStatus): ReactNode {
   switch (status) {

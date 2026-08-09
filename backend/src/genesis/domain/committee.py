@@ -2,7 +2,7 @@
 
 A decision is reached when either side accumulates the quorum of votes.
 One vote per committee member is enforced by a DB UNIQUE constraint;
-this module only decides outcomes from tallies (gate 1.4).
+this module only decides outcomes from tallies (concurrency safety).
 """
 
 from __future__ import annotations

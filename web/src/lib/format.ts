@@ -1,8 +1,8 @@
 /**
   * Pure formatting helpers (no DOM, no I/O — testable), salvaged from the
-  * P13.5 frontend branch (duo/feature/p13-5-frontend-followthrough).
+  *  frontend branch (duo/feature/p13-5-frontend-followthrough).
   *
-  * MONEY RULE (P15 blocker (a), MASTER_PROMPT §0): amounts arrive from the
+  * MONEY RULE (the money rule, the house doctrine): amounts arrive from the
   * API as decimal STRINGS and are rendered by string manipulation only.
   * There is NO parseFloat/Number conversion and NO arithmetic on money
   * values anywhere in the client — the ledger is the single source of

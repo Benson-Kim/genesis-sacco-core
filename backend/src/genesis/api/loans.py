@@ -1,8 +1,8 @@
 """Loan endpoints: products, applications, committee votes, guarantees (P9).
 
-Every route carries a RequirePermission dependency (deny-by-default,
-gate 1.6); mutations are idempotent via the Idempotency-Key middleware
-(gate 1.4). APPROVED is only reachable through committee quorum and
+Every route carries a RequirePermission dependency (deny-by-default, least disclosure); mutations
+are idempotent via the Idempotency-Key middleware
+(concurrency safety). APPROVED is only reachable through committee quorum and
 DISBURSED only through the P7 disbursement contract.
 """
 
@@ -46,10 +46,10 @@ _products_list = RequireAnyPermission(
     (Module.SETTINGS, Action.VIEW),
     (Module.APPLICATIONS, Action.CREATE),
 )
-#: P14.5 consent-override gate: consent is the MEMBER principal's act
+#:  consent-override gate: consent is the MEMBER principal's act
 #: (the /member routes); the staff path is an explicit ATTESTED
 #: OVERRIDE carrying the dedicated narrow permission — never
-#: applications:edit (the !29 substitution-consent lesson).
+#: applications:edit (the substitution-consent lesson).
 _member_identity_approve = RequirePermission(Module.MEMBER_IDENTITY, Action.APPROVE)
 
 SettingsViewCtx = Annotated[AuthContext, Depends(_settings_view)]
@@ -64,7 +64,7 @@ MemberIdentityApproveCtx = Annotated[AuthContext, Depends(_member_identity_appro
 
 
 class ProductCreateBody(BaseModel):
-    """extra="forbid" (gate 1.6 v1.1, retroactive on touched code).
+    """extra="forbid" (least disclosure v1.1, retroactive on touched code).
 
     max_digits/decimal_places on the money-rule fields mirror the
     backing numeric(5,2) columns (0001), so an over-precise value is a
@@ -78,7 +78,7 @@ class ProductCreateBody(BaseModel):
     rate_pct: Decimal = Field(gt=0, le=100, max_digits=5, decimal_places=2)
     deposit_multiplier: Decimal = Field(gt=0, max_digits=5, decimal_places=2)
     max_term_months: int = Field(ge=1, le=120)
-    #: P13.7: stored product configuration (prototype Settings screen);
+    #: stored product configuration (prototype Settings screen);
     #: bounds mirror the 0017 DB CHECK.
     guarantors_required: int = Field(default=0, ge=0, le=10)
 
@@ -111,8 +111,8 @@ class ProductOut(BaseModel):
 
 class ApplicationCreateBody(BaseModel):
     """extra="forbid": rate/pricing come from the product server-side;
-    a caller-sent rate_pct (or any unknown field) is a 422 (gate 1.6
-    v1.1, retroactive on touched code)."""
+    a caller-sent rate_pct (or any unknown field) is a 422 (least disclosure v1.1, retroactive on
+    touched code)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -133,33 +133,33 @@ class ApplicationOut(BaseModel):
     purpose: str | None
     stage: str
     cover_pct: str
-    #: Initiator attribution (issue #30 R4, migration 0036): the staff
+    #: Initiator attribution (migration 0036): the staff
     #: principal who created the application — recorded at INSERT and
     #: now exposed so approvers and the disbursing officer can see WHO
     #: they are checking (the server enforces regardless: the initiator
     #: can never post the disbursement, 403). Least disclosure (gate
     #: 1.6): the bare user UUID only — never a name or email; resolving
-    #: it stays behind access_control:view (the P13.5 users/audit read
+    #: it stays behind access_control:view (the users/audit read
     #: paths). NULL only for rows written without an actor or whose
     #: pre-0036 audit history was not unambiguous (attribution is never
     #: invented).
     created_by: str | None
-    #: Recommender attribution (issue #30 close-out, migration 0037):
+    #: Recommender attribution (close-out, migration 0037):
     #: the staff principal who moved the application INTO the committee
     #: stage — the "refer to committee" recommendation, recorded at
     #: that transition and now on the read contract (the server
     #: enforces regardless: the recommender can neither vote on nor
-    #: disburse the application, 403). Least disclosure (gate 1.6): the
+    #: disburse the application, 403). Least disclosure: the
     #: bare user UUID only — never a name or email; resolving it stays
-    #: behind access_control:view (the P13.5 users/audit read paths).
+    #: behind access_control:view (the users/audit read paths).
     #: NULL for applications not yet referred to committee, system
     #: moves, or pre-0037 rows whose audit history was not unambiguous
     #: (attribution is never invented).
     recommended_by: str | None
     #: deposits x product multiplier + live guarantees — the cap the P7
-    #: disbursement gate enforces (issue #15). Computed on the single-
+    #: disbursement gate enforces. Computed on the single-
     #: application read only; None on listings (computing it per row
-    #: would grow queries with result size, gate 1.3).
+    #: would grow queries with result size, scalability).
     max_eligible: str | None = None
     version: int
 
@@ -197,11 +197,11 @@ class GuaranteePledgeBody(BaseModel):
 
 
 class ConsentOverrideBody(BaseModel):
-    """Staff-attested consent override (P14.5 scope 4): consent is the
+    """Staff-attested consent override (scope 4): consent is the
     member principal's act on the /member routes; this body carries the
     optimistic-lock version plus the MANDATORY evidence citation — a
-    bare caller-asserted consent flag is a rejected design (the !29
-    lesson; there is no boolean to assert)."""
+    bare caller-asserted consent flag is a rejected design (the lesson; there is no boolean to
+    assert)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -210,8 +210,9 @@ class ConsentOverrideBody(BaseModel):
 
 
 class GuaranteeReleaseBody(BaseModel):
-    """No amounts, ever (P13.14): the released amount comes from the
-    guarantee row; version pins the optimistic lock (gate 1.4)."""
+    """No amounts, ever: the released amount comes from the
+
+    guarantee row; version pins the optimistic lock (concurrency safety)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -219,12 +220,12 @@ class GuaranteeReleaseBody(BaseModel):
 
 
 class GuaranteeSubstituteBody(BaseModel):
-    """Atomic-swap request (P13.14; P14.5 scope 4). consent_reference
+    """Atomic-swap request (scope 4). consent_reference
     cites the evidence the staff attestation rests on (e.g. the signed
     guarantorship form) — an unreferenced substitute is refused (422)
     and the attestation is written onto the replacement row and as a
-    first-class guarantee.consent_override audit fact. The pre-P14.5
-    caller-asserted `consented` boolean is REMOVED (the !29 lesson):
+    first-class guarantee.consent_override audit fact. The pre-
+    caller-asserted `consented` boolean is REMOVED (the lesson):
     consent is never a flag a caller asserts. amount may only meet or
     exceed the released amount (server-derived from the guarantee row
     when omitted)."""
@@ -463,7 +464,7 @@ async def consent_guarantee_override(
     body: ConsentOverrideBody,
     ctx: MemberIdentityApproveCtx,
 ) -> GuaranteeOut:
-    """Staff-attested consent OVERRIDE: pledged -> active (P14.5).
+    """Staff-attested consent OVERRIDE: pledged -> active.
 
     Consent is an act of the MEMBER principal
     (POST /member/guarantees/{id}/consent); this staff path is an
@@ -490,9 +491,9 @@ async def release_guarantee(
     body: GuaranteeReleaseBody,
     ctx: AppsEditCtx,
 ) -> GuaranteeOut:
-    """Release one guarantee per the P13.14 rules (prototype "Release").
+    """Release one guarantee per the rules (the "Release" action).
 
-    STAFF-only since P14.5: applications:edit EXACTLY — the interim
+    STAFF-only since: applications:edit EXACTLY — the interim
     email-match self-service is retired; a guarantor withdraws their
     own unconsented pledge as a MEMBER principal
     (POST /member/guarantees/{id}/release). Staff release pledged
@@ -518,7 +519,7 @@ async def substitute_guarantee(
     body: GuaranteeSubstituteBody,
     ctx: AppsEditCtx,
 ) -> SubstitutionOut:
-    """Atomic swap for a disbursed loan's collateral (P13.14).
+    """Atomic swap for a disbursed loan's collateral.
 
     Releases the guarantee and creates the replacement CONSENTED pledge
     in one transaction; any failure between the two writes leaves the

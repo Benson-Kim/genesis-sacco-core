@@ -1,16 +1,16 @@
-"""Dashboard summary endpoint (P13.9).
+"""Dashboard summary endpoint.
 
-One composite GET assembled per-permission (gate 1.6, deny by
-default): the route is reachable with ANY of the four slice grants
+One composite GET assembled per-permission (least disclosure, deny by default): the route is
+reachable with ANY of the four slice grants
 (RequireAnyPermission — still a RequirePermission dependency for the
 P4 spec-walk test), and each slice is then included ONLY when the
 caller's role holds that module's view grant. Ungranted slices are
 ABSENT from the response (response_model_exclude_none), never zeroed.
 
 The endpoint accepts NO parameters: the series window and guarantor
-list size are server-resolved from settings with hard caps (v1.1
-rule 1; gate 1.3). All slices read from one REPEATABLE READ snapshot
-(tenant_snapshot_session — the P13 blocker-h precedent) so the
+list size are server-resolved from settings with hard caps (scalability). All slices read from one
+REPEATABLE READ snapshot
+(tenant_snapshot_session — the blocker-h precedent) so the
 composite can never interleave with a concurrent settlement; the reads
 take no row locks and are documented as advisory versus the binding
 lock-guarded gates (see application.dashboard).
@@ -92,7 +92,7 @@ class GuarantorAggregatesOut(BaseModel):
 
 
 class FlowBarScaleOut(BaseModel):
-    """One month's grouped-bar heights (issue #32 route (a)): integer
+    """One month's grouped-bar heights (route (a)): integer
     percentages 0..100 of the window's axis_max, computed server-side
     in Decimal arithmetic — the client renders scale, never math."""
 
@@ -120,7 +120,8 @@ class PortfolioChartOut(BaseModel):
 
 
 class DashboardChartsOut(BaseModel):
-    """Server-computed chart geometry (issue #32); each sub-slice
+    """Server-computed chart geometry; each sub-slice
+
     follows its parent slice's grant and is omitted when ungranted."""
 
     flows: FlowsChartOut | None = None
@@ -128,10 +129,10 @@ class DashboardChartsOut(BaseModel):
 
 
 class Par30TrendPointOut(BaseModel):
-    """One PAR-30 trend point (#31 batch 8, ledger (k)): the ratio is
+    """One PAR-30 trend point: the ratio is
     RECOMPUTED from posting-history truth at the month-end cutoff
-    (reconstruct_month at the code-owned PAR threshold — never the
-    mutable snapshot columns, §1.5) and serialized verbatim
+    (reconstruct_month at the code-owned PAR threshold — never the mutable snapshot columns) and
+    serialized verbatim
     (str(Decimal)); pct is share-of-window-peak geometry ONLY."""
 
     month: str
@@ -150,7 +151,7 @@ class MembersTrendPointOut(BaseModel):
 
 
 class KpiTrendsOut(BaseModel):
-    """Per-KPI trend series (#31 batch 8, ledger (k)); each series
+    """Per-KPI trend series; each series
     follows its KPI card's parent grant (par30 <- loan_book:view,
     members <- members:view) and is omitted when ungranted."""
 
@@ -295,7 +296,7 @@ def _charts_out(charts: dashboard_service.DashboardCharts) -> DashboardChartsOut
 
 @router.get("/dashboard/summary", response_model_exclude_none=True)
 async def dashboard_summary(ctx: AnySliceCtx) -> DashboardSummaryOut:
-    """The prototype dashboard figures, sliced per the caller's matrix."""
+    """The dashboard figures, sliced per the caller's permission matrix."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_snapshot_session(factory, ctx.tenant_id) as session:
         granted: set[Module] = set()

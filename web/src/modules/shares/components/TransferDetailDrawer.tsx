@@ -1,25 +1,22 @@
 "use client";
 
 /**
- * Share-transfer review drawer (issue #31 batch 10 — the CHECKER
- * phase of the ledger-(l) two-phase transfer): the full
+ * Share-transfer review drawer (the CHECKER phase of the ledger-(l) two-phase transfer): the full
  * ShareTransferRecordOut plus the checker writes its status allows —
  * approval (`POST …/approval`, EMPTY body: the checker approves the
- * PERSISTED snapshot, v1.1 rule 3) and rejection (`POST …/rejection`,
- * version-pinned + REQUIRED rationale, !52 F2). Both members:approve.
+ * PERSISTED snapshot) and rejection (`POST …/rejection`, version-pinned + REQUIRED rationale). Both members:approve.
  *
  * - FRESH RECORD READ (record class, staleTime 0): every checker
  *   write arms against the freshest available read; the version
  *   anchors the reject body and both idempotency-key materials.
  * - MAKER-CHECKER (blocker (f)): checker affordances mount ONLY
  *   inside MakerCheckerPanel. The maker identity is the CONTRACT's
- *   created_by — SERVER TRUTH (the !70 pattern; no per-tab registry
- *   fallback is needed: every workflow row carries its maker). A NULL
+ *   created_by — SERVER TRUTH (the pattern; no per-tab registry fallback is needed: every workflow row carries its maker). A NULL
  *   created_by is honest pre-0040 history (also terminal — pre-0040
  *   rows are 'posted'): no checker action exists for it. The server
  *   enforces maker ≠ checker regardless, plus the 0040
  *   ck_share_transfers_sod DB CHECK (collusion-resistant) and the
- *   assurance-role exclusion (!47 B2).
+ *   assurance-role exclusion (B2).
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase,
  *   pending short-circuit, `retry: 0`; approval key material folds
  *   the fresh record VERSION + reload epoch (money-mover rule 4 — the
@@ -28,7 +25,7 @@
  * - A 409 (snapshot drift under the full lock set — the transferor's
  *   balance moved, a member left ACTIVE, or the status advanced;
  *   NOTHING posted) renders the shared ConflictBanner's explicit
- *   reload-and-re-enter flow (!60 F5) with the house remedy stated:
+ *   reload-and-re-enter flow with the house remedy stated:
  *   reject the drifted request and raise a fresh one. NOTHING is
  *   replayed.
  * - MONEY (blocker (a)): every figure is the SERVER's decimal string
@@ -62,7 +59,7 @@ import { transferStatusPill } from "./pills";
 import styles from "./Shares.module.css";
 
 /** Bare UUID under least disclosure: 8-char prefix, full UUID on
- * title — never a name or email (the !70 short-id convention). */
+ * title — never a name or email (the short-id convention). */
 function ShortId({ id }: Readonly<{ id: string }>) {
   return (
     <span className={styles.mono} title={id}>
@@ -86,7 +83,7 @@ export function TransferDetailDrawer({
   const [rejectReasonError, setRejectReasonError] = useState("");
   const [approveResult, setApproveResult] = useState<ShareTransferResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency keys (!60 F3): bumped on
+  // Freshness component for the idempotency keys: bumped on
   // every explicit post-conflict reload — a re-entered decision after
   // an acknowledged 409 is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -116,7 +113,7 @@ export function TransferDetailDrawer({
         idempotencyKeyFor(
           approveKeySlot.current,
           // Money-mover material (README rule 4): the wire body is
-          // DELIBERATELY EMPTY (v1.1 rule 3), so the KEY pins the
+          // DELIBERATELY EMPTY, so the KEY pins the
           // acted-on snapshot — fresh record version + reload epoch.
           // Approval is once-per-record (the workflow machine), so no
           // per-success intent counter exists here.
@@ -209,7 +206,7 @@ export function TransferDetailDrawer({
   const rejectConflict = reject.isError && isConflict(reject.error);
   const ownId = getOwnUserId();
 
-  // SERVER TRUTH (the !70 pattern): created_by is the CONTRACT's
+  // SERVER TRUTH (the pattern): created_by is the CONTRACT's
   // maker. NULL only on pre-0040 history rows (which are terminal —
   // no checker surface exists for them). Least disclosure: the bare
   // UUID only.
@@ -221,7 +218,7 @@ export function TransferDetailDrawer({
         : `Requesting officer ${record.created_by.slice(0, 8)} (server attribution).`;
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record (its snapshot
+    // Explicit reload flow: refetch the record (its snapshot
     // drifted under the lock set, its status moved, or the version
     // advanced); the stale decision is NEVER replayed.
     void queryClient.refetchQueries({ queryKey: ["shares", "transfer", transferId] });
@@ -298,7 +295,7 @@ export function TransferDetailDrawer({
         drift, posting nothing.
       </div>
 
-      {/* One copy of the 409 reload flow (gate 1.1). */}
+      {/* One copy of the 409 reload flow (reuse-first). */}
       <ConflictBanner error={approve.error} onReload={reloadRecord} />
       {approve.isError && !approveConflict && <ErrorBanner error={approve.error} />}
       <ConflictBanner error={reject.error} onReload={reloadRecord} />

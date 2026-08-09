@@ -4,8 +4,8 @@ import { CASE_STATUS_LABELS, type CaseStatus } from "../schemas";
 
 /**
  * Recovery-case lifecycle status pill. One copy for the worklist and
- * the case drawer (gate 1.1). Never color alone: the pill text carries
- * the meaning (issue #8). The loan CLASSIFICATION pill is the loans
+ * the case drawer (reuse-first). Never color alone: the pill text carries
+ * the meaning. The loan CLASSIFICATION pill is the loans
  * module's loanClassPill — reused, not re-drawn.
  */
 export function caseStatusPill(status: CaseStatus): ReactNode {

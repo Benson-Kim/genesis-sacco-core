@@ -1,7 +1,7 @@
 """Loan application services: creation, stage machine, committee voting (P9).
 
 Stage changes run under SELECT ... FOR UPDATE through the pure P6
-transition function (gate 1.4). The API-facing transition set excludes
+transition function (concurrency safety). The API-facing transition set excludes
 APPROVED (only committee quorum produces it) and DISBURSED (only the P7
 disbursement contract produces it). Cover% is a derived field computed
 from the member's deposit balance plus pledged/active guarantees.
@@ -21,7 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from genesis.application.audit import record_audit
 from genesis.application.loan_products import get_product
 from genesis.application.outbox import enqueue_event
-from genesis.application.pagination import build_created_id_cursor, parse_created_id_cursor
+from genesis.application.pagination import (
+    build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
+    parse_created_id_cursor,
+)
 from genesis.application.tenant_settings import committee_quorum, enforce_authority_band
 from genesis.domain.committee import Decision, Vote, decide
 from genesis.domain.lending import ApplicationStage, InvalidTransitionError, transition
@@ -34,6 +39,10 @@ from genesis.errors import ConflictError, ForbiddenError, InvalidInputError, Not
 API_TRANSITION_TARGETS = frozenset(
     {ApplicationStage.APPRAISAL, ApplicationStage.COMMITTEE, ApplicationStage.REJECTED}
 )
+
+#: Cursor scope id: signed cursors are bound to this
+#: endpoint and this tenant — no cross-scope replay (tenant isolation).
+APPLICATIONS_LIST_SCOPE = "applications.list"
 
 _COLS = (
     "id, member_id, product_id, amount, term_months, rate_pct, purpose, stage, cover_pct, "
@@ -57,18 +66,18 @@ class ApplicationRecord:
     purpose: str | None
     stage: ApplicationStage
     cover_pct: Decimal
-    #: Initiator attribution (issue #30 R4, migration 0036): the acting
+    #: Initiator attribution (migration 0036): the acting
     #: principal recorded at INSERT. Drives the disbursement SoD check
     #: (the initiator can never post their own disbursement) and rides
     #: the read model as the bare UUID. None ONLY for pre-0036 rows
     #: whose audit history was not unambiguous, or system-created rows
     #: — attribution is never invented.
     created_by: uuid.UUID | None
-    #: Recommender attribution (issue #30 close-out, migration 0037):
+    #: Recommender attribution (migration 0037):
     #: the acting principal that moved the application INTO the
     #: committee stage (transition_stage), recorded at that transition.
     #: Drives the recommender SoD checks (the recommender can neither
-    #: vote on nor disburse the application — the exit/write-off/!66
+    #: vote on nor disburse the application — the exit/write-off
     #: posture) and rides the read model as the bare UUID. None for
     #: system_actor transitions and for pre-0037 rows whose audit
     #: history was not unambiguous — attribution is never invented.
@@ -105,7 +114,7 @@ async def _deposit_balance(
     session: AsyncSession, tenant_id: uuid.UUID, member_id: uuid.UUID
 ) -> Decimal:
     # Explicit tenant predicate on top of RLS (defence in depth,
-    # gate 1.6 v1.1; issue #17).
+    # tenant scoping).
     row = (
         await session.execute(
             text(
@@ -124,7 +133,7 @@ async def guarantee_total(
     """Sum of an application's live (pledged/active) guarantee amounts.
 
     Shared by cover%% recomputation, the eligibility read model and the
-    P7 disbursement multiplier gate (issue #15). Callers making a money
+    P7 disbursement multiplier gate. Callers making a money
     decision must hold the application row lock (pledging takes it FOR
     UPDATE, so the sum cannot change underneath them).
     """
@@ -153,7 +162,7 @@ async def _release_application_pledges(
     actor_id: uuid.UUID | None,
     application_id: uuid.UUID,
 ) -> int:
-    """Release live pledges when an application is rejected (gates 1.4, 1.5).
+    """Release live pledges when an application is rejected (the house gates).
 
     Mirrors guarantees.release_guarantees_for_loan for the pre-loan
     stage. It lives here rather than in guarantees.py because that
@@ -165,7 +174,7 @@ async def _release_application_pledges(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1; issue #17).
+                # (defence in depth).
                 "UPDATE guarantees SET status = 'released', "
                 "version = version + 1, updated_at = now() "
                 "WHERE application_id = CAST(:aid AS uuid) "
@@ -206,7 +215,7 @@ async def create_application(
     term_months: int,
     purpose: str | None = None,
 ) -> ApplicationRecord:
-    """Create an application obeying product rules (gate 1.6).
+    """Create an application obeying product rules (least disclosure).
 
     The rate is derived from the product - clients never supply pricing.
     Cover% is computed at creation from the member's deposit balance
@@ -227,13 +236,13 @@ async def create_application(
             # FOR SHARE holds off a concurrent terminal member exit
             # (which locks the row FOR UPDATE) until this create
             # commits, closing the TOCTOU window between the status
-            # check and the insert (gate 1.4; the P9 pledge / P11
+            # check and the insert (concurrency safety; the P9 pledge / P11
             # _require_member precedent — external Codex review,
             # re-derived). Lock order: member row only, nothing after
             # it — consistent with the P12 chain (member first), so no
             # cycle with settlement (member -> accounts -> loans) is
             # possible. Explicit tenant predicate on top of RLS
-            # (gate 1.6 v1.1).
+            # (defence in depth).
             text(
                 "SELECT status FROM members WHERE id = CAST(:m AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) FOR SHARE"
@@ -245,31 +254,31 @@ async def create_application(
         raise NotFoundError(f"member {member_id} not found")
     member_status = MemberStatus(str(member_row[0]))
     if not member_may(member_status, MoneyOperation.BORROW):
-        # Code-owned capability map (P13.13 FM2): borrowing is strictly
+        # Code-owned capability map: borrowing is strictly
         # active-only, so arrears/dormant/exited (and any future
-        # status) are refused by construction — the !29 R2 rule.
+        # status) are refused by construction — the strictly-active rule.
         raise ConflictError(
             f"member {member_id} is '{member_status.value}': only active members may apply"
         )
     deposits = await _deposit_balance(session, tenant_id, member_id)
     # Deliberately NO deposit-multiplier gate at creation (external
-    # Codex review fix REJECTED, with reasoning): the shipped issue #15
+    # Codex review fix REJECTED, with reasoning): the shipped
     # eligibility is deposits x multiplier + live guarantees, and
     # guarantees are pledged AFTER creation — a deposits-only creation
     # block would foreclose guarantee-backed borrowing entirely (a
     # zero-deposit borrower with full guarantor cover is legitimate
-    # and covered by the P9/P12.5 test suite). The cap is surfaced to
+    # and covered by the P9/P12 test suites). The cap is surfaced to
     # callers via max_eligible on the single-application read, and the
     # BINDING check runs at disbursement under the full lock set (P7
     # step 2b). An own-multiplier product policy independent of
-    # guarantees is a tenant-configuration decision (BUILD_PROMPTS
-    # P13.7), not a hard-coded creation block.
+    # guarantees is a tenant-configuration decision (recorded product
+    # policy), not a hard-coded creation block.
     cover = _cover_pct(deposits, ZERO, amount)
     application_id = uuid.uuid4()
     await session.execute(
         text(
-            # created_by records the acting principal at INSERT (issue
-            # #30 R4, migration 0036): the attribution that powers the
+            # created_by records the acting principal at INSERT (see
+            # migration 0036): the attribution that powers the
             # disbursement SoD check. NULL for system callers — an
             # absent actor is recorded as absent, never fabricated.
             "INSERT INTO loan_applications "
@@ -341,7 +350,7 @@ async def get_application(
     session: AsyncSession, tenant_id: uuid.UUID, application_id: uuid.UUID
 ) -> ApplicationRecord:
     # Explicit tenant predicate on top of RLS (defence in depth,
-    # gate 1.6 v1.1; issue #17).
+    # tenant scoping).
     row = (
         await session.execute(
             text(
@@ -364,7 +373,7 @@ async def list_applications(
     cursor: str | None = None,
     limit: int = 20,
 ) -> tuple[list[ApplicationRecord], str | None]:
-    """Keyset-paginated listing, newest first (gate 1.3)."""
+    """Keyset-paginated listing, newest first (scalability)."""
     limit = max(1, min(limit, 100))
     clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
@@ -372,7 +381,12 @@ async def list_applications(
         clauses.append("stage = :stage")
         params["stage"] = stage.value
     if cursor:
-        params["c_ts"], params["c_id"] = parse_created_id_cursor(cursor, entity="application")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext parse stays as defense-in-depth.
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=APPLICATIONS_LIST_SCOPE, entity="application"
+        )
+        params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="application")
         clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
@@ -391,7 +405,11 @@ async def list_applications(
     next_cursor = None
     if len(rows) > limit and page_rows:
         last = page_rows[-1]
-        next_cursor = build_created_id_cursor(last[0], last[1])
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last[0], last[1]),
+            tenant_id=tenant_id,
+            endpoint=APPLICATIONS_LIST_SCOPE,
+        )
     return items, next_cursor
 
 
@@ -408,7 +426,7 @@ async def transition_stage(
     """Move an application through the P6 machine under a row lock.
 
     Ratifying (forward) moves are additionally capped by the tenant's
-    approval-authority bands (P13.7): the matrix is read from current
+    approval-authority bands (tenant configuration): the matrix is read from current
     committed config AFTER the application row lock is taken, so a
     config change mid-workflow governs future transitions only — moves
     already committed under the old config are never revisited (v1.1
@@ -437,7 +455,7 @@ async def transition_stage(
         await session.execute(
             text(
                 # Explicit tenant predicate on the row-lock read, on top
-                # of RLS (defence in depth, gate 1.6 v1.1; issue #17).
+                # of RLS (defence in depth).
                 "SELECT stage, version, amount FROM loan_applications "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
             ),
@@ -452,7 +470,7 @@ async def transition_stage(
     except InvalidTransitionError as exc:
         raise ConflictError(str(exc)) from exc
     if actor_id is not None and target is not ApplicationStage.REJECTED:
-        # P13.7 authority bands, enforced under the row lock above.
+        # Tenant-configured authority bands, enforced under the row lock above.
         # actor_id can be None here ONLY via the explicit system_actor
         # bypass validated at function entry (review R1).
         await enforce_authority_band(session, tenant_id, actor_id, Decimal(str(row[2])))
@@ -462,7 +480,7 @@ async def transition_stage(
         "tid": str(tenant_id),
         "ver": version,
     }
-    # Recommender attribution (issue #30 close-out, migration 0037):
+    # Recommender attribution (migration 0037):
     # moving INTO committee IS the recommendation, so the acting
     # principal is recorded on the row in the same UPDATE. A repeat
     # referral (committee -> back -> committee) overwrites with the
@@ -528,13 +546,13 @@ async def cast_vote(
     application_id: uuid.UUID,
     vote: Vote,
 ) -> VoteTally:
-    """Record a committee vote; quorum decides the application (gate 1.4).
+    """Record a committee vote; quorum decides the application (concurrency safety).
 
     The application row lock serialises voters, so tallies and the
     resulting decision are race-free. The UNIQUE constraint makes
     double-voting impossible even outside this code path.
 
-    P13.7: the quorum is read from tenant configuration AT VOTE TIME,
+    The quorum is read from tenant configuration AT VOTE TIME,
     inside this transaction and under the row lock (fallback: the
     code-owned COMMITTEE_QUORUM). A quorum change between votes governs
     the NEXT vote's tally only — votes already tallied never decide
@@ -547,7 +565,7 @@ async def cast_vote(
         await session.execute(
             text(
                 # Explicit tenant predicate on the row-lock read, on top
-                # of RLS (defence in depth, gate 1.6 v1.1; issue #17).
+                # of RLS (defence in depth).
                 "SELECT stage, amount, recommended_by FROM loan_applications "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
             ),
@@ -559,7 +577,7 @@ async def cast_vote(
     current = ApplicationStage(str(row[0]))
     if current is not ApplicationStage.COMMITTEE:
         raise ConflictError(f"voting is only open in committee stage, not '{current.value}'")
-    # Recommender separation of duties (issue #30 close-out, 0037): the
+    # Recommender separation of duties (0037): the
     # principal who put the application before the committee cannot
     # also vote on it — the exit-requester-cannot-vote / write-off-
     # proposer-cannot-vote posture applied to the P9 committee. Read
@@ -572,7 +590,7 @@ async def cast_vote(
     if recommended_by is not None and voter_id == recommended_by:
         raise ForbiddenError("the recommender of an application cannot vote on it")
     if vote is Vote.APPROVE:
-        # P13.7 authority bands, enforced under the row lock above.
+        # Tenant-configured authority bands, enforced under the row lock above.
         await enforce_authority_band(session, tenant_id, voter_id, Decimal(str(row[1])))
     try:
         await session.execute(
@@ -613,7 +631,7 @@ async def cast_vote(
         entity_id=str(application_id),
         after={"vote": vote.value, "approvals": approvals, "rejections": rejections},
     )
-    # Config read at vote time, under the application row lock (P13.7).
+    # Config read at vote time, under the application row lock (tenant configuration).
     decision = decide(approvals, rejections, quorum=await committee_quorum(session, tenant_id))
     stage: ApplicationStage = current
     if decision is not None:
@@ -676,7 +694,7 @@ async def recompute_cover(
     cover_pct is derived data, so this deliberately does not bump the
     optimistic version - it must never invalidate a concurrent edit.
     Every read and the write carry an explicit tenant predicate on top
-    of RLS (defence in depth, gate 1.6 v1.1; issue #17).
+    of RLS (defence in depth).
     """
     row = (
         await session.execute(
@@ -709,7 +727,7 @@ async def application_max_eligible(
 ) -> Decimal:
     """max_eligible = deposits x product multiplier + live guarantees.
 
-    The issue #15 read model: the committee sees the cap the P7
+    The eligibility read model: the committee sees the cap the P7
     disbursement gate will enforce. A display read (no locks) — the
     binding check re-verifies under the full lock set at disbursement.
     """

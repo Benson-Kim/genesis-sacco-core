@@ -1,6 +1,6 @@
 /**
  * Layout / type / motion scale tokens — governed by the binding design
- * rules of issue #8 (P14). The color palette stays VERBATIM in tokens.ts;
+ * rules of. The color palette stays VERBATIM in tokens.ts;
  * everything here is the structural system those rules mandate:
  *
  * - 8-point grid: every spacing step is a multiple of 4px, anchored on 8px.
@@ -15,7 +15,7 @@
  * - 44–48px minimum touch targets.
  *
  * The scale test suite enforces each rule mathematically — an off-grid or
- * over-budget token is a red pipeline, not a review comment (gate 1.1).
+ * over-budget token is a red pipeline, not a review comment (reuse-first).
  */
 
 /** 8-point grid (4px half-steps allowed by the grid discipline). */
@@ -53,7 +53,7 @@ export const MICRO_RADIUS_MIN = 2;
 export const MICRO_RADIUS_MAX = 4;
 
 /**
- * Nested corner-radius math (issue #8): the inner element's radius is the
+ * Nested corner-radius math: the inner element's radius is the
  * outer radius minus the padding between them. When that reaches zero or
  * below, fall back to a soft micro-radius instead of a dead-square corner.
  *
@@ -74,7 +74,7 @@ export function nestedOuterRadius(innerRadius: number, padding: number): number 
 }
 
 /**
- * Unitless proportional line-heights (issue #8): body 1.4–1.6 so text
+ * Unitless proportional line-heights: body 1.4–1.6 so text
  * scales cleanly on resize; headings tighter at 1.1–1.2 so multi-line
  * titles do not disconnect.
  */
@@ -86,7 +86,7 @@ export const lineHeight = {
 /**
  * Fluid type steps: clamp() anchored in rem (accessibility — px anchors
  * would ignore the user's browser font-size preference). The vw slope for
- * each step derives from the issue-#8 formula
+ * each step derives from the issue- formula
  * (maxRem − minRem) / (maxViewport − minViewport), anchored 480→1280px.
  */
 export const fontSize = {
@@ -103,8 +103,7 @@ export const fontSize = {
 export type FontSizeToken = keyof typeof fontSize;
 
 /**
- * Line-length caps in ch (issue #8: keep body copy roughly 50–85
- * characters per line; clamp the measure between 45 and 75ch).
+ * Line-length caps in ch (keep body copy roughly 50–85 characters per line; clamp the measure between 45 and 75ch).
  */
 export const measure = {
   body: "65ch",
@@ -112,7 +111,7 @@ export const measure = {
 } as const;
 
 /**
- * Micro-interaction durations in ms — the issue-#8 budget is strictly
+ * Micro-interaction durations in ms — the issue- budget is strictly
  * < 400ms, single-movement physics. globals.css collapses these under
  * prefers-reduced-motion.
  */
@@ -125,7 +124,7 @@ export const duration = {
 
 export const DURATION_BUDGET_MS = 400;
 
-/** Minimum interactive target sizes in px (issue #8: 44–48px). */
+/** Minimum interactive target sizes in px (44–48px). */
 export const touchTarget = {
   min: 44,
   comfortable: 48,

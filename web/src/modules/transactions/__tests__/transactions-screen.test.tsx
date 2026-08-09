@@ -42,6 +42,7 @@ jest.mock("../api", () => {
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
   fetchMember: jest.fn(),
+  lookupMemberByNo: jest.fn(),
 }));
 
 jest.mock("@/modules/authz/usePermissions", () => ({
@@ -83,6 +84,7 @@ function debitTxn(overrides: Partial<Transaction> = {}): Transaction {
     occurred_at: "2026-07-18T10:15:00+00:00",
     is_reversal: false,
     created_by: null,
+    external_ref: null,
     ...overrides,
   };
 }
@@ -99,6 +101,7 @@ function creditTxn(overrides: Partial<Transaction> = {}): Transaction {
     occurred_at: "2026-07-19T08:00:00+00:00",
     is_reversal: false,
     created_by: null,
+    external_ref: "SGH3KLM9QT",
     ...overrides,
   };
 }
@@ -175,15 +178,24 @@ function mountScreen() {
  * double-post / 409 / key-custody tests). */
 async function fillEntry(
   user: ReturnType<typeof userEvent.setup>,
-  { amount = "5000.10", channel = "mpesa" }: { amount?: string; channel?: string } = {},
+  {
+    amount = "5000.10",
+    channel = "mpesa",
+    extRef = "SGH3KLM9QT",
+  }: { amount?: string; channel?: string; extRef?: string } = {},
 ) {
   await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
   const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  // #35 item 14: the member resolves by UNIQUE number on blur — no
+  // full member-list select exists in this drawer any more.
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0001");
+  await user.tab();
   // The fresh member read must land before the confirmation can arm.
   await within(drawer).findByText(/Member verified:/);
   await user.type(within(drawer).getByLabelText("Amount (KES)"), amount);
   await user.selectOptions(within(drawer).getByLabelText("Channel"), channel);
+  // #35 item 6: the external receipt reference is REQUIRED.
+  await user.type(within(drawer).getByLabelText("External reference"), extRef);
   return drawer;
 }
 
@@ -216,6 +228,7 @@ beforeEach(() => {
   mocked.runDepositInterest.mockResolvedValue(INTEREST_RUN);
   mockedMembers.fetchMembersPage.mockResolvedValue(page([MEMBER]));
   mockedMembers.fetchMember.mockResolvedValue(MEMBER);
+  mockedMembers.lookupMemberByNo.mockResolvedValue(MEMBER);
 });
 
 afterEach(() => {
@@ -436,6 +449,7 @@ test("DOUBLE-POST impossible from this client: triple-clicked confirmation produ
   expect(mocked.postMoneyWrite.mock.calls[0]?.[2]).toEqual({
     amount: "5000.10",
     channel: "mpesa",
+    external_ref: "SGH3KLM9QT",
   });
 
   release(ACCOUNT_TXN);
@@ -473,7 +487,8 @@ test("STALE-READ DOUBLE-POST PREVENTION: the drawer FRESH-READS the member (stal
   await user.click(within(drawer).getByRole("button", { name: "Cancel" }));
   await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
   const reopened = await screen.findByRole("dialog", { name: "Post transaction" });
-  await user.selectOptions(await within(reopened).findByLabelText("Member"), MEMBER_ID);
+  await user.type(within(reopened).getByLabelText("Member number"), "M-0001");
+  await user.tab();
   await waitFor(() => expect(mockedMembers.fetchMember).toHaveBeenCalledTimes(2));
 });
 
@@ -544,7 +559,8 @@ test("an EXITED member structurally withdraws the posting affordance — zero wr
 
   await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
   const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0001");
+  await user.tab();
 
   expect(await within(drawer).findByText(/has EXITED/)).toBeInTheDocument();
   const submit = within(drawer).getByRole("button", { name: "Post to ledger…" });
@@ -563,7 +579,8 @@ test("client Zod verdicts render inline BEFORE any write (leading zeros rejected
 
   await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
   const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0001");
+  await user.tab();
 
   // Leading-zero amount, no channel — zero writes.
   await user.type(within(drawer).getByLabelText("Amount (KES)"), "007.10");
@@ -581,6 +598,7 @@ test("client Zod verdicts render inline BEFORE any write (leading zeros rejected
   await user.clear(amountField);
   await user.type(amountField, "7.10");
   await user.selectOptions(within(drawer).getByLabelText("Channel"), "bank");
+  await user.type(within(drawer).getByLabelText("External reference"), "SLIP-88");
   await user.click(await confirmEntry(user, drawer));
 
   expect(
@@ -692,6 +710,10 @@ test("IDENTICAL re-entry after 'Post another' is a NEW intent: the key ROTATES a
   await user.click(within(drawer).getByRole("button", { name: "Post another" }));
   await user.type(within(drawer).getByLabelText("Amount (KES)"), "5000.10");
   await user.selectOptions(within(drawer).getByLabelText("Channel"), "mpesa");
+  // The ref field CLEARED with the spent intent (#35 item 6): the same
+  // physical M-Pesa code must never ride a second posting by default —
+  // the teller types the second receipt's code.
+  await user.type(within(drawer).getByLabelText("External reference"), "SGH3KLM9QU");
   await user.click(await confirmEntry(user, drawer));
 
   expect(await screen.findByText(/Deposit posted · ref MP-1099/)).toBeInTheDocument();
@@ -699,6 +721,7 @@ test("IDENTICAL re-entry after 'Post another' is a NEW intent: the key ROTATES a
   expect(mocked.postMoneyWrite.mock.calls[1]?.[2]).toEqual({
     amount: "5000.10",
     channel: "mpesa",
+    external_ref: "SGH3KLM9QU",
   });
   expect(mocked.postMoneyWrite.mock.calls[1]?.[3]).not.toBe(firstKey);
 });
@@ -779,7 +802,14 @@ test("Zod boundary rejects money as NUMBERS, unknown enums and leading-zero inpu
 
   // Money INPUT hygiene (!60 F6): pure string shape — leading zeros and
   // zero amounts rejected, honest cents accepted.
-  const entry = { kind: "deposit", member_id: MEMBER_ID, channel: "mpesa" };
+  // external_ref is REQUIRED since #35 item 6 — a valid M-Pesa code
+  // keeps these legs probing ONLY the amount shape.
+  const entry = {
+    kind: "deposit",
+    member_id: MEMBER_ID,
+    channel: "mpesa",
+    external_ref: "SGH3KLM9QT",
+  };
   expect(moneyEntrySchema.safeParse({ ...entry, amount: "007.10" }).success).toBe(false);
   expect(moneyEntrySchema.safeParse({ ...entry, amount: "0" }).success).toBe(false);
   expect(moneyEntrySchema.safeParse({ ...entry, amount: "0.00" }).success).toBe(false);
@@ -825,9 +855,11 @@ test("amount PASTE/IME hygiene (#31 ledger (h5)): a clipboard-grouped figure and
 
   await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
   const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0001");
+  await user.tab();
   await within(drawer).findByText(/Member verified:/);
   await user.selectOptions(within(drawer).getByLabelText("Channel"), "mpesa");
+  await user.type(within(drawer).getByLabelText("External reference"), "SGH3KLM9QT");
   const amount = within(drawer).getByLabelText("Amount (KES)");
 
   // PASTE leg: "5,000.00" — the spreadsheet-grouped clipboard shape.
@@ -870,4 +902,148 @@ test("amount PASTE/IME hygiene (#31 ledger (h5)): a clipboard-grouped figure and
   await user.click(await confirmEntry(user, drawer));
   await within(drawer).findByText(/posted · ref/);
   expect(mocked.postMoneyWrite).toHaveBeenCalledTimes(1);
+});
+
+
+test("#35 item 13 date presets compute EXPLICIT from/to params client-side — the server never sees a preset token; All clears the keys", async () => {
+  // Pin ONLY the clock (Date), keep real timers for react-query.
+  jest.useFakeTimers({
+    now: new Date(2026, 7, 8, 12, 0, 0), // local 2026-08-08
+    doNotFake: [
+      "setTimeout",
+      "setInterval",
+      "clearTimeout",
+      "clearInterval",
+      "queueMicrotask",
+      "setImmediate",
+      "clearImmediate",
+      "performance",
+      "hrtime",
+      "nextTick",
+    ],
+  });
+  try {
+    const user = userEvent.setup();
+    mountScreen();
+    await screen.findByText("KES 8,000.10");
+
+    function lastFilters(): { date_from: string; date_to: string } {
+      const call = mocked.fetchTransactionsPage.mock.calls.at(-1);
+      return call?.[0] as { date_from: string; date_to: string };
+    }
+
+    // Hand-computed oracles for a 2026-08-08 clock:
+    //   Today        => [2026-08-08, 2026-08-08]
+    //   Last 7 days  => [2026-08-02, 2026-08-08]  (8 - 6 = 2)
+    //   Last 30 days => [2026-07-10, 2026-08-08]  (Aug 8 - 29d = Jul 10)
+    await user.click(screen.getByRole("button", { name: "Today" }));
+    await waitFor(() =>
+      expect(lastFilters()).toMatchObject({ date_from: "2026-08-08", date_to: "2026-08-08" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Last 7 days" }));
+    await waitFor(() =>
+      expect(lastFilters()).toMatchObject({ date_from: "2026-08-02", date_to: "2026-08-08" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Last 30 days" }));
+    await waitFor(() =>
+      expect(lastFilters()).toMatchObject({ date_from: "2026-07-10", date_to: "2026-08-08" }),
+    );
+
+    // The computed window is VISIBLE in the manual inputs (the operator
+    // can read exactly what was sent — no hidden state).
+    expect(screen.getByLabelText("From date")).toHaveValue("2026-07-10");
+    expect(screen.getByLabelText("To date")).toHaveValue("2026-08-08");
+
+    // All clears the date keys — the default view sends no date filter.
+    // (Switching back to the default re-uses the CACHED mount query, so
+    // the wire contract is pinned by the mount call below, and the
+    // cleared state by the visible inputs + pressed state.)
+    await user.click(screen.getByRole("button", { name: "All", pressed: false }));
+    await waitFor(() => expect(screen.getByLabelText("From date")).toHaveValue(""));
+    expect(screen.getByLabelText("To date")).toHaveValue("");
+    const mountFilters = mocked.fetchTransactionsPage.mock.calls[0]?.[0] as {
+      date_from: string;
+      date_to: string;
+    };
+    expect(mountFilters).toMatchObject({ date_from: "", date_to: "" });
+
+    // NOTHING preset-shaped ever reached the wire: every call's date
+    // params are either empty or ISO dates (falsifiable: send the
+    // token and this fails).
+    for (const call of mocked.fetchTransactionsPage.mock.calls) {
+      const filters = call[0] as { date_from: string; date_to: string };
+      for (const value of [filters.date_from, filters.date_to]) {
+        expect(value === "" || /^\d{4}-\d{2}-\d{2}$/.test(value)).toBe(true);
+      }
+    }
+
+    // Custom range keeps the manual flow: editing + Apply moves the
+    // pressed state to Custom and applies the typed dates verbatim.
+    await user.click(screen.getByRole("button", { name: "Custom range" }));
+    const fromField = screen.getByLabelText("From date");
+    const toField = screen.getByLabelText("To date");
+    await user.clear(fromField);
+    await user.type(fromField, "2026-06-01");
+    await user.clear(toField);
+    await user.type(toField, "2026-06-30");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() =>
+      expect(lastFilters()).toMatchObject({ date_from: "2026-06-01", date_to: "2026-06-30" }),
+    );
+    expect(screen.getByRole("button", { name: "Custom range" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("#35 W1: stale Custom dates never leak into a LATER real fetch — after All, the next pagination fetch carries EMPTY date params", async () => {
+  const user = userEvent.setup();
+  // Every FIRST page serves a cursor so "Load more" can force a REAL
+  // wire fetch after the cached default page is re-selected; the
+  // follow-on page carries a distinct row (no duplicate row keys).
+  mocked.fetchTransactionsPage.mockImplementation((_filters, cursor) =>
+    Promise.resolve(cursor === null ? page([debitTxn()], "w1-cursor-p2") : page([creditTxn()])),
+  );
+  mountScreen();
+  await screen.findByText("KES 8,000.10");
+
+  // Apply a Custom range through the manual drafts (the W1 scenario).
+  await user.type(screen.getByLabelText("From date"), "2026-06-01");
+  await user.type(screen.getByLabelText("To date"), "2026-06-30");
+  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await waitFor(() =>
+    expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
+      expect.objectContaining({ date_from: "2026-06-01", date_to: "2026-06-30" }),
+      null,
+    ),
+  );
+  expect(screen.getByRole("button", { name: "Custom range" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  // Back to All: react-query re-serves the CACHED default page — the
+  // cleared state is visible but no new wire fetch fires yet.
+  await user.click(screen.getByRole("button", { name: "All", pressed: false }));
+  await waitFor(() => expect(screen.getByLabelText("From date")).toHaveValue(""));
+  const callsBeforeRefetch = mocked.fetchTransactionsPage.mock.calls.length;
+
+  // Force a REAL wire fetch on the restored default key: paginate.
+  await user.click(screen.getByRole("button", { name: "Load more" }));
+  await waitFor(() =>
+    expect(mocked.fetchTransactionsPage.mock.calls.length).toBe(callsBeforeRefetch + 1),
+  );
+
+  // THE W1 ASSERTION: the later real fetch carries EMPTY date params —
+  // the stale Custom window survived nowhere in the query state
+  // (falsifiable: skip the date_from/date_to reset in the All branch
+  // of applyDatePreset and this fetch carries 2026-06-01/2026-06-30).
+  const laterCall = mocked.fetchTransactionsPage.mock.calls.at(-1);
+  expect(laterCall?.[0]).toMatchObject({ date_from: "", date_to: "" });
+  expect(laterCall?.[1]).toBe("w1-cursor-p2");
 });

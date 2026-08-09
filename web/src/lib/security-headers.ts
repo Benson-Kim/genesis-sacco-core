@@ -1,15 +1,11 @@
 /**
- * Web-admin security headers (gate 1.6 — banking posture).
+ * Web-admin security headers (least disclosure — banking posture).
  *
  * - CSP with per-request nonce + strict-dynamic: NO 'unsafe-inline' in
  *   script-src, ever. The nonce is minted in middleware.ts per request and
  *   Next.js propagates it onto its own inline bootstrap scripts (the
  *   documented Next.js nonce pattern; the root layout forces dynamic
  *   rendering so every response is nonced).
- * - Development exception: 'unsafe-eval' is added to script-src in dev only.
- *   Next.js Fast Refresh (react-refresh) uses eval() internally; it is never
- *   present in production builds. Pass isDev=true from middleware when
- *   NODE_ENV === "development".
  * - Documented Next.js-imposed exception: style-src keeps 'unsafe-inline'
  *   because Next/styled-jsx inject inline <style> elements without nonce
  *   support. Inline STYLES cannot exfiltrate tokens or run script; inline
@@ -45,12 +41,17 @@ export const STATIC_SECURITY_HEADERS: readonly SecurityHeader[] = [
   },
 ] as const;
 
-export function buildContentSecurityPolicy(nonce: string, isDev = false): string {
+export function buildContentSecurityPolicy(nonce: string): string {
+  // Next.js Fast Refresh uses eval() for HMR in development; without
+  // 'unsafe-eval' the runtime module cannot initialise and React never
+  // hydrates, so form onSubmit handlers never fire.
+  const unsafeEval =
+    process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   return [
     "default-src 'self'",
-    // Nonce + strict-dynamic; no 'unsafe-inline', no 'unsafe-eval' in prod.
-    // Dev adds 'unsafe-eval' for Next.js Fast Refresh (react-refresh uses eval).
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    // Nonce + strict-dynamic; no 'unsafe-inline'. 'unsafe-eval' is
+    // development-only (see above) and absent in production builds.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${unsafeEval}`,
     // Next.js-imposed exception (styles only) — see module docblock.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",

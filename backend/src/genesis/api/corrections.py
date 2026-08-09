@@ -1,10 +1,10 @@
-"""Ledger corrections, misc fees & loan write-off endpoints (P13.15).
+"""Ledger corrections, misc fees & loan write-off endpoints.
 
 Every route carries a RequirePermission dependency on the DEDICATED
-corrections module (A3 maker-checker; deny-by-default, gate 1.6) —
+corrections module (maker-checker; deny-by-default, least disclosure) —
 never generic transactions:edit; mutations are idempotent via the
-Idempotency-Key middleware (gate 1.4), whose stored responses are
-actor-scoped (the !29 lesson: a cross-actor replay misses).
+Idempotency-Key middleware (concurrency safety), whose stored responses are
+actor-scoped (the lesson: a cross-actor replay misses).
 
 Permission gates (P4 matrix extension, decided and documented):
 
@@ -13,19 +13,19 @@ Permission gates (P4 matrix extension, decided and documented):
   * adjustment approval / rejection, write-off vote / void / posting —
     corrections x APPROVE: the CHECKER actions (Branch Manager, Credit
     Committee, System Admin). User-level separation of duties is
-    server-side on top AND at the database (issue #24): the maker of
+    server-side on top AND at the database: the maker of
     an adjustment can never check it (the 0031 SoD CHECK), assurance
-    roles can never be checker (!47 B2), and the requester of a
+    roles can never be checker (B2), and the requester of a
     write-off can never vote on nor post it.
   * adjustment / write-off view — corrections x VIEW.
 
-Money parameters NEVER travel in request bodies (v1.1 rule 1, FM5):
-fee amounts resolve server-side from P13.7 configuration (the request
+Money parameters NEVER travel in request bodies:
+fee amounts resolve server-side from configuration (the request
 names a code-owned fee type only), adjustment figures derive from the
 original transaction's append-only legs, and write-off figures come
 from the persisted write-once snapshot; extra="forbid" turns any
 caller-supplied amount into a 422. Corrections post with occurred_at
-= NOW, server-resolved (A2) — no body carries a date.
+= NOW, server-resolved — no body carries a date.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ CorrectionsApproveCtx = Annotated[AuthContext, Depends(_corrections_approve)]
 
 class AdjustmentBody(BaseModel):
     """The repayment being undone and the reason — NO amounts, ever
-    (FM5/v1.1 rule 1): the reversal derives every figure from the
+    (rule 1): the reversal derives every figure from the
     original transaction's append-only legs."""
 
     model_config = ConfigDict(extra="forbid")
@@ -71,9 +71,9 @@ class AdjustmentBody(BaseModel):
 
 
 class AdjustmentApproveBody(BaseModel):
-    """Deliberately empty (issue #24): the checker approves the
+    """Deliberately empty: the checker approves the
     PERSISTED snapshot — every figure comes from the pending
-    adjustment row (v1.1 rule 3); extra="forbid" -> 422 on any
+    adjustment row; extra="forbid" -> 422 on any
     caller-supplied field."""
 
     model_config = ConfigDict(extra="forbid")
@@ -81,10 +81,9 @@ class AdjustmentApproveBody(BaseModel):
 
 class AdjustmentRejectBody(BaseModel):
     """The checker's decision: the optimistic version plus the REQUIRED
-    rejection rationale (!52 review F2 — four-eyes practice puts the
-    checker's reason on the record, especially since a rejected slot
-    frees for a fresh request). The reason is workflow metadata, never
-    a money parameter (v1.1 rule 1 is not implicated); it lands in the
+    rejection rationale (four-eyes practice puts the checker's reason on the record, especially
+    since a rejected slot frees for a fresh request). The reason is workflow metadata, never
+    a money parameter (is not implicated); it lands in the
     audit `after` payload, never in error envelopes (rule 7)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -94,7 +93,8 @@ class AdjustmentRejectBody(BaseModel):
 
 
 class AdjustmentRecordOut(BaseModel):
-    """One adjustment workflow row (issue #24): the pending request a
+    """One adjustment workflow row: the pending request a
+
     checker reviews, or the terminal posted/rejected history."""
 
     id: str
@@ -120,8 +120,8 @@ class AdjustmentRecordOut(BaseModel):
 
 
 class AdjustmentListOut(BaseModel):
-    """Keyset page of the pending-adjustments checker register (issue
-    #31 ledger (a).1 — the human-authorized read-contract expansion):
+    """Keyset page of the pending-adjustments checker register (the human-authorized read-contract
+    expansion):
     the same rows the by-id read serialises, pending-first."""
 
     items: list[AdjustmentRecordOut]
@@ -144,7 +144,7 @@ class AdjustmentOut(BaseModel):
 
 class FeeBody(BaseModel):
     """A code-owned fee type and the cash channel — the AMOUNT resolves
-    exclusively from P13.7 tenant configuration server-side (FM5):
+    exclusively from tenant configuration server-side:
     extra="forbid" turns a caller-supplied amount into a 422."""
 
     model_config = ConfigDict(extra="forbid")
@@ -185,7 +185,7 @@ class WriteOffVoidBody(BaseModel):
 
 class WriteOffPostBody(BaseModel):
     """Deliberately empty: every figure comes from the persisted
-    write-once snapshot (v1.1 rule 3); extra="forbid" -> 422 on any
+    write-once snapshot; extra="forbid" -> 422 on any
     caller-supplied field."""
 
     model_config = ConfigDict(extra="forbid")
@@ -210,8 +210,8 @@ class WriteOffOut(BaseModel):
 
 
 class WriteOffListOut(BaseModel):
-    """Keyset page of the write-off committee register (issue #31
-    ledger (a).2 — the human-authorized read-contract expansion):
+    """Keyset page of the write-off committee register (the human-authorized read-contract
+    expansion):
     the same rows the by-id read serialises, live-first."""
 
     items: list[WriteOffOut]
@@ -235,7 +235,7 @@ class WriteOffPostOut(BaseModel):
 
 
 class RecoveryReceiptBody(BaseModel):
-    """The cash actually received and its channel (issue #21). The
+    """The cash actually received and its channel. The
     CLAIM figures — total_written_off and the receipts already
     recorded — are server-resolved from the write-once snapshot and
     the append-only loan_recoveries rows under the write-off row lock;
@@ -338,7 +338,7 @@ def _adjustment_out(record: corrections_service.AdjustmentRecord) -> AdjustmentR
 async def request_repayment_adjustment(
     body: AdjustmentBody, ctx: CorrectionsCreateCtx
 ) -> AdjustmentRecordOut:
-    """MAKER phase (issue #24): create a PENDING adjustment bound to
+    """MAKER phase: create a PENDING adjustment bound to
     the persisted approval snapshot — nothing posts until a distinct
     checker approves."""
     factory = get_sessionmaker(get_settings().database_url)
@@ -355,8 +355,8 @@ async def list_repayment_adjustments(
     cursor: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> AdjustmentListOut:
-    """The pending-adjustments checker register (issue #31 ledger
-    (a).1): keyset, PENDING FIRST then newest first — the checker's
+    """The pending-adjustments checker register: keyset, PENDING FIRST then newest first — the
+    checker's
     job order. Served under the existing corrections view gate;
     explicit tenant predicate doubling RLS; bound parameters only."""
     factory = get_sessionmaker(get_settings().database_url)
@@ -384,7 +384,7 @@ async def get_repayment_adjustment(
 async def approve_repayment_adjustment(
     adjustment_id: uuid.UUID, body: AdjustmentApproveBody, ctx: CorrectionsApproveCtx
 ) -> AdjustmentOut:
-    """CHECKER phase (issue #24): re-verify the snapshot under the full
+    """CHECKER phase: re-verify the snapshot under the full
     lock set (409 on drift, posting nothing), then reverse the
     repayment's complete allocation and restore loan state."""
     factory = get_sessionmaker(get_settings().database_url)
@@ -413,7 +413,7 @@ async def reject_repayment_adjustment(
 ) -> AdjustmentRecordOut:
     """Reject a pending adjustment (checker decision, optimistic-locked)
     — frees the one-live-adjustment slot for a fresh request. The
-    checker's rationale is REQUIRED (!52 F2) and recorded in the audit
+    checker's rationale is REQUIRED and recorded in the audit
     row."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
@@ -467,7 +467,7 @@ async def list_write_offs(
     cursor: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> WriteOffListOut:
-    """The write-off committee register (issue #31 ledger (a).2):
+    """The write-off committee register:
     keyset, LIVE (requested/approved) FIRST then newest first — the
     committee's job order. Served under the existing corrections view
     gate; explicit tenant predicate doubling RLS; bound parameters
@@ -547,7 +547,7 @@ async def record_recovery_receipt(
     write_off_id: uuid.UUID, body: RecoveryReceiptBody, ctx: CorrectionsCreateCtx
 ) -> RecoveryReceiptOut:
     """Record a bad-debt recovery receipt against a posted write-off
-    (issue #21): RC- posting + append-only receipt row, never a
+    RC- posting + append-only receipt row, never a
     resurrection of the loan."""
     channel = require_cash_channel(body.channel)
     factory = get_sessionmaker(get_settings().database_url)

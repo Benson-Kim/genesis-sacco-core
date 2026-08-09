@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Interest tab (P15 Settings): loan interest method/basis, penalty
+ * Interest tab: loan interest method/basis, penalty
  * rules, deposit/dividend/rebate rates and the tiered loan-rate bands.
  *
  * WYSIWYG per-tab write: the full displayed field set is submitted with
@@ -47,7 +47,10 @@ interface BandRow {
 const RATE_MSG = "Decimal like 12 or 12.5 (max 2dp)";
 const AMOUNT_MSG = "Amount like 100000 or 100000.50 (max 2dp)";
 
-export function InterestPanel({ settings }: Readonly<{ settings: Settings }>) {
+export function InterestPanel({
+  settings,
+  editing,
+}: Readonly<{ settings: Settings; editing: boolean }>) {
   const permissions = usePermissions();
   const mayEdit = can(permissions.data, "settings", "edit");
   const flow = useSettingsSaveFlow("interest");
@@ -406,7 +409,7 @@ export function InterestPanel({ settings }: Readonly<{ settings: Settings }>) {
         <div className={grid.wide}>
           <SettingsSaveControls
             flow={flow}
-            mayEdit={mayEdit}
+            mayEdit={mayEdit && editing}
             buttonLabel="Save interest rules"
             confirmTitle="Apply interest rules"
             confirmPhrase="interest"

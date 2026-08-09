@@ -1,9 +1,9 @@
 /*
- * Loan products panel (P15 Settings module) — prototype "Loan products"
+ * Loan products panel (Settings module) — prototype "Loan products"
  * tab: product sidebar + edit card. Layout comes from the SHARED
- * grid.sideMain (no private page grids — Phase B blocker (f)); this
+ * grid.sideMain (no private page grids — blocker (f)); this
  * file styles the sidebar entries, form controls and notes only.
- * Issue #8: 44px+ targets, :focus-visible rings replaced never removed,
+ * Issue: 44px+ targets,:focus-visible rings replaced never removed,
  * reduced-motion fallbacks.
  */
 

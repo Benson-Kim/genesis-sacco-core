@@ -1,4 +1,4 @@
-"""guarantee-loan linkage backfill (P12.5, issue #15)
+"""guarantee-loan linkage backfill
 
 Revision ID: 0011
 Revises: 0010
@@ -12,7 +12,7 @@ rows disbursed before the rule existed. Every live guarantee whose
 application already produced a loan gets loan_id set; live pledges
 behind an ACTIVE loan become active (the guarantee lifecycle follows
 the loan from here on); live pledges behind an already-terminal loan
-are released — the P10 release-on-closure hook would have released
+are released — the release-on-closure hook would have released
 them at closure had the linkage existed then. idx_guarantees_application
 (0001) backs the join; no new index is needed. Migrations run as the
 schema owner, so RLS does not fence this backfill; the tenant equality
@@ -20,7 +20,7 @@ in the join keeps the linkage tenant-correct regardless.
 
 Downgrade is a deliberate no-op: the backfill is a pure data narrowing
 (loan_id/status corrections) — reverting it would recreate the
-orphaned-guarantee bug (#15) on rows the fix already repaired.
+orphaned-guarantee bug on rows the fix already repaired.
 """
 
 from alembic import op
@@ -50,5 +50,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Deliberate no-op (documented above): data-only backfill whose
-    # reversal would reintroduce the #15 orphaned-guarantee bug.
+    # reversal would reintroduce the orphaned-guarantee bug.
     pass

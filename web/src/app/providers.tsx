@@ -19,7 +19,7 @@ function tearDownOn401(error: unknown): void {
   if (error instanceof ApiError && error.status === 401) {
     clearSession();
     // Every per-tab witnessed registry dies WITH the session (W58-2,
-    // the !60 F2 class): an in-tab operator switch inherits nothing
+    // the F2 class): an in-tab operator switch inherits nothing
     // from the previous operator's identity — no witnessed
     // attributions, no armed affordances.
     clearSessionScopedStores();
@@ -31,10 +31,10 @@ function tearDownOn401(error: unknown): void {
 }
 
 /**
- * TanStack Query is the only server-state mechanism (MASTER_PROMPT §2.3).
- * The 401 teardown covers BOTH caches (scaffold review finding S3: queries
+ * TanStack Query is the only server-state mechanism (the house doctrine).
+ * The 401 teardown covers BOTH caches (scaffold review: queries
  * alone left a revoked session stuck mid-mutation). Mutations never retry
- * (exactly one write attempt per submission — gate 1.4); queries retry once.
+ * (exactly one write attempt per submission — concurrency safety); queries retry once.
  * (Salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238.)
  */
 export function Providers({ children }: Readonly<{ children: ReactNode }>) {

@@ -1,57 +1,55 @@
 """Nightly dormancy job: Active -> Dormant on ledger-derived inactivity
-(P13.13, gates 1.1-1.6).
+(the house gates).
 
 Runs per tenant in bounded batches through the shared batch runner
 (genesis.application.batch_runner), each batch inside its own short
-transaction (gate 1.3). The caller injects a session scope (e.g.
+transaction (scalability). The caller injects a session scope (e.g.
 functools.partial(tenant_session, factory, tenant_id)) so this module
-stays free of infrastructure imports (the P10/P13.8 precedent); the
+stays free of infrastructure imports (the / precedent); the
 worker cycle (genesis.infrastructure.dormancy_worker) or the admin
 endpoint owns scheduling.
 
-Failure-mode contract (BUILD_PROMPTS P13.13, all falsifiable in
-tests/test_dormancy.py):
+Failure-mode contract (the build plan, all falsifiable in tests/test_dormancy.py):
 
-  * FM1 last-activity gaming — "member-initiated" is the code-owned
+  * last-activity gaming — "member-initiated" is the code-owned
     allow-list genesis.domain.ledger.MEMBER_INITIATED. System postings
     (INT- accruals, DV- distributions — whose occurred_at is pinned to
     FY END, potentially in the past) never reset the clock, and
     neither do reversal rows (reversal_of_id IS NOT NULL — staff
     corrections). Last activity is LEDGER-DERIVED from the
-    transactions table, never a mutable column (v1.1 rule 2); a
+    transactions table, never a mutable column; a
     member with no member-initiated transaction at all is measured
     from their immutable created_at.
-  * FM3 reactivation race — the scan takes each member row FOR UPDATE
+  * reactivation race — the scan takes each member row FOR UPDATE
     SKIP LOCKED. A concurrent deposit holds the same member row FOR
     UPDATE (application/transactions.record_deposit), so the job
     either skips the row (deposit wins, member stays active) or the
     deposit waits and reactivates after the job's commit — exactly one
     final state, never Active silently overwritten to Dormant.
-  * FM4 idempotent re-run — a lock-free no-op via the anti-join on
+  * idempotent re-run — a lock-free no-op via the anti-join on
     status ('active' only — dormant members leave the scan population
     the moment they transition) plus the ledger-derived activity
-    anti-join (v1.1 rule 8): a re-run for the same as_of scans zero
+    anti-join: a re-run for the same as_of scans zero
     rows and writes nothing.
-  * FM5 partial batch state — the status write, its audit row and its
+  * partial batch state — the status write, its audit row and its
     outbox event commit in ONE batch transaction; a mid-batch abort
     leaves zero partial transitions.
-  * FM6 tenant scoping — explicit bound tenant_id predicates on the
-    scan and the status write, on top of forced RLS (v1.1 rule 4).
-  * FM8 config fail-closed — dormancy_period_months comes EXCLUSIVELY
-    from the P13.7 tenant settings (v1.1 rule 1). A missing key
+  * tenant scoping — explicit bound tenant_id predicates on the
+    scan and the status write, on top of forced RLS.
+  * config fail-closed — dormancy_period_months comes EXCLUSIVELY
+    from the tenant settings. A missing key
     REFUSES THE RUN LOUDLY (409-class ConflictError, zero transitions
     — never a silent default); a corrupt stored value (reachable only
-    by manual SQL past the 0017 DB CHECK) refuses identically (the
-    parse_penalty_config fail-closed shape, hardened from "skip" to
-    "refuse" per the P13.13 contract).
+    by manual SQL past the 0017 DB CHECK) refuses identically (the parse_penalty_config fail-closed
+    shape, hardened from "skip" to "refuse" per the contract).
 
-Lock order (verbatim, the P13.13 hardened block): the batch locks
+Lock order (verbatim, the hardened block): the batch locks
 member rows FOR UPDATE SKIP LOCKED in id order — the ROOT tier of the
-established chain member -> accounts -> loans (the !30 distribution
-precedent); reactivation already holds member -> deposit account in
+established chain member -> accounts -> loans (the distribution precedent); reactivation already
+holds member -> deposit account in
 chain order inside the deposit transaction. No new lock-graph edges.
 Nothing is locked after the member row in this job, so no cycle with
-P12 settlement, P9/P13.14 pledging or P11 withdrawals is possible.
+ settlement, P9/ pledging or withdrawals is possible.
 
 Cutoff semantics (hand-computed oracles in tests/test_dormancy.py):
 the window is [cutoff, as_of], cutoff = as_of minus period_months
@@ -92,7 +90,7 @@ __all__ = [
     "run_dormancy_for_tenant",
 ]
 
-#: Members transitioned per transaction (the P10/P13.8 batch sizing).
+#: Members transitioned per transaction (the / batch sizing).
 DEFAULT_BATCH_SIZE = 200
 
 #: Dormancy configuration read: a single PK probe of the one-row-per-
@@ -111,15 +109,15 @@ _MAX_PERIOD_MONTHS = 120
 
 
 def parse_dormancy_period(raw: object, *, configured: bool) -> int:
-    """Fail-closed parse of the stored dormancy period (P13.13 FM8).
+    """Fail-closed parse of the stored dormancy period.
 
-    Mirrors arrears.parse_penalty_config, hardened per the P13.13
+    Mirrors arrears.parse_penalty_config, hardened per the
     contract: a missing key does NOT silently skip — the run is
     REFUSED LOUDLY with a 409-class error and zero transitions (a
     silent default period would either never dorm anyone or dorm
     everyone). Corrupt stored values — reachable only by manual SQL
     bypassing the 0017 DB CHECK — refuse identically. Least
-    disclosure: the message names the defect category only (gate 1.6).
+    disclosure: the message names the defect category only (least disclosure).
     """
     if not configured or raw is None:
         raise ConflictError(
@@ -153,9 +151,9 @@ def _member_initiated_placeholders(params: dict[str, object]) -> str:
     """Bound placeholders for the member-initiated type allow-list.
 
     Only the numbered placeholder NAMES are interpolated; the type
-    values themselves travel as bound parameters (v1.1 rule 6, the P11
-    _direction_clause shape). The values come exclusively from the
-    code-owned MEMBER_INITIATED map (P13.13 FM1).
+    values themselves travel as bound parameters (the _direction_clause shape). The values come
+    exclusively from the
+    code-owned MEMBER_INITIATED map.
     """
     keys: list[str] = []
     for i, value in enumerate(member_initiated_types()):
@@ -166,27 +164,27 @@ def _member_initiated_placeholders(params: dict[str, object]) -> str:
 
 
 def dormancy_scan_sql(*, with_after: bool, type_placeholders: str) -> str:
-    """The dormancy batch scan (P13.13; the P10/P13.8/!30 scan shape).
+    """The dormancy batch scan (the // scan shape).
 
-    Walks idx_members_dormancy_scan (0021: tenant_id, id WHERE status =
-    'active' — shipped in the same migration as this query, gate 1.3);
+    Walks idx_members_dormancy_scan (0021: tenant_id, id WHERE status = 'active' — shipped in the
+    same migration as this query, scalability);
     the activity anti-join is served by idx_txns_member_keyset (0008).
     Fragments are static literals chosen in code; every value is a
-    bound parameter (v1.1 rule 6). Explicit tenant predicate on top of
-    forced RLS (v1.1 rule 4). Exported so the EXPLAIN capture
+    bound parameter. Explicit tenant predicate on top of
+    forced RLS. Exported so the EXPLAIN capture
     (tests/test_p1313_explain.py) asserts against the production SQL.
 
-    Predicates, in anti-join order (v1.1 rule 8 — a re-run is a
+    Predicates, in anti-join order (a re-run is a
     lock-free no-op):
 
       * status = 'active' — only active members are candidates;
         already-dormant members leave the population on transition;
-      * created_at < :cutoff — a member younger than the window can
+      * created_at <:cutoff — a member younger than the window can
         never be dormant (their admission IS activity; created_at is
-        immutable, consistent with v1.1 rule 2);
+        immutable, consistent with);
       * NOT EXISTS member-initiated, non-reversal transaction with
-        occurred_at >= :cutoff — the LEDGER-DERIVED activity test
-        (FM1): system postings and reversals never keep a member
+        occurred_at >=:cutoff — the LEDGER-DERIVED activity test
+        system postings and reversals never keep a member
         active.
 
     The correlated MAX(occurred_at) subselect feeds the audit row with
@@ -239,13 +237,13 @@ async def _mark_dormant(
 ) -> int:
     """Transition one LOCKED member Active -> Dormant; returns 0 or 1.
 
-    The pure transition function validates the move (gate 1.4 — the
-    single transition gatekeeper); the UPDATE re-checks status =
+    The pure transition function validates the move (concurrency safety — the single transition
+    gatekeeper); the UPDATE re-checks status =
     'active' and the version as defence in depth (both are stable
     under the row lock). Status is member state, so the optimistic
     version bumps like every other status writer. The audit row and
     the member-facing outbox notification commit in this same batch
-    transaction (FM5; gates 1.2/1.5).
+    transaction (the house gates/1.5).
     """
     transition(MemberStatus.ACTIVE, MemberStatus.DORMANT)
     result = cast(
@@ -253,7 +251,7 @@ async def _mark_dormant(
         await session.execute(
             text(
                 # Explicit tenant predicate on the write, on top of RLS
-                # (defence in depth, gate 1.6 v1.1; issue #17).
+                # (defence in depth, least disclosure v1.1).
                 "UPDATE members SET status = :st, version = version + 1, "
                 "updated_at = now() "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
@@ -293,7 +291,7 @@ async def _mark_dormant(
             "as_of": as_of.isoformat(),
         },
     )
-    # Member-facing notification (gate 1.2, outbox-only): dormancy is
+    # Member-facing notification (reliability, outbox-only): dormancy is
     # part of the insider-fraud detection surface — the member learns
     # their account was parked, and later reactivation notifies them
     # again (application/members.reactivate_dormant_member).
@@ -377,9 +375,9 @@ async def run_dormancy_for_tenant(
     """Mark one tenant's inactive members dormant in short batches.
 
     The dormancy period is resolved ONCE, before the first batch, from
-    tenant settings only (v1.1 rule 1): an unconfigured or corrupt
+    tenant settings only: an unconfigured or corrupt
     period REFUSES the whole run with a 409-class error and zero
-    transitions (FM8 — never a silent default). A config change
+    transitions (never a silent default). A config change
     mid-run affects the NEXT run; every audit row records the values
     actually used.
     """

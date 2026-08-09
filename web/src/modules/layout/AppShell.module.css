@@ -1,4 +1,4 @@
-/* Mirrors prototype .app / aside / .brand / nav / header / main */
+/* Mirrors prototype.app / aside /.brand / nav / header / main */
 .app {
   display: flex;
   height: 100vh;
@@ -56,7 +56,7 @@
   flex-direction: column;
 }
 
-/* Bottom-anchored utility zone (issue #8): secondary links pin to the
+/* Bottom-anchored utility zone: secondary links pin to the
    sidebar footer so core navigation stays clean. */
 .navUtility {
   margin-top: auto;

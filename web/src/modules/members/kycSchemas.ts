@@ -3,8 +3,7 @@ import { isoTimestampSchema } from "@/lib/schemas";
 import { memberTypeSchema, type MemberType } from "./schemas";
 
 /**
- * Member-KYC boundary shapes (issue #31 batch 3 — the P13.12 profile
- * and document-checklist contracts; audit #30 finding U1).
+ * Member-KYC boundary shapes (the profile and document-checklist contracts).
  *
  * SINGLE SOURCE OF TRUTH, MIRRORED HONESTLY: the per-type section and
  * field specs below reproduce `backend/src/genesis/domain/member_kyc.py`
@@ -17,14 +16,14 @@ import { memberTypeSchema, type MemberType } from "./schemas";
  * their fidelity to the backend is pinned by hand-computed
  * accept/reject oracles in the test suites.
  *
- * MONEY POSTURE (P15 blocker (a)): the ONE monetary-looking KYC field
+ * MONEY POSTURE: the ONE monetary-looking KYC field
  * (monthly income) is an INFORMATIONAL string constrained to the
  * backend's decimal grammar (`_AMOUNT_PATTERN`, up to two decimal
  * places). It is never an input to any computation and never rendered
  * through fmtKes: it is not ledger money, it is declared KYC data,
  * shown verbatim.
  *
- * PII POSTURE (gate 1.6): every profile field is PII. Values render
+ * PII POSTURE (least disclosure): every profile field is PII. Values render
  * exclusively through React text interpolation on members:view-gated
  * surfaces; nothing here is logged, echoed into errors, or placed in
  * a URL.
@@ -363,7 +362,7 @@ export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
  * (domain/member_kyc.py `_DOC_ALLOWED`): pending to received
  * (handover), received to verified or rejected (review), rejected to
  * received (resubmission); verified is terminal. Rendering vocabulary
- * ONLY — the server validates every transition regardless (gate 1.4).
+ * ONLY — the server validates every transition regardless (concurrency safety).
  */
 export const DOCUMENT_TRANSITIONS: Record<DocumentStatus, readonly DocumentStatus[]> = {
   pending: ["received"],

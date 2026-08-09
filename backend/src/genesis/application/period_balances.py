@@ -1,15 +1,15 @@
-"""Ledger-reconstructed period balances (P11 ADB, shared by P13.11).
+"""Ledger-reconstructed period balances (ADB, shared by).
 
 The single implementation of the average-daily-balance basis
-(MASTER_PROMPT 1.5): values derived from balances OVER A PERIOD are
+(the house doctrine 1.5): values derived from balances OVER A PERIOD are
 computed from the append-only ledger — never from a point-in-time
 balance snapshot, which is a proven exploit class (park funds on the
-measurement day, withdraw the next). Extracted verbatim from the P11
-deposit-interest job (gate 1.1: the P13.11 dividend basis must reuse,
-not fork, this reconstruction) and generalised over the account kind:
+measurement day, withdraw the next). Extracted verbatim from the
+deposit-interest job (reuse-first: the dividend basis must reuse, not fork, this reconstruction) and
+generalised over the account kind:
 
   * deposit_accounts <-> ledger account member.deposits
-  * share_accounts   <-> ledger account member.shares
+  * share_accounts <-> ledger account member.shares
 
 Every balance writer posts its member-attributed leg through the P7
 contract in the same transaction as the balance update, so
@@ -23,18 +23,17 @@ row lock), and walking backwards day by day from period end to period
 start, undoing each day's net movement, yields every end-of-day
 balance. The basis is the cent-rounded mean of those (positive-
 clamped) balances: money held D of N days earns exactly D/N of a full
-period (the P11 review-finding-14 rule; the P13.11 mid-year-joiner
-oracle).
+period (the review-finding-14 rule; the mid-year-joiner oracle).
 
 Callers computing a MONEY FIGURE from this basis do so under the
-account row lock (P11/P13.11 job batches); lock-free callers (the
-P13.11 declaration totals) rely on the reconstruction's timing
+account row lock (/ job batches); lock-free callers (the declaration totals) rely on the
+reconstruction's timing
 invariance: historical legs are append-only and the single-statement
 end-anchor is snapshot-consistent, so a concurrent posting dated after
 the period changes current_balance and the subtracted net equally.
 
 Every read carries an explicit bound tenant_id predicate on top of
-forced RLS (v1.1 rule 4); all values are bound parameters (rule 6).
+forced RLS; all values are bound parameters (rule 6).
 The SQL builders are exported so the EXPLAIN captures assert against
 the production statements (tests/test_p11_explain.py,
 tests/test_p1311_explain.py).
@@ -106,13 +105,13 @@ async def average_daily_balance(
 ) -> Decimal:
     """Average daily balance over [start, end], reconstructed from the ledger.
 
-    The P11 walk, verbatim: starting from the end-of-period anchor,
+    The walk, verbatim: starting from the end-of-period anchor,
     undo each day's net movement backwards from end to start, producing
     every end-of-day balance in the period; the basis is the
     cent-rounded mean of those balances, each clamped at zero (guard
     for directly seeded fixtures without ledger history). A deposit
     parked for only the last day of the period earns exactly 1/N of it
-    (P11 review finding 14) instead of the full period a point-in-time
+    (review finding 14) instead of the full period a point-in-time
     snapshot would have paid. A member without the account earns
     nothing (ZERO).
     """

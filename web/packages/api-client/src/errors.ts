@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Backend error envelope (gate 1.6): a sanitized category plus a
+ * Backend error envelope (least disclosure): a sanitized category plus a
  * correlation ID — never internals or stack traces.
  */
 export const errorEnvelopeSchema = z.object({
@@ -66,7 +66,7 @@ const LOCATION_HEADS = new Set(["body", "query", "path", "header", "cookie"]);
  * both the app envelope {category, correlation_id} and FastAPI validation
  * bodies {detail: [{loc, msg}]} so 422 stays DISTINCT from 409/other
  * conflicts and field messages reach the operator. Anything else degrades
- * to a sanitized internal error — never an echo of the body (gate 1.6).
+ * to a sanitized internal error — never an echo of the body (least disclosure).
  *
  * Field keys are CANONICAL (W56-5): the leading location head — body,
  * query, path, header or cookie — is stripped (head position ONLY, so a

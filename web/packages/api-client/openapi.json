@@ -31,14 +31,14 @@
       },
       "AdjustmentApproveBody": {
         "additionalProperties": false,
-        "description": "Deliberately empty (issue #24): the checker approves the\nPERSISTED snapshot \u2014 every figure comes from the pending\nadjustment row (v1.1 rule 3); extra=\"forbid\" -> 422 on any\ncaller-supplied field.",
+        "description": "Deliberately empty: the checker approves the\nPERSISTED snapshot \u2014 every figure comes from the pending\nadjustment row; extra=\"forbid\" -> 422 on any\ncaller-supplied field.",
         "properties": {},
         "title": "AdjustmentApproveBody",
         "type": "object"
       },
       "AdjustmentBody": {
         "additionalProperties": false,
-        "description": "The repayment being undone and the reason \u2014 NO amounts, ever\n(FM5/v1.1 rule 1): the reversal derives every figure from the\noriginal transaction's append-only legs.",
+        "description": "The repayment being undone and the reason \u2014 NO amounts, ever\n(rule 1): the reversal derives every figure from the\noriginal transaction's append-only legs.",
         "properties": {
           "reason": {
             "maxLength": 500,
@@ -60,7 +60,7 @@
         "type": "object"
       },
       "AdjustmentListOut": {
-        "description": "Keyset page of the pending-adjustments checker register (issue\n#31 ledger (a).1 \u2014 the human-authorized read-contract expansion):\nthe same rows the by-id read serialises, pending-first.",
+        "description": "Keyset page of the pending-adjustments checker register (the human-authorized read-contract\nexpansion):\nthe same rows the by-id read serialises, pending-first.",
         "properties": {
           "items": {
             "items": {
@@ -152,7 +152,7 @@
         "type": "object"
       },
       "AdjustmentRecordOut": {
-        "description": "One adjustment workflow row (issue #24): the pending request a\nchecker reviews, or the terminal posted/rejected history.",
+        "description": "One adjustment workflow row: the pending request a\n\nchecker reviews, or the terminal posted/rejected history.",
         "properties": {
           "amount": {
             "title": "Amount",
@@ -304,7 +304,7 @@
       },
       "AdjustmentRejectBody": {
         "additionalProperties": false,
-        "description": "The checker's decision: the optimistic version plus the REQUIRED\nrejection rationale (!52 review F2 \u2014 four-eyes practice puts the\nchecker's reason on the record, especially since a rejected slot\nfrees for a fresh request). The reason is workflow metadata, never\na money parameter (v1.1 rule 1 is not implicated); it lands in the\naudit `after` payload, never in error envelopes (rule 7).",
+        "description": "The checker's decision: the optimistic version plus the REQUIRED\nrejection rationale (four-eyes practice puts the checker's reason on the record, especially\nsince a rejected slot frees for a fresh request). The reason is workflow metadata, never\na money parameter (is not implicated); it lands in the\naudit `after` payload, never in error envelopes (rule 7).",
         "properties": {
           "reason": {
             "maxLength": 500,
@@ -327,7 +327,7 @@
       },
       "ApplicationCreateBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\": rate/pricing come from the product server-side;\na caller-sent rate_pct (or any unknown field) is a 422 (gate 1.6\nv1.1, retroactive on touched code).",
+        "description": "extra=\"forbid\": rate/pricing come from the product server-side;\na caller-sent rate_pct (or any unknown field) is a 422 (least disclosure v1.1, retroactive on\ntouched code).",
         "properties": {
           "amount": {
             "anyOf": [
@@ -756,7 +756,7 @@
         "type": "object"
       },
       "BackfillRunOut": {
-        "description": "Side-effect counts (\u00a74): what the run created and linked.",
+        "description": "Side-effect counts: what the run created and linked.",
         "properties": {
           "batches": {
             "title": "Batches",
@@ -874,7 +874,7 @@
         "type": "object"
       },
       "BranchMemberRosterOut": {
-        "description": "One member assigned to a branch (#31 (j).1) \u2014 identity facts only.\n\nLeast disclosure (gate 1.6): no contact details, no figures; the\nmember record stays on the P8 /members reads under the same\nmembers:view gate.",
+        "description": "One member assigned to a branch ((j).1) \u2014 identity facts only.\n\nLeast disclosure: no contact details, no figures; the\nmember record stays on the P8 /members reads under the same\nmembers:view gate.",
         "properties": {
           "id": {
             "title": "Id",
@@ -981,7 +981,7 @@
         "type": "object"
       },
       "BranchUserRosterOut": {
-        "description": "One user assigned to a branch (#31 (j).1) \u2014 identity facts only.\n\nLeast disclosure (gate 1.6): who is assigned, nothing more \u2014 no\nrole, no last-active, no phone; the full user record stays on the\nP13.5 /users reads under the same access_control:view gate.",
+        "description": "One user assigned to a branch ((j).1) \u2014 identity facts only.\n\nLeast disclosure: who is assigned, nothing more \u2014 no\nrole, no last-active, no phone; the full user record stays on the\n /users reads under the same access_control:view gate.",
         "properties": {
           "email": {
             "title": "Email",
@@ -1060,7 +1060,7 @@
       },
       "CaseDispositionBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\": the caller supplies the optimistic version, the\ntarget status and the target-paired rationale fields (!53 F1/F2).\nThe enum rejects unknown statuses at the boundary (422); job-only\ntargets (closed_cured/closed_written_off) are refused by the\nservice (409, FM2); the single domain gatekeeper owns the legality\nof the move (issue #23 N2). `reason` is REQUIRED by the service\nfor the two pause targets (audit-payload workflow metadata, !53\nF2); `note` is REQUIRED for closed_restructured \u2014 THE outcome\nnote, written atomically in the same transaction (!53 F1). A\nmismatched field-target pairing is a 422. Neither field is a money\nparameter (v1.1 rule 1 not implicated).",
+        "description": "extra=\"forbid\": the caller supplies the optimistic version, the\ntarget status and the target-paired rationale fields.\nThe enum rejects unknown statuses at the boundary (422); job-only\ntargets (closed_cured/closed_written_off) are refused by the\nservice (409); the single domain gatekeeper owns the legality\nof the move. `reason` is REQUIRED by the service\nfor the two pause targets (audit-payload workflow metadata); `note` is REQUIRED for\nclosed_restructured \u2014 THE outcome\nnote, written atomically in the same transaction. A\nmismatched field-target pairing is a 422. Neither field is a money\nparameter (not implicated).",
         "properties": {
           "note": {
             "anyOf": [
@@ -1106,7 +1106,7 @@
       },
       "CaseNoteBody": {
         "additionalProperties": false,
-        "description": "Shared by the regular-note and outcome-note routes (issue #23):\nboth carry exactly one text field, so one body model serves both\n(reuse-first, 1.1).",
+        "description": "Shared by the regular-note and outcome-note routes:\nboth carry exactly one text field, so one body model serves both\n(reuse-first, 1.1).",
         "properties": {
           "note": {
             "maxLength": 2000,
@@ -1123,7 +1123,7 @@
       },
       "CaseOpenBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\": no caller-supplied timestamps, classification or\ndays-past-due \u2014 the NPL snapshot is read under the loan row lock\nand every SLA timestamp is written server-side (addendum A7).",
+        "description": "extra=\"forbid\": no caller-supplied timestamps, classification or\ndays-past-due \u2014 the NPL snapshot is read under the loan row lock\nand every SLA timestamp is written server-side (review addendum).",
         "properties": {
           "loan_id": {
             "format": "uuid",
@@ -1303,7 +1303,7 @@
       },
       "ConsentOverrideBody": {
         "additionalProperties": false,
-        "description": "Staff-attested consent override (P14.5 scope 4): consent is the\nmember principal's act on the /member routes; this body carries the\noptimistic-lock version plus the MANDATORY evidence citation \u2014 a\nbare caller-asserted consent flag is a rejected design (the !29\nlesson; there is no boolean to assert).",
+        "description": "Staff-attested consent override (scope 4): consent is the\nmember principal's act on the /member routes; this body carries the\noptimistic-lock version plus the MANDATORY evidence citation \u2014 a\nbare caller-asserted consent flag is a rejected design (the lesson; there is no boolean to\nassert).",
         "properties": {
           "consent_reference": {
             "maxLength": 200,
@@ -1326,7 +1326,7 @@
       },
       "CredentialCreateBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\" (gate 1.6 v1.1): the member comes from the path,\nthe status from the schema default \u2014 the email is the only input.",
+        "description": "extra=\"forbid\" (least disclosure v1.1): the member comes from the path,\n\nthe status from the schema default \u2014 the email is the only input.",
         "properties": {
           "email": {
             "maxLength": 254,
@@ -1390,7 +1390,7 @@
         "type": "object"
       },
       "DashboardChartsOut": {
-        "description": "Server-computed chart geometry (issue #32); each sub-slice\nfollows its parent slice's grant and is omitted when ungranted.",
+        "description": "Server-computed chart geometry; each sub-slice\n\nfollows its parent slice's grant and is omitted when ungranted.",
         "properties": {
           "flows": {
             "anyOf": [
@@ -1677,7 +1677,7 @@
       },
       "DeclareBody": {
         "additionalProperties": false,
-        "description": "Only the batch size is caller-tunable: rates and the financial\nyear come exclusively from tenant configuration (v1.1 rule 1) \u2014\nextra=\"forbid\" rejects any attempt to supply them (422).",
+        "description": "Only the batch size is caller-tunable: rates and the financial\nyear come exclusively from tenant configuration \u2014\nextra=\"forbid\" rejects any attempt to supply them (422).",
         "properties": {
           "batch_size": {
             "default": 200,
@@ -1710,7 +1710,7 @@
       },
       "DisburseBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\": a caller-sent disbursed_at/occurred_at (or any\nmoney field this contract does not own) is a 422, never silently\nignored \u2014 the posting date is resolved server-side (issue #12).",
+        "description": "extra=\"forbid\": a caller-sent disbursed_at/occurred_at (or any\nmoney field this contract does not own) is a 422, never silently\nignored \u2014 the posting date is resolved server-side.",
         "properties": {
           "channel": {
             "$ref": "#/components/schemas/Channel"
@@ -1755,7 +1755,7 @@
       },
       "DistributeBody": {
         "additionalProperties": false,
-        "description": "No money fields, ever: every figure derives from the persisted\napproval snapshot; extra=\"forbid\" -> 422 (v1.1 rule 1).",
+        "description": "No money fields, ever: every figure derives from the persisted\n\napproval snapshot; extra=\"forbid\" -> 422.",
         "properties": {
           "batch_size": {
             "default": 200,
@@ -1997,7 +1997,7 @@
       },
       "DocumentUpdateBody": {
         "additionalProperties": false,
-        "description": "Omitted fields keep their stored values. expires_at follows\nexclude-unset semantics (review K2): omitted keeps the current\nexpiry, an EXPLICIT null clears a wrongly-entered date.",
+        "description": "Omitted fields keep their stored values. expires_at follows\nexclude-unset semantics: omitted keeps the current\nexpiry, an EXPLICIT null clears a wrongly-entered date.",
         "properties": {
           "expires_at": {
             "anyOf": [
@@ -2099,7 +2099,7 @@
         "type": "object"
       },
       "ExitEligibilityOut": {
-        "description": "Advisory blocker FACTS for the up-front eligibility checklist\n(P15 batch 5, U6 \u2014 the prototype's vExit() criteria rows).\n\nLeast disclosure (gate 1.6): counts and booleans only \u2014 NEVER an\namount; served under members:view like every other exit read.\nADVISORY only: computed WITHOUT locks; the binding verdict stays\nwith the request/settlement locked recomputes (which also enforce\nthe negative-settlement rule this read cannot see).",
+        "description": "Advisory blocker FACTS for the up-front eligibility checklist\n(the exit-eligibility criteria rows).\n\nLeast disclosure: counts and booleans only \u2014 NEVER an\namount; served under members:view like every other exit read.\nADVISORY only: computed WITHOUT locks; the binding verdict stays\nwith the request/settlement locked recomputes (which also enforce\nthe negative-settlement rule this read cannot see).",
         "properties": {
           "active_loans_count": {
             "title": "Active Loans Count",
@@ -2720,7 +2720,7 @@
       },
       "FeeBody": {
         "additionalProperties": false,
-        "description": "A code-owned fee type and the cash channel \u2014 the AMOUNT resolves\nexclusively from P13.7 tenant configuration server-side (FM5):\nextra=\"forbid\" turns a caller-supplied amount into a 422.",
+        "description": "A code-owned fee type and the cash channel \u2014 the AMOUNT resolves\nexclusively from tenant configuration server-side:\nextra=\"forbid\" turns a caller-supplied amount into a 422.",
         "properties": {
           "channel": {
             "$ref": "#/components/schemas/Channel"
@@ -2771,7 +2771,7 @@
         "type": "object"
       },
       "FeeType": {
-        "description": "Code-owned fee vocabulary: each member maps to the P13.7 settings\nkey its amount is resolved from (v1.1 rule 1). A caller can only\never name a type from this enum \u2014 never an amount.",
+        "description": "Code-owned fee vocabulary: each member maps to the tenant-settings\nkey its amount is resolved from (v1.1 rule 1). A caller can only\never name a type from this enum \u2014 never an amount.",
         "enum": [
           "registration"
         ],
@@ -2779,7 +2779,7 @@
         "type": "string"
       },
       "FlowBarScaleOut": {
-        "description": "One month's grouped-bar heights (issue #32 route (a)): integer\npercentages 0..100 of the window's axis_max, computed server-side\nin Decimal arithmetic \u2014 the client renders scale, never math.",
+        "description": "One month's grouped-bar heights (route (a)): integer\npercentages 0..100 of the window's axis_max, computed server-side\nin Decimal arithmetic \u2014 the client renders scale, never math.",
         "properties": {
           "deposits_pct": {
             "title": "Deposits Pct",
@@ -2917,7 +2917,7 @@
       },
       "GuaranteeReleaseBody": {
         "additionalProperties": false,
-        "description": "No amounts, ever (P13.14): the released amount comes from the\nguarantee row; version pins the optimistic lock (gate 1.4).",
+        "description": "No amounts, ever: the released amount comes from the\n\nguarantee row; version pins the optimistic lock (concurrency safety).",
         "properties": {
           "version": {
             "minimum": 1.0,
@@ -2933,7 +2933,7 @@
       },
       "GuaranteeSubstituteBody": {
         "additionalProperties": false,
-        "description": "Atomic-swap request (P13.14; P14.5 scope 4). consent_reference\ncites the evidence the staff attestation rests on (e.g. the signed\nguarantorship form) \u2014 an unreferenced substitute is refused (422)\nand the attestation is written onto the replacement row and as a\nfirst-class guarantee.consent_override audit fact. The pre-P14.5\ncaller-asserted `consented` boolean is REMOVED (the !29 lesson):\nconsent is never a flag a caller asserts. amount may only meet or\nexceed the released amount (server-derived from the guarantee row\nwhen omitted).",
+        "description": "Atomic-swap request (scope 4). consent_reference\ncites the evidence the staff attestation rests on (e.g. the signed\nguarantorship form) \u2014 an unreferenced substitute is refused (422)\nand the attestation is written onto the replacement row and as a\nfirst-class guarantee.consent_override audit fact. The pre-\ncaller-asserted `consented` boolean is REMOVED (the lesson):\nconsent is never a flag a caller asserts. amount may only meet or\nexceed the released amount (server-derived from the guarantee row\nwhen omitted).",
         "properties": {
           "amount": {
             "anyOf": [
@@ -3123,7 +3123,7 @@
         "type": "object"
       },
       "KpiTrendsOut": {
-        "description": "Per-KPI trend series (#31 batch 8, ledger (k)); each series\nfollows its KPI card's parent grant (par30 <- loan_book:view,\nmembers <- members:view) and is omitted when ungranted.",
+        "description": "Per-KPI trend series; each series\nfollows its KPI card's parent grant (par30 <- loan_book:view,\nmembers <- members:view) and is omitted when ungranted.",
         "properties": {
           "members": {
             "anyOf": [
@@ -3158,7 +3158,7 @@
         "type": "object"
       },
       "LedgerLegOut": {
-        "description": "One DR or CR leg of a posting (#31 ledger (g), audit #30 A3).\n\nVerbatim ledger_entries facts: the chart-of-accounts key, the side\nand the leg amount as a canonical decimal string \u2014 one row per leg,\nNOTHING derived (no netting, no totals; the 0004/0014 constraint\ntrigger proved balance at commit time). Least disclosure (gate\n1.6): no member, actor or channel rides on a leg row \u2014 those live\non the transaction the caller already holds.",
+        "description": "One DR or CR leg of a posting.\n\nVerbatim ledger_entries facts: the chart-of-accounts key, the side\nand the leg amount as a canonical decimal string \u2014 one row per leg,\nNOTHING derived (no netting, no totals; the 0004/0014 constraint\ntrigger proved balance at commit time). Least disclosure (gate\n1.6): no member, actor or channel rides on a leg row \u2014 those live\non the transaction the caller already holds.",
         "properties": {
           "account": {
             "title": "Account",
@@ -3193,7 +3193,7 @@
         "type": "string"
       },
       "LoanInterestBasis": {
-        "description": "Stored only: the P6 engine extension is out of scope (P13.7).",
+        "description": "Stored only: the P6 engine extension is out of scope.",
         "enum": [
           "thirty_360",
           "actual_365"
@@ -3202,7 +3202,7 @@
         "type": "string"
       },
       "LoanInterestMethod": {
-        "description": "Stored only: the P6 engine extension is out of scope (P13.7).",
+        "description": "Stored only: the P6 engine extension is out of scope.",
         "enum": [
           "reducing_balance",
           "flat"
@@ -3351,7 +3351,7 @@
       },
       "MemberActBody": {
         "additionalProperties": false,
-        "description": "Consent/self-release body: the optimistic-lock version ONLY.\n\nextra=\"forbid\" (gate 1.6 v1.1): there is deliberately NO field for\nwho consents \u2014 the principal IS the authenticated credential; a\ncaller-asserted identity or consent flag is a rejected design (the\n!29 lesson).",
+        "description": "Consent/self-release body: the optimistic-lock version ONLY.\n\nextra=\"forbid\" (least disclosure v1.1): there is deliberately NO field for\nwho consents \u2014 the principal IS the authenticated credential; a\ncaller-asserted identity or consent flag is a rejected design (the lesson).",
         "properties": {
           "version": {
             "minimum": 1.0,
@@ -3366,7 +3366,7 @@
         "type": "object"
       },
       "MemberAggregatesOut": {
-        "description": "Advisory financial aggregates on the single-member read (#31).\n\nAll four figures are canonical decimal strings scaled by the\ndatabase (numeric(18,2)); clients render them verbatim and never\ncompute money (P15 blocker (a)). Advisory only: every BINDING money\ndecision recomputes under the established row locks.",
+        "description": "Advisory financial aggregates on the single-member read.\n\nAll four figures are canonical decimal strings scaled by the\ndatabase (numeric(18,2)); clients render them verbatim and never\ncompute money (no client-side money math). Advisory only: every BINDING money\ndecision recomputes under the established row locks.",
         "properties": {
           "deposits_total": {
             "title": "Deposits Total",
@@ -3396,7 +3396,7 @@
       },
       "MemberCreateBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\" (gate 1.6): unknown fields are a 422, never\nsilently dropped. dividend_payout (#31 ledger (c)) is typed as a\nbounded STRING, deliberately not the enum: the service resolves it\nagainst the CODE-OWNED vocabulary and an unknown value surfaces as\nthe sanitized 422 category ONLY \u2014 a pydantic enum here would echo\nthe permitted values in FastAPI's structural 422 (least\ndisclosure). Stored PREFERENCE only; nothing routes money by it\n(batch-8 fence).",
+        "description": "extra=\"forbid\" (least disclosure): unknown fields are a 422, never\nsilently dropped. dividend_payout is typed as a\nbounded STRING, deliberately not the enum: the service resolves it\nagainst the CODE-OWNED vocabulary and an unknown value surfaces as\nthe sanitized 422 category ONLY \u2014 a pydantic enum here would echo\nthe permitted values in FastAPI's structural 422 (least\ndisclosure). Stored PREFERENCE only; nothing routes money by it\n(the preference-only fence).",
         "properties": {
           "dividend_payout": {
             "anyOf": [
@@ -3452,7 +3452,7 @@
         "type": "object"
       },
       "MemberDetailOut": {
-        "description": "MemberOut expanded with aggregates \u2014 always on the DETAIL read.\n\nExpand-only contract: every MemberOut field is unchanged. The\nregister LIST serves the same object per row ONLY when the request\nopts in with include=aggregates (one set-based statement per page,\nnever a per-row fan-out \u2014 gate 1.3); without the parameter list\nrows stay flat.",
+        "description": "MemberOut expanded with aggregates \u2014 always on the DETAIL read.\n\nExpand-only contract: every MemberOut field is unchanged. The\nregister LIST serves the same object per row ONLY when the request\nopts in with include=aggregates (one set-based statement per page,\nnever a per-row fan-out \u2014 scalability); without the parameter list\nrows stay flat.",
         "properties": {
           "aggregates": {
             "$ref": "#/components/schemas/MemberAggregatesOut"
@@ -3543,7 +3543,7 @@
         "type": "object"
       },
       "MemberListDetailResponse": {
-        "description": "Register page whose rows carry the advisory aggregates (#31).\n\nServed ONLY when the request opts in with include=aggregates; the\nflat MemberListResponse stays byte-identical otherwise.",
+        "description": "Register page whose rows carry the advisory aggregates.\n\nServed ONLY when the request opts in with include=aggregates; the\nflat MemberListResponse stays byte-identical otherwise.",
         "properties": {
           "items": {
             "items": {
@@ -3906,7 +3906,7 @@
       },
       "MoneyBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\": a caller-sent occurred_at (or any money field this\ncontract does not own) is a 422, never silently ignored \u2014 the\nposting date is resolved server-side (issue #12, gate 1.6).",
+        "description": "extra=\"forbid\": a caller-sent occurred_at (or any money field this\ncontract does not own) is a 422, never silently ignored \u2014 the\nposting date is resolved server-side (least disclosure).",
         "properties": {
           "amount": {
             "anyOf": [
@@ -3924,6 +3924,19 @@
           },
           "channel": {
             "$ref": "#/components/schemas/Channel"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
           }
         },
         "required": [
@@ -4039,7 +4052,7 @@
         "type": "object"
       },
       "OtpInvalidateResponse": {
-        "description": "Side-effect counts only \u2014 never challenge contents (gate 1.6).",
+        "description": "Side-effect counts only \u2014 never challenge contents (least disclosure).",
         "properties": {
           "voided_otp_challenges": {
             "title": "Voided Otp Challenges",
@@ -4071,21 +4084,40 @@
         "type": "object"
       },
       "OtpRequestBody": {
+        "description": "Request a one-time password for a sign-in identifier.",
         "properties": {
           "email": {
-            "maxLength": 254,
-            "minLength": 3,
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier"
           }
         },
-        "required": [
-          "email"
-        ],
         "title": "OtpRequestBody",
         "type": "object"
       },
       "OtpVerifyBody": {
+        "description": "Verify the six-digit one-time password for a sign-in identifier.",
         "properties": {
           "code": {
             "pattern": "^\\d{6}$",
@@ -4093,21 +4125,40 @@
             "type": "string"
           },
           "email": {
-            "maxLength": 254,
-            "minLength": 3,
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier"
           }
         },
         "required": [
-          "email",
           "code"
         ],
         "title": "OtpVerifyBody",
         "type": "object"
       },
       "Par30TrendPointOut": {
-        "description": "One PAR-30 trend point (#31 batch 8, ledger (k)): the ratio is\nRECOMPUTED from posting-history truth at the month-end cutoff\n(reconstruct_month at the code-owned PAR threshold \u2014 never the\nmutable snapshot columns, \u00a71.5) and serialized verbatim\n(str(Decimal)); pct is share-of-window-peak geometry ONLY.",
+        "description": "One PAR-30 trend point: the ratio is\nRECOMPUTED from posting-history truth at the month-end cutoff\n(reconstruct_month at the code-owned PAR threshold \u2014 never the mutable snapshot columns) and\nserialized verbatim\n(str(Decimal)); pct is share-of-window-peak geometry ONLY.",
         "properties": {
           "month": {
             "title": "Month",
@@ -4131,7 +4182,7 @@
         "type": "object"
       },
       "PenaltyChargedOn": {
-        "description": "Basis the arrears penalty is charged on (prototype Interest tab).",
+        "description": "Basis the arrears penalty is charged on (the Interest settings tab).",
         "enum": [
           "instalment_in_arrears",
           "full_outstanding"
@@ -4375,7 +4426,7 @@
       },
       "ProductCreateBody": {
         "additionalProperties": false,
-        "description": "extra=\"forbid\" (gate 1.6 v1.1, retroactive on touched code).\n\nmax_digits/decimal_places on the money-rule fields mirror the\nbacking numeric(5,2) columns (0001), so an over-precise value is a\nclean 422 instead of a DB error surfacing as a 500 (external Codex\nreview, re-derived).",
+        "description": "extra=\"forbid\" (least disclosure v1.1, retroactive on touched code).\n\nmax_digits/decimal_places on the money-rule fields mirror the\nbacking numeric(5,2) columns (0001), so an over-precise value is a\nclean 422 instead of a DB error surfacing as a 500 (external Codex\nreview, re-derived).",
         "properties": {
           "deposit_multiplier": {
             "anyOf": [
@@ -4717,7 +4768,7 @@
       },
       "RecoveryReceiptBody": {
         "additionalProperties": false,
-        "description": "The cash actually received and its channel (issue #21). The\nCLAIM figures \u2014 total_written_off and the receipts already\nrecorded \u2014 are server-resolved from the write-once snapshot and\nthe append-only loan_recoveries rows under the write-off row lock;\na receipt exceeding the outstanding claim is a 409. extra=\"forbid\"\nturns any other caller-supplied field into a 422.",
+        "description": "The cash actually received and its channel. The\nCLAIM figures \u2014 total_written_off and the receipts already\nrecorded \u2014 are server-resolved from the write-once snapshot and\nthe append-only loan_recoveries rows under the write-off row lock;\na receipt exceeding the outstanding claim is a 409. extra=\"forbid\"\nturns any other caller-supplied field into a 422.",
         "properties": {
           "amount": {
             "anyOf": [
@@ -5035,7 +5086,7 @@
       },
       "RollupBackfillBody": {
         "additionalProperties": false,
-        "description": "Deliberately empty (P13.17b): the worklist is the server's own\nclosed-but-unrolled period set \u2014 no caller-supplied period\nidentifiers anywhere (v1.1 rule 1 + the insider rule);\nextra=\"forbid\" makes any smuggled field a 422.",
+        "description": "Deliberately empty (.17b): the worklist is the server's own\nclosed-but-unrolled period set \u2014 no caller-supplied period\nidentifiers anywhere (+ the insider rule);\nextra=\"forbid\" makes any smuggled field a 422.",
         "properties": {},
         "title": "RollupBackfillBody",
         "type": "object"
@@ -5107,7 +5158,7 @@
         "type": "object"
       },
       "SettingsOut": {
-        "description": "The full settings view; null means \"not configured\" (fallbacks\ndocumented per key in the registry). Decimals travel as strings.\n``corrupt_keys`` names stored band keys that failed read-side\nrevalidation (degraded to null in this view, review R3) \u2014 names\nonly, never the corrupt payload (least disclosure).",
+        "description": "The full settings view; null means \"not configured\" (fallbacks\ndocumented per key in the registry). Decimals travel as strings.\n``corrupt_keys`` names stored band keys that failed read-side\nrevalidation (degraded to null in this view) \u2014 names\nonly, never the corrupt payload (least disclosure).",
         "properties": {
           "approval_bands": {
             "anyOf": [
@@ -5780,7 +5831,7 @@
       },
       "ShareTransferApproveBody": {
         "additionalProperties": false,
-        "description": "NO money fields, ever (v1.1 rule 1): every figure derives from\nthe persisted pending transfer; extra=\"forbid\" -> 422.",
+        "description": "NO money fields, ever: every figure derives from\n\nthe persisted pending transfer; extra=\"forbid\" -> 422.",
         "properties": {},
         "title": "ShareTransferApproveBody",
         "type": "object"
@@ -5884,7 +5935,7 @@
         "type": "object"
       },
       "ShareTransferRecordOut": {
-        "description": "The workflow record (issue #31 (l)/(m)): the register row and\nthe request/rejection responses. Least disclosure: bare UUIDs (the\n!66/!70 precedent \u2014 resolving them stays behind the entitled\nmodules), the amount as the verbatim decimal string, and NO\nrequest-time balance snapshot (the approval re-verifies it\nserver-side; the audit rows carry the exact figures). Maker and\nchecker attribution are nullable-never-optional server truth: a\nNULL (pre-0040 history) serialises as an honest null, never an\ninvented principal.",
+        "description": "The workflow record: the register row and\nthe request/rejection responses. Least disclosure: bare UUIDs (the / precedent \u2014 resolving them\nstays behind the entitled modules), the amount as the verbatim decimal string, and NO\nrequest-time balance snapshot (the approval re-verifies it\nserver-side; the audit rows carry the exact figures). Maker and\nchecker attribution are nullable-never-optional server truth: a\nNULL (pre-0040 history) serialises as an honest null, never an\ninvented principal.",
         "properties": {
           "amount": {
             "title": "Amount",
@@ -5989,7 +6040,7 @@
       },
       "ShareTransferRejectBody": {
         "additionalProperties": false,
-        "description": "Version-pinned rejection with the MANDATORY checker rationale\n(the !52 F2 posture); workflow metadata only, never money.",
+        "description": "Version-pinned rejection with the MANDATORY checker rationale\n\n(the F2 posture); workflow metadata only, never money.",
         "properties": {
           "reason": {
             "maxLength": 500,
@@ -6020,7 +6071,7 @@
       },
       "SnapshotBackfillBody": {
         "additionalProperties": false,
-        "description": "Deliberately empty (P13.17a): the month worklist, cutoffs and\nbatching are ALL server-resolved (v1.1 rule 1 + the insider rule \u2014\nno caller-supplied dates or period identifiers anywhere);\nextra=\"forbid\" makes any smuggled field a 422.",
+        "description": "Deliberately empty (.17a): the month worklist, cutoffs and\nbatching are ALL server-resolved (+ the insider rule \u2014\nno caller-supplied dates or period identifiers anywhere);\nextra=\"forbid\" makes any smuggled field a 422.",
         "properties": {},
         "title": "SnapshotBackfillBody",
         "type": "object"
@@ -6218,6 +6269,17 @@
             "title": "Direction",
             "type": "string"
           },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -6260,7 +6322,8 @@
           "direction",
           "occurred_at",
           "is_reversal",
-          "created_by"
+          "created_by",
+          "external_ref"
         ],
         "title": "TransactionOut",
         "type": "object"
@@ -6714,7 +6777,7 @@
         "type": "object"
       },
       "WorklistRowOut": {
-        "description": "Least disclosure (addendum A5): workflow fields, days-past-due\nand the classification pill only \u2014 NO balances/penalty figures;\nthose live behind the P10 loan-detail endpoints.",
+        "description": "Least disclosure (review addendum): workflow fields, days-past-due\nand the classification pill only \u2014 NO balances/penalty figures;\nthose live behind the loan-detail endpoints.",
         "properties": {
           "assignee_id": {
             "anyOf": [
@@ -6787,7 +6850,7 @@
         "type": "object"
       },
       "WriteOffListOut": {
-        "description": "Keyset page of the write-off committee register (issue #31\nledger (a).2 \u2014 the human-authorized read-contract expansion):\nthe same rows the by-id read serialises, live-first.",
+        "description": "Keyset page of the write-off committee register (the human-authorized read-contract\nexpansion):\nthe same rows the by-id read serialises, live-first.",
         "properties": {
           "items": {
             "items": {
@@ -6921,7 +6984,7 @@
       },
       "WriteOffPostBody": {
         "additionalProperties": false,
-        "description": "Deliberately empty: every figure comes from the persisted\nwrite-once snapshot (v1.1 rule 3); extra=\"forbid\" -> 422 on any\ncaller-supplied field.",
+        "description": "Deliberately empty: every figure comes from the persisted\nwrite-once snapshot; extra=\"forbid\" -> 422 on any\ncaller-supplied field.",
         "properties": {},
         "title": "WriteOffPostBody",
         "type": "object"
@@ -7146,7 +7209,7 @@
     },
     "/access/roles/{role_id}/permissions/{module}": {
       "put": {
-        "description": "Permission changes are audit-logged in-transaction (gate 1.5).",
+        "description": "Permission changes are audit-logged in-transaction (data integrity).",
         "operationId": "put_role_permission_access_roles__role_id__permissions__module__put",
         "parameters": [
           {
@@ -8184,7 +8247,7 @@
     },
     "/branches/{branch_id}/members": {
       "get": {
-        "description": "Keyset MEMBER roster of a branch (#31 (j).1, members:view).\n\nExpand-only read model over the 0016 assignment column, mirroring\nthe batch-4 assignment permission split: the entity being READ is\nthe member record, so the roster sits behind members x view (the\nP8 precedent) \u2014 settings rights alone must not disclose people\nrecords. 404-BEFORE-FACTS: an unknown or cross-tenant branch id\nsurfaces 404 before any roster row is read.",
+        "description": "Keyset MEMBER roster of a branch ((j).1, members:view).\n\nExpand-only read model over the 0016 assignment column, mirroring\nthe assignment permission split: the entity being READ is\nthe member record, so the roster sits behind members x view (the\nprecedent) \u2014 settings rights alone must not disclose people\nrecords. 404-BEFORE-FACTS: an unknown or cross-tenant branch id\nsurfaces 404 before any roster row is read.",
         "operationId": "list_branch_members_branches__branch_id__members_get",
         "parameters": [
           {
@@ -8256,7 +8319,7 @@
     },
     "/branches/{branch_id}/members/{member_id}": {
       "put": {
-        "description": "Assign a member to a branch (members x edit \u2014 P8 precedent).",
+        "description": "Assign a member to a branch (members x edit \u2014 precedent).",
         "operationId": "assign_member_branches__branch_id__members__member_id__put",
         "parameters": [
           {
@@ -8320,7 +8383,7 @@
     },
     "/branches/{branch_id}/users": {
       "get": {
-        "description": "Keyset USER roster of a branch (#31 (j).1, access_control:view).\n\nExpand-only read model over the 0016 assignment column, mirroring\nthe batch-4 assignment permission split: the entity being READ is\nthe user record, so the roster sits behind access_control x view\n(the P13.5 users precedent) \u2014 settings rights alone must not\ndisclose people records. 404-BEFORE-FACTS: an unknown or\ncross-tenant branch id surfaces 404 before any roster row is read.",
+        "description": "Keyset USER roster of a branch ((j).1, access_control:view).\n\nExpand-only read model over the 0016 assignment column, mirroring\nthe assignment permission split: the entity being READ is\nthe user record, so the roster sits behind access_control x view\n(the users precedent) \u2014 settings rights alone must not\ndisclose people records. 404-BEFORE-FACTS: an unknown or\ncross-tenant branch id surfaces 404 before any roster row is read.",
         "operationId": "list_branch_users_branches__branch_id__users_get",
         "parameters": [
           {
@@ -8392,7 +8455,7 @@
     },
     "/branches/{branch_id}/users/{user_id}": {
       "put": {
-        "description": "Assign a user to a branch (access_control x edit \u2014 P13.5 precedent).",
+        "description": "Assign a user to a branch (access_control x edit \u2014 precedent).",
         "operationId": "assign_user_branches__branch_id__users__user_id__put",
         "parameters": [
           {
@@ -8498,7 +8561,7 @@
     },
     "/corrections/repayment-adjustments": {
       "get": {
-        "description": "The pending-adjustments checker register (issue #31 ledger\n(a).1): keyset, PENDING FIRST then newest first \u2014 the checker's\njob order. Served under the existing corrections view gate;\nexplicit tenant predicate doubling RLS; bound parameters only.",
+        "description": "The pending-adjustments checker register: keyset, PENDING FIRST then newest first \u2014 the\nchecker's\njob order. Served under the existing corrections view gate;\nexplicit tenant predicate doubling RLS; bound parameters only.",
         "operationId": "list_repayment_adjustments_corrections_repayment_adjustments_get",
         "parameters": [
           {
@@ -8558,7 +8621,7 @@
         ]
       },
       "post": {
-        "description": "MAKER phase (issue #24): create a PENDING adjustment bound to\nthe persisted approval snapshot \u2014 nothing posts until a distinct\nchecker approves.",
+        "description": "MAKER phase: create a PENDING adjustment bound to\nthe persisted approval snapshot \u2014 nothing posts until a distinct\nchecker approves.",
         "operationId": "request_repayment_adjustment_corrections_repayment_adjustments_post",
         "requestBody": {
           "content": {
@@ -8643,7 +8706,7 @@
     },
     "/corrections/repayment-adjustments/{adjustment_id}/approval": {
       "post": {
-        "description": "CHECKER phase (issue #24): re-verify the snapshot under the full\nlock set (409 on drift, posting nothing), then reverse the\nrepayment's complete allocation and restore loan state.",
+        "description": "CHECKER phase: re-verify the snapshot under the full\nlock set (409 on drift, posting nothing), then reverse the\nrepayment's complete allocation and restore loan state.",
         "operationId": "approve_repayment_adjustment_corrections_repayment_adjustments__adjustment_id__approval_post",
         "parameters": [
           {
@@ -8697,7 +8760,7 @@
     },
     "/corrections/repayment-adjustments/{adjustment_id}/reject": {
       "post": {
-        "description": "Reject a pending adjustment (checker decision, optimistic-locked)\n\u2014 frees the one-live-adjustment slot for a fresh request. The\nchecker's rationale is REQUIRED (!52 F2) and recorded in the audit\nrow.",
+        "description": "Reject a pending adjustment (checker decision, optimistic-locked)\n\u2014 frees the one-live-adjustment slot for a fresh request. The\nchecker's rationale is REQUIRED and recorded in the audit\nrow.",
         "operationId": "reject_repayment_adjustment_corrections_repayment_adjustments__adjustment_id__reject_post",
         "parameters": [
           {
@@ -8751,7 +8814,7 @@
     },
     "/corrections/write-offs": {
       "get": {
-        "description": "The write-off committee register (issue #31 ledger (a).2):\nkeyset, LIVE (requested/approved) FIRST then newest first \u2014 the\ncommittee's job order. Served under the existing corrections view\ngate; explicit tenant predicate doubling RLS; bound parameters\nonly. Vote/void/posting semantics are untouched.",
+        "description": "The write-off committee register:\nkeyset, LIVE (requested/approved) FIRST then newest first \u2014 the\ncommittee's job order. Served under the existing corrections view\ngate; explicit tenant predicate doubling RLS; bound parameters\nonly. Vote/void/posting semantics are untouched.",
         "operationId": "list_write_offs_corrections_write_offs_get",
         "parameters": [
           {
@@ -9020,7 +9083,7 @@
         ]
       },
       "post": {
-        "description": "Record a bad-debt recovery receipt against a posted write-off\n(issue #21): RC- posting + append-only receipt row, never a\nresurrection of the loan.",
+        "description": "Record a bad-debt recovery receipt against a posted write-off\nRC- posting + append-only receipt row, never a\nresurrection of the loan.",
         "operationId": "record_recovery_receipt_corrections_write_offs__write_off_id__recoveries_post",
         "parameters": [
           {
@@ -9182,7 +9245,7 @@
     },
     "/credentials/{credential_id}/revoke": {
       "post": {
-        "description": "Revoke a credential link (FM3). The row is kept (forensic\nhistory); every live use of the credential dies at its next\nper-request or in-transaction link re-check.",
+        "description": "Revoke a credential link. The row is kept (forensic\nhistory); every live use of the credential dies at its next\nper-request or in-transaction link re-check.",
         "operationId": "revoke_member_credential_credentials__credential_id__revoke_post",
         "parameters": [
           {
@@ -9236,7 +9299,7 @@
     },
     "/dashboard/summary": {
       "get": {
-        "description": "The prototype dashboard figures, sliced per the caller's matrix.",
+        "description": "The dashboard figures, sliced per the caller's permission matrix.",
         "operationId": "dashboard_summary_dashboard_summary_get",
         "responses": {
           "200": {
@@ -9691,7 +9754,7 @@
     },
     "/guarantees/{guarantee_id}/consent": {
       "post": {
-        "description": "Staff-attested consent OVERRIDE: pledged -> active (P14.5).\n\nConsent is an act of the MEMBER principal\n(POST /member/guarantees/{id}/consent); this staff path is an\nexplicit attested override \u2014 member_identity:approve, its own\nguarantee.consent_override audit category, a mandatory evidence\ncitation, and a confirmation notification to the guarantor.",
+        "description": "Staff-attested consent OVERRIDE: pledged -> active.\n\nConsent is an act of the MEMBER principal\n(POST /member/guarantees/{id}/consent); this staff path is an\nexplicit attested override \u2014 member_identity:approve, its own\nguarantee.consent_override audit category, a mandatory evidence\ncitation, and a confirmation notification to the guarantor.",
         "operationId": "consent_guarantee_override_guarantees__guarantee_id__consent_post",
         "parameters": [
           {
@@ -9745,7 +9808,7 @@
     },
     "/guarantees/{guarantee_id}/release": {
       "post": {
-        "description": "Release one guarantee per the P13.14 rules (prototype \"Release\").\n\nSTAFF-only since P14.5: applications:edit EXACTLY \u2014 the interim\nemail-match self-service is retired; a guarantor withdraws their\nown unconsented pledge as a MEMBER principal\n(POST /member/guarantees/{id}/release). Staff release pledged\nguarantees and \u2014 cover rule permitting \u2014 active ones on\nundisbursed applications. An active guarantee behind a disbursed\nloan is never bare-released (409): use the substitution endpoint.",
+        "description": "Release one guarantee per the rules (the \"Release\" action).\n\nSTAFF-only since: applications:edit EXACTLY \u2014 the interim\nemail-match self-service is retired; a guarantor withdraws their\nown unconsented pledge as a MEMBER principal\n(POST /member/guarantees/{id}/release). Staff release pledged\nguarantees and \u2014 cover rule permitting \u2014 active ones on\nundisbursed applications. An active guarantee behind a disbursed\nloan is never bare-released (409): use the substitution endpoint.",
         "operationId": "release_guarantee_guarantees__guarantee_id__release_post",
         "parameters": [
           {
@@ -9799,7 +9862,7 @@
     },
     "/guarantees/{guarantee_id}/substitute": {
       "post": {
-        "description": "Atomic swap for a disbursed loan's collateral (P13.14).\n\nReleases the guarantee and creates the replacement CONSENTED pledge\nin one transaction; any failure between the two writes leaves the\noriginal guarantee fully intact.",
+        "description": "Atomic swap for a disbursed loan's collateral.\n\nReleases the guarantee and creates the replacement CONSENTED pledge\nin one transaction; any failure between the two writes leaves the\noriginal guarantee fully intact.",
         "operationId": "substitute_guarantee_guarantees__guarantee_id__substitute_post",
         "parameters": [
           {
@@ -9875,7 +9938,7 @@
     },
     "/jobs/arrears": {
       "post": {
-        "description": "Run the arrears job for the caller's tenant (batched, idempotent).\n\nThe nightly scheduler calls the same service per tenant; this route\nexists for operations and backfills. Each batch commits its own\nshort transaction (gate 1.3).\n\nP13.8: the same run accrues arrears penalties into\nloans.penalty_due, write-once per (loan, UTC day) via the\npenalty_accruals claim. Configuration (rate/grace/basis) is\nresolved server-side from tenant settings only \u2014 this body accepts\nnone of it (extra=\"forbid\"; v1.1 rule 1) \u2014 and an unconfigured\ntenant accrues nothing (penalty_configured=false, fail closed).\nLedger boundary: penalty income stays recognised ON RECEIPT by the\nP10 repayment allocation (income.penalties); this job maintains\nonly the receivable-side loans.penalty_due and posts no ledger\nrows.\n\nPermission (P4 matrix, verified): loan_book x EDIT. Reclassifying\ndays-past-due/provisioning and maintaining the penalty receivable\nrewrite loan-book rows, so the job sits with the roles the matrix\ngrants loan_book:edit (System Admin, Branch Manager) \u2014 not\nloan_book:approve (a committee decision power) and not any\ntransactions permission (no ledger posting happens here).",
+        "description": "Run the arrears job for the caller's tenant (batched, idempotent).\n\nThe nightly scheduler calls the same service per tenant; this route\nexists for operations and backfills. Each batch commits its own\nshort transaction (scalability).\n\nthe same run accrues arrears penalties into\nloans.penalty_due, write-once per (loan, UTC day) via the\npenalty_accruals claim. Configuration (rate/grace/basis) is\nresolved server-side from tenant settings only \u2014 this body accepts\nnone of it (extra=\"forbid\") \u2014 and an unconfigured\ntenant accrues nothing (penalty_configured=false, fail closed).\nLedger boundary: penalty income stays recognised ON RECEIPT by the\n repayment allocation (income.penalties); this job maintains\nonly the receivable-side loans.penalty_due and posts no ledger\nrows.\n\nPermission (P4 matrix, verified): loan_book x EDIT. Reclassifying\ndays-past-due/provisioning and maintaining the penalty receivable\nrewrite loan-book rows, so the job sits with the roles the matrix\ngrants loan_book:edit (System Admin, Branch Manager) \u2014 not\nloan_book:approve (a committee decision power) and not any\ntransactions permission (no ledger posting happens here).",
         "operationId": "run_arrears_jobs_arrears_post",
         "requestBody": {
           "content": {
@@ -9917,7 +9980,7 @@
     },
     "/jobs/branch-backfill": {
       "post": {
-        "description": "Backfill branches from legacy users.branch text (batched, idempotent).\n\nRuns for the caller's own tenant only; each batch commits its own\nshort transaction via the shared batch runner (gate 1.3). A\ncompleted re-run scans nothing (anti-join on the branch_id claim\nkey) \u2014 a lock-free no-op (v1.1 rule 8).",
+        "description": "Backfill branches from legacy users.branch text (batched, idempotent).\n\nRuns for the caller's own tenant only; each batch commits its own\nshort transaction via the shared batch runner (scalability). A\ncompleted re-run scans nothing (anti-join on the branch_id claim\nkey) \u2014 a lock-free no-op.",
         "operationId": "run_branch_backfill_jobs_branch_backfill_post",
         "requestBody": {
           "content": {
@@ -9959,7 +10022,7 @@
     },
     "/jobs/deposit-interest": {
       "post": {
-        "description": "Accrue deposit interest for the next unaccrued quarter (batched, idempotent).\n\nThe quarterly scheduler calls the same service per tenant; this\nroute exists for operations and catch-up. Each batch commits its\nown short transaction (gate 1.3).\n\nRate and period are resolved server-side (review finding 2): the\nannual rate comes from tenant_settings (409 when unconfigured) and\nthe period advances in strict order \u2014 the earliest quarter not yet\nfully accrued, never past the most recent completed quarter, and\nnever an arbitrary caller-chosen historical period. Re-running a\nfully accrued tenant is an idempotent no-op (DB UNIQUE); a\nconcurrent run at worst re-resolves an already finished period,\nwhich the UNIQUE claim turns into skips.\n\nPermission (P4 matrix, verified): transactions x EDIT. Posting\ninterest is back-office ledger maintenance, so it belongs to the\nroles the matrix grants transactions:edit (System Admin, Branch\nManager, Accountant) \u2014 deliberately not transactions:create, which\nwould let counter Tellers trigger tenant-wide accrual runs.",
+        "description": "Accrue deposit interest for the next unaccrued quarter (batched, idempotent).\n\nThe quarterly scheduler calls the same service per tenant; this\nroute exists for operations and catch-up. Each batch commits its\nown short transaction (scalability).\n\nRate and period are resolved server-side (review finding 2): the\nannual rate comes from tenant_settings (409 when unconfigured) and\nthe period advances in strict order \u2014 the earliest quarter not yet\nfully accrued, never past the most recent completed quarter, and\nnever an arbitrary caller-chosen historical period. Re-running a\nfully accrued tenant is an idempotent no-op (DB UNIQUE); a\nconcurrent run at worst re-resolves an already finished period,\nwhich the UNIQUE claim turns into skips.\n\nPermission (P4 matrix, verified): transactions x EDIT. Posting\ninterest is back-office ledger maintenance, so it belongs to the\nroles the matrix grants transactions:edit (System Admin, Branch\nManager, Accountant) \u2014 deliberately not transactions:create, which\nwould let counter Tellers trigger tenant-wide accrual runs.",
         "operationId": "run_deposit_interest_jobs_deposit_interest_post",
         "requestBody": {
           "content": {
@@ -10023,7 +10086,7 @@
     },
     "/jobs/period-rollups": {
       "post": {
-        "description": "Backfill rollups for periods closed before 0028 (P13.17b / DSA-2/5).\n\nPermission (P4 matrix, decided): transactions x APPROVE \u2014 the\nclose-period authority; rollups ARE the closed-period figures the\ntrial balance serves, so the posting roles must not own them.\n\nOne period per short transaction, claimed FOR UPDATE SKIP LOCKED\nthrough the shared batch runner; a completed re-run scans zero\nrows and writes nothing (lock-free no-op by side-effect counts).",
+        "description": "Backfill rollups for periods closed before 0028 (.17b / DSA-2/5).\n\nPermission (P4 matrix, decided): transactions x APPROVE \u2014 the\nclose-period authority; rollups ARE the closed-period figures the\ntrial balance serves, so the posting roles must not own them.\n\nOne period per short transaction, claimed FOR UPDATE SKIP LOCKED\nthrough the shared batch runner; a completed re-run scans zero\nrows and writes nothing (lock-free no-op by side-effect counts).",
         "operationId": "run_period_rollup_backfill_jobs_period_rollups_post",
         "requestBody": {
           "content": {
@@ -10065,7 +10128,7 @@
     },
     "/jobs/portfolio-snapshots": {
       "post": {
-        "description": "Backfill month-end portfolio snapshots (P13.17a / DSA-1).\n\nPermission (P4 matrix, decided): transactions x APPROVE \u2014 the\nclose-period authority. Snapshots freeze the month-end figures the\nNPL-trend export serves to auditors, exactly the control\nclose_period exercises, so the same approve holders (System Admin,\nBranch Manager) own it \u2014 never the posting roles.\n\nBatched through the shared batch runner (one month per short\ntransaction); a completed re-run is a lock-free no-op (anti-join\non the claim key, v1.1 rule 8) proven by side-effect counts.",
+        "description": "Backfill month-end portfolio snapshots (.17a / DSA-1).\n\nPermission (P4 matrix, decided): transactions x APPROVE \u2014 the\nclose-period authority. Snapshots freeze the month-end figures the\nNPL-trend export serves to auditors, exactly the control\nclose_period exercises, so the same approve holders (System Admin,\nBranch Manager) own it \u2014 never the posting roles.\n\nBatched through the shared batch runner (one month per short\ntransaction); a completed re-run is a lock-free no-op (anti-join\non the claim key) proven by side-effect counts.",
         "operationId": "run_portfolio_snapshot_backfill_jobs_portfolio_snapshots_post",
         "requestBody": {
           "content": {
@@ -10404,7 +10467,7 @@
     },
     "/me/permissions": {
       "get": {
-        "description": "Drives client route guards; the API still enforces every call (gate 1.6).",
+        "description": "Drives client route guards; the API still enforces every call (least disclosure).",
         "operationId": "my_permissions_me_permissions_get",
         "responses": {
           "200": {
@@ -10543,7 +10606,7 @@
     },
     "/member-exits/eligibility/{member_id}": {
       "get": {
-        "description": "Advisory eligibility facts BEFORE a request is submitted\n(members:view; P15 batch 5, U6 \u2014 human-authorized expand-only,\nread-only contract change).\n\nNO row locks: the checklist mirrors the blocker set the settlement\nservice enforces (same live-guarantee status set, same open-stage\nlist, the SAME unresolved-write-off SQL \u2014 gate 1.1), but the\nBINDING verdict remains the locked recompute at request and\nsettlement time. Facts only \u2014 no amount ever travels here.",
+        "description": "Advisory eligibility facts BEFORE a request is submitted\n(members:view; human-authorized expand-only, read-only contract change).\n\nNO row locks: the checklist mirrors the blocker set the settlement\nservice enforces (same live-guarantee status set, same open-stage list, the SAME\nunresolved-write-off SQL \u2014 reuse-first), but the\nBINDING verdict remains the locked recompute at request and\nsettlement time. Facts only \u2014 no amount ever travels here.",
         "operationId": "get_exit_eligibility_member_exits_eligibility__member_id__get",
         "parameters": [
           {
@@ -10684,7 +10747,7 @@
     },
     "/member-exits/{exit_id}/statement": {
       "get": {
-        "description": "Exit statement document (JSON; CSV/PDF arrives with P13 core/exports).",
+        "description": "Exit statement document (JSON; CSV/PDF arrives with core/exports).",
         "operationId": "get_exit_statement_member_exits__exit_id__statement_get",
         "parameters": [
           {
@@ -10882,7 +10945,7 @@
     },
     "/member/auth/otp/verify": {
       "post": {
-        "description": "Verify the member OTP; issues MEMBER-audience tokens (FM1).",
+        "description": "Verify the member OTP; issues MEMBER-audience tokens.",
         "operationId": "verify_member_otp_member_auth_otp_verify_post",
         "requestBody": {
           "content": {
@@ -10966,7 +11029,7 @@
     },
     "/member/guarantees/{guarantee_id}/consent": {
       "post": {
-        "description": "Guarantor consent as the MEMBER principal: pledged -> active.\n\nThe link is re-verified inside the transaction under the guarantee\nrow lock (FM2); the consent row carries the credential (FM4).",
+        "description": "Guarantor consent as the MEMBER principal: pledged -> active.\n\nThe link is re-verified inside the transaction under the guarantee\nrow lock; the consent row carries the credential.",
         "operationId": "consent_guarantee_as_member_member_guarantees__guarantee_id__consent_post",
         "parameters": [
           {
@@ -11020,7 +11083,7 @@
     },
     "/member/guarantees/{guarantee_id}/release": {
       "post": {
-        "description": "Withdraw the member's OWN unconsented pledge (P13.14 rules;\nthe member-principal replacement for the retired email-match).",
+        "description": "Withdraw the member's OWN unconsented pledge (rules; the member-principal replacement for the\nretired email-match).",
         "operationId": "release_guarantee_as_member_member_guarantees__guarantee_id__release_post",
         "parameters": [
           {
@@ -11074,7 +11137,7 @@
     },
     "/members": {
       "get": {
-        "description": "Keyset member register page (members:view).\n\nOPT-IN aggregates (#31 batch 3 review): with include=aggregates\nevery row carries the same four advisory decimal-string figures as\nthe detail read, computed by ONE set-based statement per page (the\nkeyset page drives, LEFT JOIN LATERAL supplies the probes \u2014 never\na per-row fan-out). Without the parameter the response is\nbyte-identical to the flat register. No rejection path (403, 422)\ncomputes or echoes an amount.",
+        "description": "Keyset member register page (members:view).\n\nOPT-IN aggregates: with include=aggregates\nevery row carries the same four advisory decimal-string figures as\nthe detail read, computed by ONE set-based statement per page (the\nkeyset page drives, LEFT JOIN LATERAL supplies the probes \u2014 never\na per-row fan-out). Without the parameter the response is\nbyte-identical to the flat register. No rejection path (403, 422)\ncomputes or echoes an amount.\n\nmember_no (the posting-drawer unique-identifier\nlookup): expand-only EXACT-match filter served by the 0001 UNIQUE\n(tenant_id, member_no) key. An unknown number is an EMPTY page,\nnever a 404 \u2014 no existence oracle beyond the members:view grant.",
         "operationId": "list_members_members_get",
         "parameters": [
           {
@@ -11135,6 +11198,24 @@
                 }
               ],
               "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "member_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Member No"
             }
           },
           {
@@ -11232,7 +11313,7 @@
     },
     "/members/jobs/dormancy": {
       "post": {
-        "description": "Run the dormancy job for the caller's tenant (batched, idempotent).\n\nThe nightly cycle (infrastructure/dormancy_worker.py) drives the\nsame service per tenant; this route exists for operations and\nbackfills (the P10/P13.8 /jobs/arrears precedent). Members with no\nMEMBER-INITIATED ledger activity inside the tenant-configured\nwindow transition Active -> Dormant under their row lock; each\nbatch commits its own short transaction (gate 1.3).\n\nConfiguration (dormancy_period_months) is resolved server-side\nfrom tenant settings only \u2014 this body accepts none of it\n(extra=\"forbid\"; v1.1 rule 1) \u2014 and an unconfigured or corrupt\nperiod REFUSES the run with 409 and zero transitions (fail closed,\nP13.13 FM8; never a silent default).\n\nPermission (P4 matrix): members x EDIT \u2014 the job rewrites member\nstatus rows, the same power the manual status route carries; no\nledger posting happens here.",
+        "description": "Run the dormancy job for the caller's tenant (batched, idempotent).\n\nThe nightly cycle (infrastructure/dormancy_worker.py) drives the\nsame service per tenant; this route exists for operations and\nbackfills (the /jobs/arrears precedent). Members with no\nMEMBER-INITIATED ledger activity inside the tenant-configured\nwindow transition Active -> Dormant under their row lock; each\nbatch commits its own short transaction (scalability).\n\nConfiguration (dormancy_period_months) is resolved server-side\nfrom tenant settings only \u2014 this body accepts none of it\n(extra=\"forbid\"; v1.1 rule 1) \u2014 and an unconfigured or corrupt\nperiod REFUSES the run with 409 and zero transitions (fail closed,\nnever a silent default).\n\nPermission (P4 matrix): members x EDIT \u2014 the job rewrites member\nstatus rows, the same power the manual status route carries; no\nledger posting happens here.",
         "operationId": "run_dormancy_members_jobs_dormancy_post",
         "requestBody": {
           "content": {
@@ -11274,7 +11355,7 @@
     },
     "/members/{member_id}": {
       "get": {
-        "description": "Single-member read with advisory aggregates (#31, members:view).\n\nThe existence check runs FIRST: unknown ids (including cross-tenant\nids hidden by RLS) surface 404 before any aggregate is computed, so\nno rejection path ever echoes an amount (least disclosure, gate\n1.6).",
+        "description": "Single-member read with advisory aggregates (members:view).\n\nThe existence check runs FIRST: unknown ids (including cross-tenant\nids hidden by RLS) surface 404 before any aggregate is computed, so\nno rejection path ever echoes an amount (least disclosure, gate\n1.6).",
         "operationId": "get_member_members__member_id__get",
         "parameters": [
           {
@@ -11415,7 +11496,7 @@
         ]
       },
       "post": {
-        "description": "Link a login email to a member (FM3: audited admin mutation;\nthe active-email claim is atomic \u2014 a lost race is a 409).",
+        "description": "Link a login email to a member (audited admin mutation; the active-email claim is atomic \u2014 a\nlost race is a 409).",
         "operationId": "create_member_credential_members__member_id__credentials_post",
         "parameters": [
           {
@@ -11709,7 +11790,7 @@
     },
     "/members/{member_id}/profile": {
       "get": {
-        "description": "Profile read; every access writes an audit row (review K1).",
+        "description": "Profile read; every access writes an audit row.",
         "operationId": "get_profile_members__member_id__profile_get",
         "parameters": [
           {
@@ -11909,7 +11990,7 @@
     },
     "/members/{member_id}/share-transfers": {
       "post": {
-        "description": "MAKER phase (issue #31 (l)): create a PENDING transfer bound to\nthe persisted approval snapshot \u2014 NO money moves until a distinct\nchecker approves.",
+        "description": "MAKER phase ((l)): create a PENDING transfer bound to\nthe persisted approval snapshot \u2014 NO money moves until a distinct\nchecker approves.",
         "operationId": "request_share_transfer_members__member_id__share_transfers_post",
         "parameters": [
           {
@@ -12303,7 +12384,7 @@
     },
     "/recovery-cases": {
       "get": {
-        "description": "Keyset worklist, most delinquent first (addendum A5).\n\nDECLARED filters only (issue #31 ledger (a).3 \u2014 the human-\nauthorized read-contract expansion): `status` narrows to one LIVE\nposture (default stays OPEN exactly as built), `classification` to\none stored prudential label (domain LoanClass). Every value is\nbound; keyset and server ordering are preserved; an out-of-\nvocabulary value is a 422 at this boundary.",
+        "description": "Keyset worklist, most delinquent first (review addendum).\n\nDECLARED filters only (the human-authorized read-contract\nexpansion): `status` narrows to one\nLIVE\nposture (default stays OPEN exactly as built), `classification` to\none stored prudential label (domain LoanClass). Every value is\nbound; keyset and server ordering are preserved; an out-of-\nvocabulary value is a 422 at this boundary.",
         "operationId": "worklist_recovery_cases_get",
         "parameters": [
           {
@@ -12400,7 +12481,7 @@
         ]
       },
       "post": {
-        "description": "Initiate recovery on an NPL-classified active loan (FM1/FM2).",
+        "description": "Initiate recovery on an NPL-classified active loan (/).",
         "operationId": "open_case_recovery_cases_post",
         "requestBody": {
           "content": {
@@ -12485,7 +12566,7 @@
     },
     "/recovery-cases/{case_id}/assign": {
       "post": {
-        "description": "Assign/reassign an open case to an active same-tenant user (A4).",
+        "description": "Assign/reassign an open case to an active same-tenant user.",
         "operationId": "assign_case_recovery_cases__case_id__assign_post",
         "parameters": [
           {
@@ -12539,7 +12620,7 @@
     },
     "/recovery-cases/{case_id}/disposition": {
       "post": {
-        "description": "Record a staff disposition (issue #23 N2; !53 F1/F2): pause a\ncase as disputed or irrecoverable_pending_write_off (required\n`reason` -> audit payload), resume it to open, or close it as\nrestructured (required `note` -> THE outcome note, written\natomically in this same transaction) \u2014 through the single domain\ngatekeeper; cure/write-off closes stay job-only (FM2).",
+        "description": "Record a staff disposition: pause a\ncase as disputed or irrecoverable_pending_write_off (required\n`reason` -> audit payload), resume it to open, or close it as\nrestructured (required `note` -> THE outcome note, written\natomically in this same transaction) \u2014 through the single domain\ngatekeeper; cure/write-off closes stay job-only.",
         "operationId": "set_disposition_recovery_cases__case_id__disposition_post",
         "parameters": [
           {
@@ -12662,7 +12743,7 @@
         ]
       },
       "post": {
-        "description": "Append a note (addendum A2: append-only, no edit route exists).",
+        "description": "Append a note (addendum: append-only, no edit route exists).",
         "operationId": "add_note_recovery_cases__case_id__notes_post",
         "parameters": [
           {
@@ -12716,7 +12797,7 @@
     },
     "/recovery-cases/{case_id}/outcome-note": {
       "post": {
-        "description": "Record THE post-closure outcome note (issue #23 N3): exactly one\nper case, at/after closure only, still append-only \u2014 no edit or\ndelete route exists.",
+        "description": "Record THE post-closure outcome note: exactly one\nper case, at/after closure only, still append-only \u2014 no edit or\ndelete route exists.",
         "operationId": "add_case_outcome_note_recovery_cases__case_id__outcome_note_post",
         "parameters": [
           {
@@ -12831,7 +12912,7 @@
     },
     "/share-transfers": {
       "get": {
-        "description": "The share-transfer history register (issue #31 ledger (m)):\nkeyset, PENDING FIRST then newest first \u2014 the checker's job order\n(the 0038 band pattern). Served under members:view (the house\nread-split); explicit tenant predicate doubling RLS; bound\nparameters only.",
+        "description": "The share-transfer history register:\nkeyset, PENDING FIRST then newest first \u2014 the checker's job order\n(the 0038 band pattern). Served under members:view (the house\nread-split); explicit tenant predicate doubling RLS; bound\nparameters only.",
         "operationId": "list_share_transfers_share_transfers_get",
         "parameters": [
           {
@@ -12936,7 +13017,7 @@
     },
     "/share-transfers/{transfer_id}/approval": {
       "post": {
-        "description": "CHECKER phase (issue #31 (l)): a DISTINCT, non-assurance\nprincipal re-verifies the snapshot under the full lock set (409 on\ndrift, posting nothing), then posts BOTH ledger legs, updates both\nbalances and notifies BOTH members via the outbox \u2014 atomically.",
+        "description": "CHECKER phase ((l)): a DISTINCT, non-assurance\nprincipal re-verifies the snapshot under the full lock set (409 on\ndrift, posting nothing), then posts BOTH ledger legs, updates both\nbalances and notifies BOTH members via the outbox \u2014 atomically.",
         "operationId": "approve_share_transfer_share_transfers__transfer_id__approval_post",
         "parameters": [
           {
@@ -12990,7 +13071,7 @@
     },
     "/share-transfers/{transfer_id}/rejection": {
       "post": {
-        "description": "Reject a pending transfer (checker decision, optimistic-locked)\n\u2014 the checker's rationale is REQUIRED (!52 F2) and recorded in the\naudit row, never echoed.",
+        "description": "Reject a pending transfer (checker decision, optimistic-locked)\n\u2014 the checker's rationale is REQUIRED and recorded in the\naudit row, never echoed.",
         "operationId": "reject_share_transfer_share_transfers__transfer_id__rejection_post",
         "parameters": [
           {
@@ -13044,7 +13125,7 @@
     },
     "/transactions": {
       "get": {
-        "description": "Ledger listing with the prototype filters (date, ref, member, type, DR/CR, channel).",
+        "description": "Ledger listing with filters (date, ref, member, type, DR/CR, channel).\n\nsearch: expand-only declared free-text probe \u2014\ntxn_ref PREFIX, or member match (member_no exact / name prefix)\nvia an EXISTS on members. Bound parameters only; LIKE\nmetacharacters are escaped code-side; keyset order preserved; the\n0043 idx_txns_ref_prefix serves the ref-prefix branch portably.",
         "operationId": "list_ledger_transactions_get",
         "parameters": [
           {
@@ -13127,6 +13208,24 @@
                 }
               ],
               "title": "Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
             }
           },
           {
@@ -13222,7 +13321,7 @@
     },
     "/transactions/{transaction_id}/legs": {
       "get": {
-        "description": "The double-entry DR/CR legs of one posting (transactions:view).\n\nExpand-only read model (#31 ledger (g), audit #30 A3): the\nappend-only ledger_entries truth behind a TransactionOut row, one\nitem per leg, each amount a canonical decimal string rendered\nverbatim by clients \u2014 never summed or netted (P15 blocker (a)).\n404-BEFORE-FACTS: the existence probe runs before any leg is read,\nso unknown and cross-tenant ids (hidden by RLS) surface 404 with no\naccount or amount echoed; 403 rejections carry no figures either\n(least disclosure, gate 1.6).",
+        "description": "The double-entry DR/CR legs of one posting (transactions:view).\n\nExpand-only read model: the\nappend-only ledger_entries truth behind a TransactionOut row, one\nitem per leg, each amount a canonical decimal string rendered\nverbatim by clients \u2014 never summed or netted (no client-side money math).\n404-BEFORE-FACTS: the existence probe runs before any leg is read,\nso unknown and cross-tenant ids (hidden by RLS) surface 404 with no\naccount or amount echoed; 403 rejections carry no figures either\n(least disclosure).",
         "operationId": "list_transaction_legs_transactions__transaction_id__legs_get",
         "parameters": [
           {

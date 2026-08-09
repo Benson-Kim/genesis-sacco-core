@@ -2,13 +2,12 @@ import { z } from "zod";
 import { isoTimestampSchema } from "@/lib/schemas";
 
 /**
- * Zod-validated response boundary for the reports module (P15 module 8
- * — the P13 exports API). Shapes mirror the generated client types
+ * Zod-validated response boundary for the reports module (module 8 — the exports API). Shapes mirror the generated client types
  * (components["schemas"]["ExportOut"], ArtifactOut, ExportCycleOut) —
  * the drift-checked OpenAPI snapshot remains the contract; these
  * schemas only assert it at runtime.
  *
- * SCOPE RULE (P13 blocker (a), gate 1.6): callers never supply money,
+ * SCOPE RULE (blocker (a), least disclosure): callers never supply money,
  * cost, format, row-limit or storage-path parameters. The ONLY
  * caller-suppliable scope is the id/date filter set the contract
  * declares (`ExportFiltersBody`); everything else — columns, caps,
@@ -54,7 +53,7 @@ export const REPORT_LABELS: Record<ReportName, string> = {
 };
 
 /** The contract's filter vocabulary (ExportFiltersBody): ids and dates
- * ONLY — the sole caller-suppliable scope (P13 blocker (a)). */
+ * ONLY — the sole caller-suppliable scope (blocker (a)). */
 export const FILTER_KEYS = [
   "member_id",
   "exit_id",
@@ -69,7 +68,7 @@ export type FilterKey = (typeof FILTER_KEYS)[number];
  * (application/reports.py) — a UX pre-validation mirror ONLY: the
  * server re-validates (unknown filters and missing required filters
  * are a 422) and its verdict WINS per field. Filters a report does not
- * declare are never even offered (least surprise, gate 1.6).
+ * declare are never even offered (least surprise, least disclosure).
  */
 export const REPORT_FILTERS: Record<
   ReportName,
@@ -95,7 +94,7 @@ export const REPORT_FILTERS: Record<
 };
 
 /** ISO date SHAPE (YYYY-MM-DD) — the export date filters. Shape only:
- * calendar validity is `isCalendarDate` below (review F-R3). */
+ * calendar validity is `isCalendarDate` below (review). */
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Days per month, 1-indexed; February's 28 is corrected by the
@@ -103,7 +102,7 @@ export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
 /**
- * PURE-STRING calendar validity for the date filters (review F-R3):
+ * PURE-STRING calendar validity for the date filters (review):
  * DATE_RE alone accepts impossible dates ("2026-02-31", "2026-13-01").
  * This checks the shape, then month 01–12 and a day valid for that
  * month, with leap years computed ARITHMETICALLY (divisible by 4,
@@ -150,10 +149,9 @@ const FILTER_MESSAGES: Record<FilterKey, string> = {
 };
 
 /**
- * Client-side pre-validation of the export request (the server
- * re-validates and is the enforcer — gate 1.6): required filters per
+ * Client-side pre-validation of the export request (the server re-validates and is the enforcer — least disclosure): required filters per
  * the report's declared surface, UUID shape for ids, real calendar
- * dates (isCalendarDate — shape AND month/day/leap validity, F-R3),
+ * dates (isCalendarDate — shape AND month/day/leap validity),
  * and an ordered date range. Returns the wire-ready entry or a
  * field→message map for FormField.
  */
@@ -200,9 +198,8 @@ export function validateExportDraft(
 const DOWNLOAD_PATH_RE = /^\/exports\/downloads\/[A-Za-z0-9_-]+$/;
 
 /**
- * ISO-8601 datetime SHAPE for the export timestamps (review F-R4):
- * the SHARED shape from `@/lib/schemas` (single copy, gate 1.1 —
- * issue #30 A2/S2). These fields feed `fmtDateTime` on an
+ * ISO-8601 datetime SHAPE for the export timestamps (review):
+ * the SHARED shape from `@/lib/schemas` (single copy, reuse-first). These fields feed `fmtDateTime` on an
  * operator-facing audit surface; a garbage timestamp would render
  * "Invalid Date" there, so it is REJECTED at the boundary instead
  * (the module's reject-unknowns posture — consistent with
@@ -226,7 +223,7 @@ export type Artifact = z.infer<typeof artifactSchema>;
 /** ExportOut. Extra keys are STRIPPED at this boundary. `report` and
  * `status` are plain strings in the contract (ExportOut serialises the
  * enum server-side) — rendered verbatim, labelled when recognised. The
- * timestamps are ISO-shape-asserted (F-R4) so the audit surface can
+ * timestamps are ISO-shape-asserted so the audit surface can
  * never render "Invalid Date". */
 export const exportOutSchema = z.object({
   id: z.string(),
@@ -258,8 +255,7 @@ export function reportLabel(report: string): string {
 }
 
 /**
- * Download-filename stem for an export artifact (review F-R1 —
- * filename injection/spoofing): `ExportOut.report` is an UNCONSTRAINED
+ * Download-filename stem for an export artifact (review — filename injection/spoofing): `ExportOut.report` is an UNCONSTRAINED
  * string at this boundary, and `reportLabel` is display-only, so a
  * hostile/corrupted value could smuggle path separators, control
  * characters or an RTL override (U+202E) into the browser download

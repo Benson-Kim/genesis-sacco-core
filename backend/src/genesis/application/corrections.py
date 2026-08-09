@@ -1,9 +1,9 @@
-"""Ledger corrections, misc fees & loan write-off (P13.15, gates 1.1-1.6).
+"""Ledger corrections, misc fees & loan write-off.
 
 The documented correction paths the P7 reversal blocks require:
 
-  1. Repayment adjustment — TWO-PHASE maker-checker since issue #24
-     (N1): the MAKER requests a PENDING adjustment that captures the
+  1. Repayment adjustment — TWO-PHASE maker-checker
+     workflow: the MAKER requests a PENDING adjustment that captures the
      approval snapshot under the full lock set; a DISTINCT CHECKER
      approves — snapshot re-verified component-by-component, 409 on
      drift posting nothing — and only then, under the loan row lock,
@@ -15,25 +15,25 @@ The documented correction paths the P7 reversal blocks require:
      schedule paid_amounts are RECOMPUTED from the surviving
      append-only history (v1.1 rule 2). A closed loan re-opens ONLY
      via the explicit CLOSED -> ACTIVE branch of the loan status map
-     (FM6). Execution is one atomic transaction; a second LIVE
+    . Execution is one atomic transaction; a second LIVE
      adjustment of the same repayment is blocked by the atomic
-     partial-unique claim (FM2, v1.1 rule 5 — a rejected request
+     partial-unique claim (v1.1 rule 5 — a rejected request
      frees the slot).
 
   2. Misc fee posting — the prototype "Fee" drawer type. Fee amounts
-     come EXCLUSIVELY from P13.7 tenant configuration (v1.1 rule 1):
+     come EXCLUSIVELY from tenant configuration (v1.1 rule 1):
      the request carries a code-owned fee type, never an amount; the
      FE- reference comes from the P7 advisory-lock generator.
 
   3. Loan write-off — committee-approved (the P9 voting machinery)
      transition to written_off, bound to a DB-LEVEL WRITE-ONCE
-     snapshot (v1.1 rule 3; the !30 0020-trigger precedent). Posting
+     snapshot (v1.1 rule 3; the 0020-trigger precedent). Posting
      re-verifies the snapshot component-by-component under the loan
      row lock and returns 409 on drift, posting nothing.
 
 POSTING-DATE vs VALUE-DATE (A2, standard GL practice): every
 correction posts with occurred_at = NOW, server-resolved inside
-ledger._post — never caller-supplied, never backdated — so the P12.5
+ledger._post — never caller-supplied, never backdated — so the
 closed-period gate applies to corrections too (a correction attempted
 while today's period is closed is a 409). The ORIGINAL transaction's
 date is preserved untouched via the A1 reversal_of_id linkage: a
@@ -41,27 +41,27 @@ correction of a closed-period repayment posts into the open period
 REFERENCING the original, and the original row is never rewritten
 (append-only, 1.5).
 
-MAKER-CHECKER (A3, hardened to the full N1 standard by issue #24):
+MAKER-CHECKER (A3, review-hardened):
 corrections are the fraud channel. Every route is gated by the
 DEDICATED corrections module permissions (never generic
 transactions:edit); corrections audit under their own entity strings
 (repayment_adjustments / loan_write_offs) so they are filterable in
-review; adjustments route through the P13.7 approval-band authority
+review; adjustments route through the tenant-configured approval-band authority
 check for their amount (reuse, 1.1). Repayment adjustments are
-TWO-PHASE since issue #24: the MAKER creates a PENDING adjustment
+TWO-PHASE: the MAKER creates a PENDING adjustment
 bound to a persisted approval snapshot (loan balance / penalty_due /
 status at request), and a DISTINCT CHECKER approves — re-verifying
 every snapshot component under the full lock set (409 on drift,
 posting nothing) — before the reversal posts. Maker <> checker is
 enforced server-side AND by the 0031 ck_repayment_adjustments_sod
 CHECK (collusion-resistant); assurance roles (the Auditor) can never
-be checker (the !47 B2 principle). Write-off approval IS the
+be checker (the B2 principle). Write-off approval IS the
 committee quorum — no parallel approval mechanism exists.
 
 WRITE-OFF IS NOT FORGIVENESS (A4): written_off zeroes the performing
 receivable via the WO- provisioning posting, but the legal claim on
 the member survives in the write-once snapshot (balance, penalty_due,
-total_written_off). Issue #21 lands the explicit recovery branch
+total_written_off). The explicit recovery branch lands
 (part 4 below): cash received against a POSTED write-off posts DR
 cash / CR income.bad_debt_recoveries (RC- ref), recorded as an
 APPEND-ONLY loan_recoveries row bound to the surviving snapshot claim
@@ -71,7 +71,7 @@ repayment against a written_off loan remains refused loudly
 (loans.record_repayment status guard), never silently allocated — the
 recovery receipt is the ONLY money-in path against the claim.
 
-GUARANTEE DISPOSITION (issue #21 item 3 — the documented policy):
+GUARANTEE DISPOSITION (the documented policy):
 guarantees behind a written-off loan back the SURVIVING claim and stay
 untouched; they are released ONLY by the receipt that recovers the
 claim IN FULL (full recovery discharges the sureties exactly like
@@ -80,20 +80,20 @@ Calling a guarantee (collecting FROM the guarantor) stays a future,
 separately designed path; a receipt records who paid only through its
 audit trail.
 
-EXIT INTERPLAY (issue #21 item 4 — the documented decision): a member
+EXIT INTERPLAY (the documented decision): a member
 with an unresolved POSTED write-off claim (receipts < total) is
 BLOCKED from exit (member_exits._compute_under_locks, under the member
 row lock) — write-off is not forgiveness, so the claim behaves like an
 active obligation. A committee-approved WAIVER that releases the claim
-without cash is a future explicit branch, recorded on issue #21 at
+without cash is a future explicit branch, recorded as a follow-up at
 close-out; until it exists, full recovery is the only unblock.
 
 Lock order (docs/diagrams/lock-order.md, updated in this MR):
 adjustment request takes transactions (T0, FOR UPDATE — serialises
 against generic reversal and concurrent adjustment workflows) ->
 members FOR SHARE (T1, holds off a concurrent terminal exit) -> loans
-FOR UPDATE (T4, the terminal node of the money chain — the P10/P13.8
-pattern); adjustment APPROVAL (issue #24) locks the pending
+FOR UPDATE (T4, the terminal node of the money chain — the established
+money-chain pattern); adjustment APPROVAL locks the pending
 repayment_adjustments row FOR UPDATE FIRST (the workflow anchor,
 above T0 — the WOFF/E22 anchor-first shape; nothing anywhere acquires
 an adjustment row while holding T0+ locks: the request INSERTs it as
@@ -102,7 +102,7 @@ adjustment rejection locks the adjustment row alone (the DECL/WOFF
 void pattern); write-off request/execution takes loan_write_offs (T0)
 -> loans FOR UPDATE (T4); votes/voids lock the write-off row alone
 (the DECL pattern); the fee posting takes members FOR SHARE (T1)
-only, then the advisory posting tier. The issue-#21 recovery receipt takes loan_write_offs (T0, FOR
+only, then the advisory posting tier. The recovery receipt takes loan_write_offs (T0, FOR
 UPDATE — serialises concurrent receipts and pins the claim math) ->
 members FOR SHARE (T1, holds off a concurrent terminal exit — the E20
 argument) -> loans FOR UPDATE (T4, anchors the full-recovery guarantee
@@ -136,15 +136,17 @@ from genesis.application.outbox import enqueue_event
 from genesis.application.pagination import (
     build_band_register_cursor,
     build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
     parse_band_register_cursor,
     parse_created_id_cursor,
 )
 from genesis.application.sod import require_distinct_non_assurance_checker
 from genesis.application.tenant_settings import committee_quorum, enforce_authority_band
 
-# Reuse-first (gate 1.1): the P13.13 single member-status gatekeeper —
+# Reuse-first: the single member-status gatekeeper —
 # duplicating its FOR SHARE + capability-map logic here would fork the
-# exact policy P13.13 FM2 pins to one code path.
+# exact policy the capability map pins to one code path.
 from genesis.application.transactions import _require_member
 from genesis.domain.committee import Decision, Vote, decide
 from genesis.domain.ledger import Account, Channel
@@ -154,13 +156,20 @@ from genesis.domain.money import ZERO, to_cents
 from genesis.domain.tenant_config import SETTINGS_REGISTRY
 from genesis.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 
+#: Cursor scope ids: signed cursors are bound to ONE
+#: endpoint - the three corrections registers never share positions
+#: (tenant isolation).
+ADJUSTMENTS_SCOPE = "corrections.adjustments"
+WRITE_OFFS_SCOPE = "corrections.write_offs"
+WO_RECOVERIES_SCOPE = "corrections.write_off_recoveries"
+
 # ---------------------------------------------------------------------------
-# Misc fees (P13.15 part 2)
+# Misc fees
 # ---------------------------------------------------------------------------
 
 
 class FeeType(StrEnum):
-    """Code-owned fee vocabulary: each member maps to the P13.7 settings
+    """Code-owned fee vocabulary: each member maps to the tenant-settings
     key its amount is resolved from (v1.1 rule 1). A caller can only
     ever name a type from this enum — never an amount."""
 
@@ -219,12 +228,12 @@ async def post_misc_fee(
     fee_type: FeeType,
     channel: Channel,
 ) -> FeeResult:
-    """Post a misc fee against a member (gates 1.4, 1.5, 1.6).
+    """Post a misc fee against a member (the house gates).
 
-    Amount exclusively from P13.7 config (FM5: a caller-supplied
+    Amount exclusively from tenant config (a caller-supplied
     amount is a 422 at the API contract, and this service never reads
-    one). Member gated by the single capability gatekeeper (P13.13
-    FM2) under FOR SHARE; posting via P7 with a server-resolved NOW
+    one). Member gated by the single capability gatekeeper (the capability
+    map) under FOR SHARE; posting via P7 with a server-resolved NOW
     occurred_at (A2 — the open-period gate applies).
     """
     amount = await _resolve_fee_amount(session, tenant_id, fee_type)
@@ -253,12 +262,12 @@ async def post_misc_fee(
 
 
 # ---------------------------------------------------------------------------
-# Repayment adjustment (P13.15 part 1; two-phase maker-checker, issue #24 N1)
+# Repayment adjustment (two-phase maker-checker)
 # ---------------------------------------------------------------------------
 
 
 class AdjustmentStatus(StrEnum):
-    """The 0031 adjustment workflow machine (issue #24 N1)."""
+    """The 0031 adjustment workflow machine."""
 
     PENDING_APPROVAL = "pending_approval"
     POSTED = "posted"
@@ -275,7 +284,7 @@ _ADJUSTMENT_ALLOWED: dict[AdjustmentStatus, frozenset[AdjustmentStatus]] = {
 
 
 def adjustment_transition(current: AdjustmentStatus, target: AdjustmentStatus) -> None:
-    """THE single gatekeeper for adjustment status moves (gate 1.4).
+    """THE single gatekeeper for adjustment status moves (concurrency safety).
 
     The only writers are approve/reject below; the regenerated 0031
     write-once trigger enforces the same machine at the database, so a
@@ -289,10 +298,10 @@ def adjustment_transition(current: AdjustmentStatus, target: AdjustmentStatus) -
 async def _require_distinct_non_assurance_checker(
     session: AsyncSession, tenant_id: uuid.UUID, actor_id: uuid.UUID, maker_id: uuid.UUID
 ) -> None:
-    """Segregation of duties for the CHECKER actions (issue #24 N1).
+    """Segregation of duties for the CHECKER actions.
 
-    ONE shared copy since MR !83 (gate 1.1 — the share-transfer
-    maker-checker workflow, issue #31 (l), is the second consumer):
+    ONE shared copy (reuse-first — the share-transfer
+    maker-checker workflow is the second consumer):
     the guard body lives in application/sod.py; this wrapper keeps the
     corrections wording. The 0031 ck_repayment_adjustments_sod CHECK
     is the collusion-resistant DB backstop behind it.
@@ -384,7 +393,7 @@ async def get_adjustment(
 
 
 # ---------------------------------------------------------------------------
-# Corrections registers (issue #31 batch 6, ledger (a).1/(a).2 — the
+# Corrections registers (the
 # HUMAN-AUTHORIZED read-contract expansion): keyset LIST reads so the
 # checker/committee no longer works from a hand-carried id. Read-only;
 # no mutation or by-id semantics change.
@@ -392,13 +401,13 @@ async def get_adjustment(
 
 
 def adjustments_register_sql(*, with_cursor: bool) -> str:
-    """The pending-adjustments checker register (ledger (a).1).
+    """The pending-adjustments checker register.
 
     ORDER BY (status = 'pending_approval') DESC, created_at DESC,
     id DESC — the checker's job order: PENDING FIRST, newest first
     inside each band; terminal history behind. Uniform-DESC keyset row
     comparison, served by idx_repayment_adjustments_register (0038,
-    shipped with this query — gate 1.3; EXPLAIN-asserted, falsifiable
+    shipped with this query — scalability; EXPLAIN-asserted, falsifiable
     by dropping it). Static fragments chosen in code; every value is a
     bound parameter (v1.1 rule 6); explicit tenant predicate on top of
     forced RLS (rule 4).
@@ -429,10 +438,15 @@ async def list_adjustments(
     cursor: str | None,
     limit: int,
 ) -> AdjustmentPage:
-    """Keyset adjustments register, pending-first (ledger (a).1)."""
+    """Keyset adjustments register, pending-first."""
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if cursor is not None:
-        c_flag, c_ts, c_id = parse_band_register_cursor(cursor, entity="adjustment register")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext band parse stays as defense-in-depth.
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=ADJUSTMENTS_SCOPE, entity="adjustment register"
+        )
+        c_flag, c_ts, c_id = parse_band_register_cursor(inner, entity="adjustment register")
         params["c_flag"] = c_flag
         params["c_ts"] = c_ts
         params["c_id"] = c_id
@@ -442,8 +456,12 @@ async def list_adjustments(
     next_cursor = None
     if len(rows) > limit and items:
         last = items[-1]
-        next_cursor = build_band_register_cursor(
-            last.status is AdjustmentStatus.PENDING_APPROVAL, last.created_at, last.id
+        next_cursor = encode_cursor(
+            build_band_register_cursor(
+                last.status is AdjustmentStatus.PENDING_APPROVAL, last.created_at, last.id
+            ),
+            tenant_id=tenant_id,
+            endpoint=ADJUSTMENTS_SCOPE,
         )
     return AdjustmentPage(items=items, next_cursor=next_cursor)
 
@@ -579,12 +597,12 @@ async def _rebuild_schedule_paid_amounts(
 async def _reconstructed_balance(
     session: AsyncSession, tenant_id: uuid.UUID, loan_id: uuid.UUID, principal: Decimal
 ) -> Decimal:
-    """loans.balance reconstructed from the append-only ledger (FM8):
+    """loans.balance reconstructed from the append-only ledger:
     disbursed principal minus the signed net of every loans.receivable
     leg attached to this loan's repayments history (originals credit,
     reversals debit — a storno pair nets to zero by construction).
 
-    SCOPE PROOF (N2, review): the repayments join is COMPLETE for an
+    SCOPE PROOF (review-proven): the repayments join is COMPLETE for an
     adjustable loan. Builder-by-builder over domain/ledger.py, every
     posting that carries a loans.receivable leg:
 
@@ -660,7 +678,7 @@ async def _released_guarantees_exist(
 
     Plain read under the caller's loan FOR UPDATE (no guarantee-row
     lock — no new lock-graph edge); release itself only ever happens
-    under the same loan lock (P10 closure) or the P13.14 guarantee
+    under the same loan lock (P10 closure) or the guarantee
     workflow, so the read cannot race a concurrent release.
     """
     row = (
@@ -725,7 +743,7 @@ async def _lock_adjustment_chain(
         raise NotFoundError(f"transaction {original_txn_id} not found")
     member_id = uuid.UUID(str(txn_row[0]))
 
-    # T1: member FOR SHARE — the P13.13 single-gatekeeper terminal
+    # T1: member FOR SHARE — the single-gatekeeper terminal
     # check; an exited member's history is settled and immutable (A5).
     member_status = (
         await session.execute(
@@ -744,7 +762,7 @@ async def _lock_adjustment_chain(
         )
 
     # T4: the loan row — the serialisation point every balance/schedule
-    # writer takes (FM3: a concurrent repayment waits here).
+    # writer takes (a concurrent repayment waits here).
     loan_row = (
         await session.execute(
             text(
@@ -765,7 +783,7 @@ async def _lock_adjustment_chain(
     status = LoanStatus(str(loan_row[4]))
     if status is LoanStatus.WRITTEN_OFF:
         # A5/A4: the receivable is derecognised and the claim lives in
-        # the write-once snapshot; recovery is the explicit issue-#21
+        # the write-once snapshot; recovery is the explicit
         # branch, never an adjustment.
         raise ConflictError(f"loan {loan_id} is written off; adjustments are refused")
     return _AdjustmentLockContext(
@@ -789,7 +807,7 @@ async def request_repayment_adjustment(
     *,
     reason: str,
 ) -> AdjustmentRecord:
-    """Phase 1 — the MAKER requests an adjustment (issue #24 N1).
+    """Phase 1 — the MAKER requests an adjustment.
 
     Creates a PENDING adjustment capturing the persisted approval
     SNAPSHOT (loan balance / penalty_due / status at request — v1.1
@@ -801,11 +819,11 @@ async def request_repayment_adjustment(
     unilaterally re-bound): when the CLOSED -> ACTIVE reopen branch
     would trigger and any guarantee linked to this loan is 'released',
     the request is refused (least disclosure: the category, never
-    amounts or guarantors); the operator's remedy is the P13.14
+    amounts or guarantors); the operator's remedy is the
     substitution / re-pledge flow. The same check re-runs at approval,
     which is the binding gate — this one fails fast.
 
-    FM2: the one-LIVE-adjustment-per-repayment claim is atomic (v1.1
+    The one-LIVE-adjustment-per-repayment claim is atomic (v1.1
     rule 5) on the 0031 PARTIAL unique (status <> 'rejected'): a
     pending or posted adjustment blocks a second request; a rejected
     one frees the slot for a fresh request.
@@ -818,7 +836,7 @@ async def request_repayment_adjustment(
         raise ConflictError(
             f"loan {ctx.loan_id} cannot be reopened by this adjustment: its "
             "guarantees were released at closure and the guarantors are "
-            "discharged; substitute or re-pledge security (P13.14) "
+            "discharged; substitute or re-pledge security "
             "before adjusting"
         )
 
@@ -833,20 +851,20 @@ async def request_repayment_adjustment(
         )
 
     # A3: the MAKER's band — adjustments above the configured band are
-    # refused at request time (reuse of the P13.7 check, 1.1); the
+    # refused at request time (reuse of the settings check); the
     # CHECKER is band-checked again at approval (they ratify).
     await enforce_authority_band(session, tenant_id, actor_id, ctx.amount)
 
     # Reopened? Decided HERE, under the loan lock and BEFORE the claim
     # INSERT: reopened_loan is write-once (pinned by the 0031 trigger),
     # and approval re-verifies loan_status_at_request, so the decision
-    # cannot silently drift (FM6: the ONE documented reopen branch —
+    # cannot silently drift (the ONE documented reopen branch —
     # validated against the status map here, executed at approval).
     reopened = ctx.loan_status is LoanStatus.CLOSED
     if reopened:
         loan_transition(LoanStatus.CLOSED, LoanStatus.ACTIVE)
 
-    # FM2: the atomic one-live-adjustment-per-repayment claim (v1.1
+    # The atomic one-live-adjustment-per-repayment claim (v1.1
     # rule 5) carrying the persisted approval snapshot (v1.1 rule 3).
     adjustment_id = uuid.uuid4()
     claimed = (
@@ -934,14 +952,14 @@ async def approve_repayment_adjustment(
     adjustment_id: uuid.UUID,
 ) -> AdjustmentResult:
     """Phase 2 — a DISTINCT CHECKER approves and executes, atomically
-    (issue #24 N1; FM1-FM3, FM6-FM8; gates 1.4, 1.5).
+    (the house gates).
 
-    Snapshot-bind-reverify (v1.1 rule 3, the P12/!30 pattern —
+    Snapshot-bind-reverify (v1.1 rule 3, the established snapshot pattern —
     sequence-snapshot-bind-reverify.md): lock the pending adjustment
     row FOR UPDATE (the workflow anchor — the WOFF pattern) -> status
     gatekeeper + segregation-of-duties checks (maker <> checker,
     server-side AND the 0031 DB CHECK behind it; assurance roles
-    excluded, the !47 B2 principle) -> retake the FULL lock set
+    excluded, the B2 principle) -> retake the FULL lock set
     (transactions -> member FOR SHARE -> loan FOR UPDATE, shared
     verbatim with the request) -> re-verify EVERY snapshot component
     (balance, penalty_due, loan status) -> 409 on drift, posting
@@ -998,7 +1016,7 @@ async def approve_repayment_adjustment(
         )
 
     # FM10 re-check under the loan lock — approval is the BINDING gate
-    # (a P13.14 release could have moved between the phases).
+    # (a guarantee release could have moved between the phases).
     reopened = record.reopened_loan
     had_released_guarantees = False
     new_status: LoanStatus = ctx.loan_status
@@ -1008,12 +1026,12 @@ async def approve_repayment_adjustment(
             raise ConflictError(
                 f"loan {ctx.loan_id} cannot be reopened by this adjustment: its "
                 "guarantees were released at closure and the guarantors are "
-                "discharged; substitute or re-pledge security (P13.14) "
+                "discharged; substitute or re-pledge security "
                 "before adjusting"
             )
         new_status = loan_transition(LoanStatus.CLOSED, LoanStatus.ACTIVE)
 
-    # A3: the CHECKER ratifies the money movement — the same P13.7
+    # A3: the CHECKER ratifies the money movement — the same
     # band check the maker passed at request time (reuse, 1.1).
     await enforce_authority_band(session, tenant_id, actor_id, ctx.amount)
 
@@ -1027,7 +1045,7 @@ async def approve_repayment_adjustment(
     # The negative-linked repayments correction row (the storno pair in
     # the servicing history; conservation: original + correction = 0).
     # A NEW row, never an edit — the 0032 append-only triggers stand
-    # behind this discipline (issue #24 N4).
+    # behind this discipline.
     await session.execute(
         text(
             "INSERT INTO repayments (id, tenant_id, loan_id, transaction_id, amount) "
@@ -1072,7 +1090,7 @@ async def approve_repayment_adjustment(
     if decided.rowcount != 1:  # pragma: no cover - unreachable under the row lock
         raise ConflictError(f"adjustment {adjustment_id} vanished mid-transaction")
 
-    # State restore RECOMPUTES from the surviving history (A1, FM1):
+    # State restore RECOMPUTES from the surviving history (A1):
     # the exact inverse of the forward update for the loan-row figures,
     # and a full replay for the schedule (its forward application was
     # capped per row, so add-back alone cannot restore it). The rebuild
@@ -1101,7 +1119,7 @@ async def approve_repayment_adjustment(
         },
     )
 
-    # FM8 conservation self-check, in-transaction: the restored balance
+    # Conservation self-check, in-transaction: the restored balance
     # must reconstruct from the append-only ledger to the cent. A
     # mismatch aborts the WHOLE adjustment (no partial state).
     reconstructed = await _reconstructed_balance(
@@ -1187,21 +1205,21 @@ async def reject_repayment_adjustment(
     version: int,
     reason: str,
 ) -> AdjustmentRecord:
-    """Reject (void) a pending adjustment — optimistic-locked (issue
-    #24; the WOFF void shape).
+    """Reject (void) a pending adjustment — optimistic-locked (the
+    WOFF void shape).
 
     Locks the adjustment row ALONE (a single-node locker — the
     DECL/WOFF vote/void pattern; no money lock is taken because
     nothing posts). The rejection is a CHECKER decision: the maker
     cannot decide their own request (the SoD posture, server-side +
     the 0031 DB CHECK — a maker withdrawing a mistaken request asks a
-    checker to reject it), and assurance roles are excluded (the !47
+    checker to reject it), and assurance roles are excluded (the
     B2 principle). Rejecting frees the one-live-adjustment slot (the
     0031 partial unique excludes rejected rows), so a corrected
     request can be raised afresh; the rejected row itself is terminal,
     write-once workflow history.
 
-    The checker's rejection RATIONALE is required (!52 review F2: the
+    The checker's rejection RATIONALE is required (the
     four-eyes record must show WHY the request was refused, exactly
     because the freed slot allows a fresh request). It is workflow
     metadata — never a money parameter (v1.1 rule 1 untouched) — and
@@ -1264,7 +1282,7 @@ async def reject_repayment_adjustment(
         after={
             "adjustment_status": AdjustmentStatus.REJECTED.value,
             "checker_id": str(actor_id),
-            # !52 F2: the checker's rationale, on the record.
+            # The checker's rationale, on the record.
             "reason": reason,
         },
     )
@@ -1278,7 +1296,7 @@ async def reject_repayment_adjustment(
 
 
 # ---------------------------------------------------------------------------
-# Loan write-off (P13.15 part 3)
+# Loan write-off
 # ---------------------------------------------------------------------------
 
 
@@ -1376,14 +1394,14 @@ LIVE_WRITE_OFF_STATUSES: frozenset[WriteOffStatus] = frozenset(
 
 
 def write_offs_register_sql(*, with_cursor: bool) -> str:
-    """The write-off committee register (ledger (a).2).
+    """The write-off committee register.
 
     ORDER BY (status IN ('requested', 'approved')) DESC,
     created_at DESC, id DESC — the committee's job order: LIVE rows
     (awaiting votes or posting) FIRST, newest first inside each band;
     terminal history (rejected/posted) behind. Uniform-DESC keyset row
     comparison, served by idx_loan_write_offs_register (0038, shipped
-    with this query — gate 1.3; EXPLAIN-asserted, falsifiable by
+    with this query — scalability; EXPLAIN-asserted, falsifiable by
     dropping it). Static fragments chosen in code; every value is a
     bound parameter (v1.1 rule 6); explicit tenant predicate on top of
     forced RLS (rule 4).
@@ -1414,10 +1432,15 @@ async def list_write_offs(
     cursor: str | None,
     limit: int,
 ) -> WriteOffPage:
-    """Keyset write-off register, live-first (ledger (a).2)."""
+    """Keyset write-off register, live-first."""
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if cursor is not None:
-        c_flag, c_ts, c_id = parse_band_register_cursor(cursor, entity="write-off register")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext band parse stays as defense-in-depth.
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=WRITE_OFFS_SCOPE, entity="write-off register"
+        )
+        c_flag, c_ts, c_id = parse_band_register_cursor(inner, entity="write-off register")
         params["c_flag"] = c_flag
         params["c_ts"] = c_ts
         params["c_id"] = c_id
@@ -1427,8 +1450,12 @@ async def list_write_offs(
     next_cursor = None
     if len(rows) > limit and items:
         last = items[-1]
-        next_cursor = build_band_register_cursor(
-            last.status in LIVE_WRITE_OFF_STATUSES, last.created_at, last.id
+        next_cursor = encode_cursor(
+            build_band_register_cursor(
+                last.status in LIVE_WRITE_OFF_STATUSES, last.created_at, last.id
+            ),
+            tenant_id=tenant_id,
+            endpoint=WRITE_OFFS_SCOPE,
         )
     return WriteOffPage(items=items, next_cursor=next_cursor)
 
@@ -1442,12 +1469,12 @@ async def request_write_off(
     reason: str,
 ) -> WriteOffRecord:
     """Persist the write-off approval snapshot under the loan row lock
-    (v1.1 rule 3; FM4). The snapshot is DB-level WRITE-ONCE from this
+    (v1.1 rule 3). The snapshot is DB-level WRITE-ONCE from this
     moment (0025 trigger): the committee approves THESE figures, and
     posting re-verifies them component-by-component. Concurrent
     double-requests collapse to one row (uq_loan_write_offs_open).
 
-    PRUDENTIAL GATE (FM9, review B3 — SASRA-aligned, IFRS-9-consistent):
+    PRUDENTIAL GATE (SASRA-aligned, IFRS-9-consistent):
     write-off is the LAST stage of credit deterioration — derecognition
     of an asset whose recovery is no longer reasonably expected. The
     loan's STORED classification (the arrears job's persisted output)
@@ -1457,11 +1484,11 @@ async def request_write_off(
     one, and the 0025 CHECK on loan_write_offs.classification is the
     collusion-resistant DB backstop. A performing-loan write-off
     (death/insurance settlement) is a FUTURE, separately permissioned,
-    explicitly named override — tracked on issue #21, never this path.
-    N5 (recorded): posting re-verifies balance + penalty_due but NOT
+    explicitly named override — a recorded follow-up, never this path.
+    Recorded limitation: posting re-verifies balance + penalty_due but NOT
     classification/provision drift — the money components are the
     snapshot contract; a classification that improves between request
-    and posting is a policy question for #21, not a ledger risk."""
+    and posting is an open policy question, not a ledger risk."""
     row = (
         await session.execute(
             text(
@@ -1482,7 +1509,7 @@ async def request_write_off(
     status = LoanStatus(str(row[5]))
     if status is not LoanStatus.ACTIVE:
         raise ConflictError(f"loan {loan_id} is '{status.value}': only active loans write off")
-    # FM9 (review B3): the prudential gate — only a stored NPL
+    # The prudential gate — only a stored NPL
     # classification may be written off. Least disclosure: the error
     # names the category, never the figures (they live in the audit
     # row when a write-off does proceed).
@@ -1570,11 +1597,11 @@ async def cast_write_off_vote(
     write_off_id: uuid.UUID,
     vote: Vote,
 ) -> WriteOffVoteTally:
-    """Committee vote on a write-off (the P9 machinery, the P12/!30
-    shape; gate 1.4). The snapshot row lock serialises voters; the DB
+    """Committee vote on a write-off (the P9 machinery, the established
+    shape; concurrency safety). The snapshot row lock serialises voters; the DB
     UNIQUE makes double-voting impossible outside this path too.
     Separation of duties: the requester can never vote. Quorum from
-    tenant config AT VOTE TIME (P13.7) — never retroactive."""
+    tenant config AT VOTE TIME — never retroactive."""
     row = (
         await session.execute(
             text(
@@ -1762,9 +1789,9 @@ async def post_write_off(
     actor_id: uuid.UUID,
     write_off_id: uuid.UUID,
 ) -> WriteOffPostResult:
-    """Execute an approved write-off atomically (FM4; gates 1.4, 1.5).
+    """Execute an approved write-off atomically (the house gates).
 
-    Snapshot-bind-reverify (v1.1 rule 3, the P12/!30 pattern —
+    Snapshot-bind-reverify (v1.1 rule 3, the established snapshot pattern —
     sequence-snapshot-bind-reverify.md): lock the snapshot row FOR
     UPDATE -> status + separation-of-duties checks (the requester may
     never execute) -> retake the loan row FOR UPDATE and re-verify
@@ -1906,7 +1933,7 @@ async def post_write_off(
 
 
 # ---------------------------------------------------------------------------
-# Bad-debt recovery receipts (issue #21 — the P13.15 A4 explicit branch)
+# Bad-debt recovery receipts (the A4 explicit branch)
 # ---------------------------------------------------------------------------
 
 
@@ -1975,12 +2002,12 @@ async def record_recovery_receipt(
     channel: Channel,
 ) -> RecoveryReceiptResult:
     """Record cash received against a POSTED write-off's surviving
-    claim, atomically (issue #21; gates 1.4, 1.5).
+    claim, atomically (the house gates).
 
     Lock order (docs/diagrams/lock-order.md, updated in this MR):
     loan_write_offs FOR UPDATE (T0 — the serialisation point for
     concurrent receipts, so the outstanding-claim math can never race)
-    -> members FOR SHARE (T1, the P13.13 single gatekeeper: holds off
+    -> members FOR SHARE (T1, the single gatekeeper: holds off
     a concurrent terminal exit, the E20 argument) -> loans FOR UPDATE
     (T4, anchoring the full-recovery guarantee release in E7 order) ->
     the advisory posting tier inside _post.
@@ -1995,13 +2022,13 @@ async def record_recovery_receipt(
     RC- posting recognises recovery INCOME, it does not restore a
     receivable.
 
-    GUARANTEE DISPOSITION (the documented issue-#21 policy): the
+    GUARANTEE DISPOSITION (the documented policy): the
     receipt that recovers the claim IN FULL releases the loan's
     surviving guarantees in the same transaction (full recovery
     discharges the sureties exactly like genuine closure — the P10
     hook, reuse 1.1); partial receipts leave them untouched.
 
-    P13.16 LINKAGE (issue #21 item 2): the receipt records the loan's
+    RECOVERY-CASE LINKAGE: the receipt records the loan's
     closed_written_off recovery case explicitly (row column + audit
     payload) when one exists — collections against the surviving claim
     are worked under that case; a write-off without a case links NULL.
@@ -2015,7 +2042,7 @@ async def record_recovery_receipt(
         raise InvalidInputError("recovery receipt amount must be positive")
 
     # T0: the write-once snapshot row — the claim anchor. FOR UPDATE
-    # serialises concurrent receipts (FM2) and pins status (FM1).
+    # serialises concurrent receipts and pins status.
     record_row = (
         await session.execute(
             text(
@@ -2029,17 +2056,17 @@ async def record_recovery_receipt(
         raise NotFoundError(f"loan write-off {write_off_id} not found")
     record = _row_to_write_off(record_row)
     if record.status is not WriteOffStatus.POSTED:
-        # FM1: only a POSTED write-off has a derecognised claim to
+        # Only a POSTED write-off has a derecognised claim to
         # recover against (the 0030 trigger is the DB backstop).
         raise ConflictError(
             f"write-off {write_off_id} is '{record.status.value}': "
             "recovery receipts apply to posted write-offs"
         )
 
-    # T1: member FOR SHARE via the P13.13 single gatekeeper (reuse,
+    # T1: member FOR SHARE via the single gatekeeper (reuse,
     # 1.1) — money-in statuses; EXITED refused; blocks a concurrent
     # terminal exit until this receipt commits (the E20 argument, which
-    # the issue-#21 exit guard relies on).
+    # the exit guard relies on).
     await _require_member(session, tenant_id, record.member_id, operation=MoneyOperation.RECOVERY)
 
     # T4: the loan row — written_off is re-verified under its own lock,
@@ -2062,7 +2089,7 @@ async def record_recovery_receipt(
             "apply to written-off loans only"
         )
 
-    # FM2: the outstanding claim, reconstructed from the append-only
+    # The outstanding claim, reconstructed from the append-only
     # receipts under the write-off row lock (v1.1 rule 2).
     recovered_before = await _recovered_total(session, tenant_id, write_off_id)
     outstanding_before = to_cents(record.total_written_off - recovered_before)
@@ -2074,7 +2101,7 @@ async def record_recovery_receipt(
             "record the outstanding amount or the future waiver branch"
         )
 
-    # Issue #21 item 2: the P13.16 linkage, resolved server-side (plain
+    # The recovery-case linkage, resolved server-side (plain
     # MVCC read — closed cases are immutable, no lock needed).
     case_row = (
         await session.execute(
@@ -2220,10 +2247,10 @@ async def list_recovery_receipts(
     cursor: str | None,
     limit: int,
 ) -> RecoveryReceiptPage:
-    """Receipts against one claim, oldest first (keyset, gate 1.3).
+    """Receipts against one claim, oldest first (keyset, scalability).
 
     404s on a foreign/unknown write-off before any receipt row is
-    touched (the issue-#17 probe pattern); served by
+    touched (the 404-before-facts probe pattern); served by
     idx_loan_recoveries_write_off. The page totals are reconstructed
     from the append-only rows (v1.1 rule 2) so the reader always sees
     the recovered/outstanding position the service enforces.
@@ -2236,7 +2263,12 @@ async def list_recovery_receipts(
     }
     cursor_clause = ""
     if cursor is not None:
-        c_ts, c_id = parse_created_id_cursor(cursor, entity="recovery receipt")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext parse stays as defense-in-depth.
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=WO_RECOVERIES_SCOPE, entity="recovery receipt"
+        )
+        c_ts, c_id = parse_created_id_cursor(inner, entity="recovery receipt")
         params["c_ts"] = c_ts
         params["c_id"] = c_id
         cursor_clause = "AND (created_at, id) > (CAST(:c_ts AS timestamptz), CAST(:c_id AS uuid)) "
@@ -2269,7 +2301,11 @@ async def list_recovery_receipts(
     ]
     next_cursor = None
     if len(rows) > limit and items:
-        next_cursor = build_created_id_cursor(items[-1].created_at, items[-1].id)
+        next_cursor = encode_cursor(
+            build_created_id_cursor(items[-1].created_at, items[-1].id),
+            tenant_id=tenant_id,
+            endpoint=WO_RECOVERIES_SCOPE,
+        )
     recovered_total = await _recovered_total(session, tenant_id, write_off_id)
     return RecoveryReceiptPage(
         items=items,

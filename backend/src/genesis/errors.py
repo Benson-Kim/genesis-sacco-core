@@ -1,4 +1,4 @@
-"""Application error taxonomy. Clients receive a category, never internals (gate 1.6)."""
+"""Application error taxonomy. Clients receive a category, never internals (least disclosure)."""
 
 from enum import StrEnum
 
@@ -26,14 +26,14 @@ class NotFoundError(AppError):
 
 
 class ConflictError(AppError):
-    """Raised on optimistic-lock version mismatch and duplicates (gate 1.4)."""
+    """Raised on optimistic-lock version mismatch and duplicates (concurrency safety)."""
 
     status_code = 409
     category = ErrorCategory.CONFLICT
 
 
 class InvalidInputError(AppError):
-    """Raised when request parameters fail semantic validation (gate 1.2).
+    """Raised when request parameters fail semantic validation (reliability).
 
     Complements FastAPI's structural 422s for cases only the application
     can judge, such as malformed pagination cursors.
@@ -46,9 +46,9 @@ class InvalidInputError(AppError):
 class UnprocessableError(AppError):
     """Raised when a structurally valid body fails schema validation
     against server-side state — e.g. a KYC profile payload of the wrong
-    member type (P13.12). Mirrors FastAPI's structural 422; the client
+    member type. Mirrors FastAPI's structural 422; the client
     receives the sanitized category only, never the offending values
-    (gate 1.6).
+    (least disclosure).
     """
 
     status_code = 422
@@ -58,9 +58,9 @@ class UnprocessableError(AppError):
 class InvariantViolationError(AppError):
     """Raised when a code-owned structural invariant breaks at read time —
     e.g. a response bounded 'by construction' exceeding its hard
-    defensive cap (#31 remediation N3, transactions.MAX_TRANSACTION_LEGS).
+    defensive cap (transactions.MAX_TRANSACTION_LEGS).
     Surfaces as a sanitized 500 (internal_error category + correlation
-    id); the message is internal-only and carries no figures (gate 1.6).
+    id); the message is internal-only and carries no figures (least disclosure).
     """
 
     status_code = 500
@@ -78,7 +78,7 @@ class UnauthenticatedError(AppError):
 
 
 class RateLimitedError(AppError):
-    """Raised when an auth-sensitive endpoint is called too often (gate 1.6)."""
+    """Raised when an auth-sensitive endpoint is called too often (least disclosure)."""
 
     status_code = 429
     category = ErrorCategory.RATE_LIMITED

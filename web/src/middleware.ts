@@ -1,5 +1,5 @@
 /**
- * Per-request security headers (gate 1.6): mint a CSP nonce, hand it to
+ * Per-request security headers (least disclosure): mint a CSP nonce, hand it to
  * Next.js via the request headers (so its inline bootstrap scripts are
  * nonced — the documented Next.js CSP pattern) and stamp the response
  * with the full header set built in lib/security-headers.ts.

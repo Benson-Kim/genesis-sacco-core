@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Close-period dialog (issue #31 batch 4): `POST
+ * Close-period dialog: `POST
  * /accounting-periods/close` (transactions:approve) freezes ledger
  * history for one fully elapsed calendar month.
  *
  * - The ONLY caller-chosen values are the calendar year and month —
  *   exactly the ClosePeriodBody contract; the period bounds, the
  *   "fully elapsed" rule and every posting-date check are resolved
- *   server-side (issue #12: never caller-backdatable). No default
+ *   server-side (never caller-backdatable). No default
  *   month is pre-computed client-side: the approver chooses
  *   explicitly.
  * - SoD honesty: the contract gates this on transactions:approve as a
@@ -20,7 +20,7 @@
  *   "YYYY-MM" month being frozen), pending short-circuit + disabled
  *   controls, one Idempotency-Key per logical intent. Key material
  *   folds the op discriminator + the full canonical body (README
- *   MATERIAL rule 1), a post-409 reload epoch (!60 F3) and a
+ *   MATERIAL rule 1), a post-409 reload epoch and a
  *   per-success intent counter (W59-3) — there is no record version
  *   to fold: the (tenant, month) slot is the server's own idempotent
  *   claim (rule 3 has no version to pin here; the epoch/counter keep
@@ -67,7 +67,7 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
   const [confirmEntry, setConfirmEntry] = useState<ClosePeriodEntry | null>(null);
   const [result, setResult] = useState<PeriodRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload, so a re-entered identical
   // close after a 409 is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -114,7 +114,7 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the register (a concurrent
+    // Explicit reload flow: refetch the register (a concurrent
     // approver may have closed the month first); the failed request is
     // structurally WITHDRAWN — re-entering it is a NEW operator intent
     // whose key rotates via the reload epoch. NOTHING is replayed.
@@ -178,7 +178,7 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
       {/* Informational, NOT success styling (W59-4). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={close.error} onReload={reloadAfterConflict} />
       {conflict && (
         <div className={styles.formNote}>
@@ -268,7 +268,7 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
           <div className={styles.formNote}>
             Only the calendar month travels — the period bounds, the
             &quot;fully elapsed&quot; rule and every posting-date check are the
-            server&apos;s verdicts (issue #12: never caller-backdatable). No
+            server&apos;s verdicts — never caller-backdatable. No
             figure is entered or computed here.
           </div>
           <div className={styles.actions}>

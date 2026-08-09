@@ -7,8 +7,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Audit-log viewer route over GET /audit-log (P15; salvaged from
- * duo/feature/p13-5-frontend-followthrough @ 198a238). RequirePermission
+ * Audit-log viewer route over GET /audit-log (salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238). RequirePermission
  * access_control:view server-side; this route guard is UX only.
  */
 export default function AuditLogPage() {

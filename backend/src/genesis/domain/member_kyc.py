@@ -1,20 +1,20 @@
 """Member KYC domain: per-type profile schemas, document checklists and
-the document status machine (P13.12, gates 1.4-1.6). Zero I/O.
+the document status machine (the house gates). Zero I/O.
 
 The prototype's add-member wizard collects type-specific detail forms
-(GAP_ANALYSIS §2.3). Their schemas live here as the single source of
+(GAP_ANALYSIS). Their schemas live here as the single source of
 truth: pydantic models with ``extra="forbid"`` mirror the prototype's
 sections field-for-field, so a payload of the wrong member type — or a
 rider field smuggled into any section — is rejected at validation time.
 The DB CHECK in migration 0018 backstops the section shape for raw SQL.
 
-PII discipline (gate 1.6): validation failures raise
+PII discipline (least disclosure): validation failures raise
 ProfileValidationError carrying only field LOCATIONS and error TYPES —
 never the submitted values — so KYC data can never leak through error
 messages or logs.
 
 Monetary-looking KYC fields (monthly income) are informational strings
-constrained to the decimal grammar — never float (MASTER_PROMPT §0),
+constrained to the decimal grammar — never float (the house doctrine),
 and never inputs to any money computation.
 """
 
@@ -37,7 +37,7 @@ class ProfileValidationError(Exception):
     """Profile payload does not match the member type's schema.
 
     The message names field locations and error kinds only — submitted
-    values are deliberately excluded (gate 1.6).
+    values are deliberately excluded (least disclosure).
     """
 
 
@@ -46,7 +46,7 @@ class DocumentTypeError(Exception):
 
 
 class InvalidDocumentTransitionError(Exception):
-    """Raised when a document status transition is not allowed (gate 1.4)."""
+    """Raised when a document status transition is not allowed (concurrency safety)."""
 
 
 class _Section(BaseModel):
@@ -212,7 +212,7 @@ def validate_profile(member_type: MemberType, payload: Mapping[str, Any]) -> dic
 
     Returns the canonical JSON-mode dict (dates as ISO strings) for
     persistence. Raises ProfileValidationError naming field locations
-    and error types only — never the submitted values (gate 1.6).
+    and error types only — never the submitted values (least disclosure).
     """
     model = PROFILE_MODELS[member_type]
     try:
@@ -279,7 +279,7 @@ def document_transition(current: DocumentStatus, target: DocumentStatus) -> Docu
 
     pending -> received (upload/handover), received -> verified |
     rejected (review), rejected -> received (resubmission); verified is
-    terminal (gate 1.4).
+    terminal (concurrency safety).
     """
     if target not in _DOC_ALLOWED[current]:
         raise InvalidDocumentTransitionError(f"cannot move document from {current} to {target}")

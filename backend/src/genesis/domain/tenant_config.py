@@ -1,11 +1,10 @@
-"""Tenant configuration registry and band rules (P13.7). Pure logic.
+"""Tenant configuration registry and band rules. Pure logic.
 
 Single source of truth for every tenant-configurable money parameter
-(gate 1.6 v1.1 rule 1: the settings API is the single legitimate
-writer, and these code-owned keys are the only keys it accepts —
-callers can never invent a setting).
+(least disclosure: the settings API is the single legitimate writer, and these code-owned keys are
+the only keys it accepts — callers can never invent a setting).
 
-Three pieces live here, all free of I/O (MASTER_PROMPT 2.1):
+Three pieces live here, all free of I/O (the house doctrine 2.1):
 
   * SETTINGS_REGISTRY — the typed setting registry. Every key declares
     its group, type, unit, bounds (mirrored 1:1 by a DB CHECK shipped
@@ -51,21 +50,21 @@ MAX_RATE_BANDS = 20
 
 
 class PenaltyChargedOn(enum.StrEnum):
-    """Basis the arrears penalty is charged on (prototype Interest tab)."""
+    """Basis the arrears penalty is charged on (the Interest settings tab)."""
 
     INSTALMENT_IN_ARREARS = "instalment_in_arrears"
     FULL_OUTSTANDING = "full_outstanding"
 
 
 class LoanInterestMethod(enum.StrEnum):
-    """Stored only: the P6 engine extension is out of scope (P13.7)."""
+    """Stored only: the P6 engine extension is out of scope."""
 
     REDUCING_BALANCE = "reducing_balance"
     FLAT = "flat"
 
 
 class LoanInterestBasis(enum.StrEnum):
-    """Stored only: the P6 engine extension is out of scope (P13.7)."""
+    """Stored only: the P6 engine extension is out of scope."""
 
     THIRTY_360 = "thirty_360"
     ACTUAL_365 = "actual_365"
@@ -106,7 +105,7 @@ def _spec(
     return key, SettingSpec(key, group, value_type, unit, bounds, consumers)
 
 
-#: The typed setting registry (P13.7). Keys are the tenant_settings
+#: The typed setting registry. Keys are the tenant_settings
 #: column names; the settings API accepts exactly these keys (unknown
 #: keys are a 422 via extra="forbid") and the completeness tests pin
 #: API model <-> registry <-> DB columns to each other.
@@ -308,7 +307,7 @@ class ApprovalBand:
     the code-owned RBAC role names — never free-form caller strings.
 
     Name-keying is safe because seeded role names are immutable
-    (review R5): no application path updates roles.name
+    no application path updates roles.name
     (application/rbac.py mutates permissions only) and migration 0017
     ships a DB trigger refusing renames of is_system roles, so a
     rename can never silently detach a configured ceiling.
@@ -459,12 +458,12 @@ def authority_may_ratify(role_name: str, amount: Decimal, bands: tuple[ApprovalB
 
     A role LISTED in the matrix is capped by its own band ceiling. A
     role NOT listed in a configured matrix FAILS CLOSED WITH A FLOOR
-    (review R2): it may ratify only amounts within the FIRST band's
+    it may ratify only amounts within the FIRST band's
     ceiling, so a misconfigured matrix (a role holding
     applications:edit that the tenant forgot to list) degrades to the
     smallest configured authority instead of silently uncapping a
-    money ceiling. The uncapped pre-P13.7 fallback (BUILD_PROMPTS
-    P13.7: "current constants as fallback defaults") applies only when
+    money ceiling. The uncapped earlier fallback (the build plan: "current constants as fallback
+    defaults") applies only when
     NO matrix is configured at all — enforce_authority_band returns
     before ever calling this function in that case.
     """

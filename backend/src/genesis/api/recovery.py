@@ -1,17 +1,16 @@
-"""Collections & recovery worklist endpoints (P13.16, gate 1.6).
+"""Collections & recovery worklist endpoints (least disclosure).
 
-The prototype "Initiate recovery" action and the P18 arrears worklist.
+The prototype "Initiate recovery" action and the arrears worklist.
 Every route carries a RequirePermission dependency (deny by default);
-mutations are idempotent via the Idempotency-Key middleware (gate 1.4).
+mutations are idempotent via the Idempotency-Key middleware (concurrency safety).
 Request bodies reject unknown fields (extra="forbid") — in particular
 NO timestamp may ride in (opened_at/first_assigned_at/closed_at are
-server-side only, addendum A7), and there is NO cure/write-off close
-route (loan-fact closes happen automatically in the arrears job; the
-issue-#23 disposition route is restricted to the code-owned
-staff-settable targets — pause, resume, restructure-close; !53 F1/F2:
-pauses require a reason and the restructure close requires — and
-atomically writes — THE outcome note) and NO note edit/delete route
-(append-only, addendum A2; the single post-closure outcome note is a
+server-side only, review addendum), and there is NO cure/write-off close
+route (loan-fact closes happen automatically in the arrears job; the issue- disposition route is
+restricted to the code-owned staff-settable targets — pause, resume, restructure-close: pauses
+require a reason and the restructure close requires — and atomically writes — THE outcome note) and
+NO note edit/delete route
+(append-only, review addendum; the single post-closure outcome note is a
 NEW append-only row).
 
 Permissions (P4 matrix, documented interpretation): the worklist and
@@ -23,8 +22,8 @@ ASSIGNEE must be an active same-tenant user holding loan_book:view —
 the grant that lets them see the worklist they work — EXCLUDING
 assurance roles (the Auditor) for audit-independence: segregation of
 duties forbids the collections trail's reviewer from being workable
-in it (review B2; enforced in the application service against the
-role resolved server-side from the assignee's role_id, addendum A4).
+in it (enforced in the application service against the
+role resolved server-side from the assignee's role_id, addendum).
 """
 
 from __future__ import annotations
@@ -60,7 +59,7 @@ EditCtx = Annotated[AuthContext, Depends(_edit)]
 class CaseOpenBody(BaseModel):
     """extra="forbid": no caller-supplied timestamps, classification or
     days-past-due — the NPL snapshot is read under the loan row lock
-    and every SLA timestamp is written server-side (addendum A7)."""
+    and every SLA timestamp is written server-side (review addendum)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -75,7 +74,7 @@ class CaseAssignBody(BaseModel):
 
 
 class CaseNoteBody(BaseModel):
-    """Shared by the regular-note and outcome-note routes (issue #23):
+    """Shared by the regular-note and outcome-note routes:
     both carry exactly one text field, so one body model serves both
     (reuse-first, 1.1)."""
 
@@ -86,16 +85,16 @@ class CaseNoteBody(BaseModel):
 
 class CaseDispositionBody(BaseModel):
     """extra="forbid": the caller supplies the optimistic version, the
-    target status and the target-paired rationale fields (!53 F1/F2).
+    target status and the target-paired rationale fields.
     The enum rejects unknown statuses at the boundary (422); job-only
     targets (closed_cured/closed_written_off) are refused by the
-    service (409, FM2); the single domain gatekeeper owns the legality
-    of the move (issue #23 N2). `reason` is REQUIRED by the service
-    for the two pause targets (audit-payload workflow metadata, !53
-    F2); `note` is REQUIRED for closed_restructured — THE outcome
-    note, written atomically in the same transaction (!53 F1). A
+    service (409); the single domain gatekeeper owns the legality
+    of the move. `reason` is REQUIRED by the service
+    for the two pause targets (audit-payload workflow metadata); `note` is REQUIRED for
+    closed_restructured — THE outcome
+    note, written atomically in the same transaction. A
     mismatched field-target pairing is a 422. Neither field is a money
-    parameter (v1.1 rule 1 not implicated)."""
+    parameter (not implicated)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -120,9 +119,9 @@ class CaseOut(BaseModel):
 
 
 class WorklistRowOut(BaseModel):
-    """Least disclosure (addendum A5): workflow fields, days-past-due
+    """Least disclosure (review addendum): workflow fields, days-past-due
     and the classification pill only — NO balances/penalty figures;
-    those live behind the P10 loan-detail endpoints."""
+    those live behind the loan-detail endpoints."""
 
     case_id: str
     loan_id: str
@@ -146,7 +145,7 @@ class NoteOut(BaseModel):
     author_id: str
     note: str
     created_at: str
-    #: Issue #23 N3: True for the single post-closure outcome note.
+    #: Issue: True for the single post-closure outcome note.
     is_outcome: bool
 
 
@@ -200,7 +199,7 @@ def _note_out(note: CaseNoteRecord) -> NoteOut:
 
 @router.post("", status_code=201)
 async def open_case(body: CaseOpenBody, ctx: CreateCtx) -> CaseOut:
-    """Initiate recovery on an NPL-classified active loan (FM1/FM2)."""
+    """Initiate recovery on an NPL-classified active loan (/)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         record = await recovery_service.open_recovery_case(
@@ -209,7 +208,7 @@ async def open_case(body: CaseOpenBody, ctx: CreateCtx) -> CaseOut:
     return _case_out(record)
 
 
-#: DECLARED worklist status filter vocabulary (issue #31 ledger (a).3):
+#: DECLARED worklist status filter vocabulary:
 #: exactly the domain LIVE_STATUSES — the one-live-case invariant that
 #: keeps the worklist keyset's loan tiebreak valid. Code-owned Literal
 #: (the members-register include= precedent): any other value is a 422
@@ -226,10 +225,11 @@ async def worklist(
     status: Annotated[WorklistStatusParam | None, Query()] = None,
     classification: Annotated[LoanClass | None, Query()] = None,
 ) -> WorklistOut:
-    """Keyset worklist, most delinquent first (addendum A5).
+    """Keyset worklist, most delinquent first (review addendum).
 
-    DECLARED filters only (issue #31 ledger (a).3 — the human-
-    authorized read-contract expansion): `status` narrows to one LIVE
+    DECLARED filters only (the human-authorized read-contract
+    expansion): `status` narrows to one
+    LIVE
     posture (default stays OPEN exactly as built), `classification` to
     one stored prudential label (domain LoanClass). Every value is
     bound; keyset and server ordering are preserved; an out-of-
@@ -258,7 +258,7 @@ async def get_case(case_id: uuid.UUID, ctx: ViewCtx) -> CaseOut:
 
 @router.post("/{case_id}/assign")
 async def assign_case(case_id: uuid.UUID, body: CaseAssignBody, ctx: EditCtx) -> CaseOut:
-    """Assign/reassign an open case to an active same-tenant user (A4)."""
+    """Assign/reassign an open case to an active same-tenant user."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         record = await recovery_service.assign_recovery_case(
@@ -274,12 +274,12 @@ async def assign_case(case_id: uuid.UUID, body: CaseAssignBody, ctx: EditCtx) ->
 
 @router.post("/{case_id}/disposition")
 async def set_disposition(case_id: uuid.UUID, body: CaseDispositionBody, ctx: EditCtx) -> CaseOut:
-    """Record a staff disposition (issue #23 N2; !53 F1/F2): pause a
+    """Record a staff disposition: pause a
     case as disputed or irrecoverable_pending_write_off (required
     `reason` -> audit payload), resume it to open, or close it as
     restructured (required `note` -> THE outcome note, written
     atomically in this same transaction) — through the single domain
-    gatekeeper; cure/write-off closes stay job-only (FM2)."""
+    gatekeeper; cure/write-off closes stay job-only."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         record = await recovery_service.set_case_disposition(
@@ -297,7 +297,7 @@ async def set_disposition(case_id: uuid.UUID, body: CaseDispositionBody, ctx: Ed
 
 @router.post("/{case_id}/notes", status_code=201)
 async def add_note(case_id: uuid.UUID, body: CaseNoteBody, ctx: EditCtx) -> NoteOut:
-    """Append a note (addendum A2: append-only, no edit route exists)."""
+    """Append a note (addendum: append-only, no edit route exists)."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         note = await recovery_service.add_recovery_note(
@@ -308,7 +308,7 @@ async def add_note(case_id: uuid.UUID, body: CaseNoteBody, ctx: EditCtx) -> Note
 
 @router.post("/{case_id}/outcome-note", status_code=201)
 async def add_case_outcome_note(case_id: uuid.UUID, body: CaseNoteBody, ctx: EditCtx) -> NoteOut:
-    """Record THE post-closure outcome note (issue #23 N3): exactly one
+    """Record THE post-closure outcome note: exactly one
     per case, at/after closure only, still append-only — no edit or
     delete route exists."""
     factory = get_sessionmaker(get_settings().database_url)

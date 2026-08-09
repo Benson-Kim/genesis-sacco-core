@@ -3,14 +3,12 @@ import { isoTimestampSchema, moneySchema, MONEY_RE } from "@/lib/schemas";
 
 /**
  * Zod-validated response boundary for the Dividends lifecycle console
- * (issue #31 batch 2 — the P13.11 declare/approve/distribute contract,
- * incl. the issue-#19 dormant/unclaimed policy surface of migrations
- * 0020/0022). Shapes mirror the generated client types
+ * (the declare/approve/distribute contract, incl. the issue- dormant/unclaimed policy surface of migrations 0020/0022). Shapes mirror the generated client types
  * (components["schemas"]["DeclarationOut"], DividendVoteResultOut,
  * DistributionRunOut) — the drift-checked OpenAPI snapshot remains the
  * contract; these schemas only assert it at runtime.
  *
- * MONEY RULE (P15 blocker (a)): every figure on a declaration (bases,
+ * MONEY RULE: every figure on a declaration (bases,
  * totals) and every distribution-run total is a SERVER-computed
  * decimal STRING rendered verbatim via fmtKes — never summed, netted
  * or re-derived client-side (the client does not even verify that
@@ -59,8 +57,7 @@ export const DECLARATION_STATUS_LABELS: Record<DeclarationStatus, string> = {
 };
 
 /** The terminal states: every write affordance is structurally
- * WITHDRAWN for them (the server enforces the transition matrix
- * regardless — gate 1.6). */
+ * WITHDRAWN for them (the server enforces the transition matrix regardless — least disclosure). */
 export const TERMINAL_DECLARATION_STATUSES: readonly DeclarationStatus[] = [
   "rejected",
   "distributed",
@@ -85,17 +82,16 @@ export const fyDateSchema = z.string().regex(FY_DATE_RE);
 /**
  * One dividend declaration (DeclarationOut): the committee-approval
  * SNAPSHOT for the last completed financial year. Every figure is
- * server-computed under the P13.11 machinery from tenant-configured
- * rates (v1.1 rule 1: no rate/period/total can even be SENT by a
+ * server-computed under the machinery from tenant-configured
+ * rates (no rate/period/total can even be SENT by a
  * client — extra="forbid" server-side). Extra keys are STRIPPED at
  * this boundary.
  *
- * ATTRIBUTION (issue #31 ledger (a).4 — the human-authorized
- * read-contract expansion closing the batch-2 gap): DeclarationOut
+ * ATTRIBUTION (the human-authorized read-contract expansion closing the gap): DeclarationOut
  * now exposes `requested_by` — the EXISTING migration-0020 column
  * that already drives the server's declarer-cannot-vote /
  * declarer-cannot-distribute 403s — as the bare staff UUID under
- * least disclosure (the !66/!70 exits precedent). NULLABLE, never
+ * least disclosure (the / exits precedent). NULLABLE, never
  * optional (the key must be present; a missing key is contract
  * drift and REFUSES to parse), and never invented: NULL is the
  * honest unattributed affordance. SERVER TRUTH SUPERSEDES the
@@ -109,8 +105,7 @@ export const declarationSchema = z.object({
   dividend_rate_pct: rateSchema,
   rebate_rate_pct: rateSchema,
   /** Members with a positive entitlement at declaration time —
-   * DORMANT members included (issue #19 P1, migration 0022: dormant
-   * members remain shareholders and are IN the scan population). */
+   * DORMANT members included (P1, migration 0022: dormant members remain shareholders and are IN the scan population). */
   eligible_members: z.number().int(),
   total_share_basis: moneySchema,
   total_deposit_basis: moneySchema,
@@ -119,7 +114,7 @@ export const declarationSchema = z.object({
   /** CHECK (> 0): an empty declaration is unrepresentable (0020). */
   total_payout: moneySchema,
   status: declarationStatusSchema,
-  /** Declarer attribution (issue #31 ledger (a).4): the SERVER's bare
+  /** Declarer attribution: the SERVER's bare
    * staff UUID (0020 column), nullable-NOT-optional; rendered via the
    * short-id convention, NULL = honest "unattributed". Server truth —
    * it supersedes the per-tab witness wherever both exist. */
@@ -133,8 +128,7 @@ export const declarationSchema = z.object({
 
 export type DeclarationRecord = z.infer<typeof declarationSchema>;
 
-/** Committee tally after a dividend vote (DividendVoteResultOut — the
- * P9 voting machinery reused by P13.11): COUNTS + decision + the
+/** Committee tally after a dividend vote (DividendVoteResultOut — the P9 voting machinery reused by): COUNTS + decision + the
  * declaration's resulting status only; the server never discloses who
  * voted which way through this endpoint. `decision` and `status`
  * REJECT unknown vocabulary (W58-4 posture). */
@@ -154,7 +148,7 @@ export type DividendVote = (typeof DIVIDEND_VOTES)[number];
  * Distribution-run result (DistributionRunOut): the mass money-mover's
  * report. Counts are SERVER facts about the run; the three totals are
  * server Decimal strings (see the module docblock's ZERO-seed
- * derivation — always two places). `unclaimed` is the issue-#19 P3
+ * derivation — always two places). `unclaimed` is the issue- P3
  * dormant-policy surface: members who EXITED mid-run, disposed as an
  * unclaimed-dividends PAYABLE (0022 disposition column), never
  * silently dropped and never credited to a closed account.

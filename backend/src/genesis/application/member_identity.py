@@ -1,25 +1,25 @@
-"""Member credential-link administration (P14.5 scopes 1/3, FM3).
+"""Member credential-link administration (scopes 1/3).
 
 The member_credentials row IS member identity: authentication and
-every member-principal authorization resolve through it (FM2 — the
-link, never any email, is authoritative). So link mutations are the
-takeover surface, and FM3 makes them narrow:
+every member-principal authorization resolve through it (the link, never any email, is
+authoritative). So link mutations are the
+takeover surface, and makes them narrow:
 
   * there is NO self-service mutation path — creating or revoking a
     link is a staff mutation under the dedicated member_identity
     module (the narrow P4 matrix: System Admin / Branch Manager only),
-    audited in-transaction like every other mutation (gate 1.5);
+    audited in-transaction like every other mutation (data integrity);
   * re-pointing an email at another member is NEVER one write: it is
     revoke + create — two audited mutations, each notifying the
-    member (detection control, the !29 R1 lesson);
-  * the active-email claim is ATOMIC (v1.1 rule 5): INSERT ... ON
+    member (detection control, the lesson);
+  * the active-email claim is ATOMIC: INSERT... ON
     CONFLICT on the 0035 partial UNIQUE
     uq_member_credentials_email_active, checked by rowcount — two
     concurrent links of one email land exactly one row;
   * revocation is recorded, never deleted: identity history stays
     forensic (the audit_log posture).
 
-Lock posture (lock-order.md §3 — no new lock-graph edges): every link
+Lock posture (lock-order.md — no new lock-graph edges): every link
 mutation locks the MEMBER row FOR UPDATE first (chain ROOT of
 member -> accounts -> loans, the recovery-case-open single-node
 pattern) and performs only plain writes on member_credentials under
@@ -29,7 +29,7 @@ partial UNIQUE is the DB backstop) and conflicts with a terminal exit
 at T1. Nothing below T1 is ever acquired.
 
 Every query carries an explicit bound tenant_id predicate on top of
-forced RLS (gate 1.6 v1.1 rule 4); every value is a bound parameter
+forced RLS (least disclosure); every value is a bound parameter
 (rule 6).
 """
 
@@ -47,7 +47,7 @@ from genesis.application.outbox import enqueue_event
 from genesis.domain.members import MemberStatus
 from genesis.errors import ConflictError, NotFoundError
 
-#: The atomic active-email claim (v1.1 rule 5; FM3). The conflict
+#: The atomic active-email claim. The conflict
 #: target is the 0035 partial UNIQUE uq_member_credentials_email_active
 #: — a concurrent claim of the same active email lands exactly one row
 #: and the loser reads rowcount 0. Module-level so tests pin the SQL.
@@ -78,7 +78,8 @@ def _to_record(row: Any) -> CredentialRecord:
 
 
 async def _lock_member(session: AsyncSession, tenant_id: uuid.UUID, member_id: uuid.UUID) -> str:
-    """Member row FOR UPDATE — chain ROOT (lock-order.md §3): the
+    """Member row FOR UPDATE — chain ROOT (lock-order.md): the
+
     serialisation point for every link mutation on this member."""
     row = (
         await session.execute(
@@ -102,11 +103,11 @@ async def create_credential(
     member_id: uuid.UUID,
     email: str,
 ) -> CredentialRecord:
-    """Link a login email to a member (FM3: audited admin mutation).
+    """Link a login email to a member (audited admin mutation).
 
     Decided under the member row lock; the active-email claim is the
     atomic ON CONFLICT insert checked by rowcount. Least disclosure
-    (gate 1.6): the email-taken refusal never names the member holding
+    (least disclosure): the email-taken refusal never names the member holding
     it.
     """
     status = await _lock_member(session, tenant_id, member_id)
@@ -143,7 +144,7 @@ async def create_credential(
         ),
     )
     if result.rowcount != 1:
-        # The atomic claim lost (FM3): the email is already someone's
+        # The atomic claim lost: the email is already someone's
         # ACTIVE credential. Least disclosure: never say whose.
         raise ConflictError("this email is already linked to an active credential")
     await record_audit(
@@ -178,7 +179,7 @@ async def revoke_credential(
     *,
     version: int,
 ) -> CredentialRecord:
-    """Revoke a credential link (FM3: audited admin mutation).
+    """Revoke a credential link (audited admin mutation).
 
     Lock order: unlocked probe to learn the member, member row FOR
     UPDATE (chain ROOT — matching create_credential, so revoke and

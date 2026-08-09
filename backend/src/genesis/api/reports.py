@@ -1,4 +1,4 @@
-"""Reports & exports endpoints (P13, gates 1.3-1.6).
+"""Reports & exports endpoints (the house gates).
 
 Permission gates (P4 matrix, decided and documented):
 

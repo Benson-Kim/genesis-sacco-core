@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Shared optimistic-lock conflict banner (P15 Phase B — one copy, gate
- * 1.1). Renders ONLY for HTTP 409: the explicit reload-and-re-enter flow
+ * Shared optimistic-lock conflict banner (one copy, reuse-first). Renders ONLY for HTTP 409: the explicit reload-and-re-enter flow
  * — the stale submission is NEVER replayed and there is NO silent
  * overwrite (the caller's reload handler refetches; re-applying the
  * change is a NEW operator intent with a NEW Idempotency-Key).

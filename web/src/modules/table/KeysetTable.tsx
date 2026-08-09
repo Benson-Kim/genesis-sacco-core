@@ -24,9 +24,8 @@ export interface KeysetTableProps<T> {
 
 /**
  * Shared cursor-paginated table (prototype table styling). Used by the
- * members / users / audit screens in P15.
- * (onRowClick salvaged from duo/feature/p13-5-frontend-followthrough
- * @ 198a238.)
+ * members / users / audit screens in.
+ * (onRowClick salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238.)
  */
 export function KeysetTable<T>({
   columns,
@@ -61,7 +60,7 @@ export function KeysetTable<T>({
     <div>
       {/* Focusable, labelled scroll region: on narrow viewports the table
           scrolls horizontally (visible scroll-shadow affordance) and stays
-          keyboard-reachable (P15 Phase B; issue #8). */}
+          keyboard-reachable. */}
       <div className={styles.scroller} tabIndex={0} role="region" aria-label="Table">
         <table className={styles.table}>
         <thead>

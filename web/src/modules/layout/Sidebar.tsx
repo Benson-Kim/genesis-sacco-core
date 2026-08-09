@@ -10,7 +10,7 @@ import styles from "./AppShell.module.css";
 
 /**
  * Prototype sidebar. Items gated by /me/permissions are hidden for roles
- * without view rights — the API still enforces on every call (gate 1.6).
+ * without view rights — the API still enforces on every call (least disclosure).
  */
 export function Sidebar() {
   const pathname = usePathname();
@@ -34,7 +34,7 @@ export function Sidebar() {
           return (
             <div
               key={section.label}
-              // Utility links pin to the sidebar footer (issue #8).
+              // Utility links pin to the sidebar footer.
               className={section.utility === true ? styles.navUtility : undefined}
             >
               <div className={styles.navSection}>{section.label}</div>

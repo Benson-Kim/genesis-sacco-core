@@ -20,8 +20,8 @@ body {
 }
 
 /*
- * Keyboard focus is never removed without replacement (issue #8): a
- * high-contrast ring on :focus-visible for every interactive element.
+ * Keyboard focus is never removed without replacement: a
+ * high-contrast ring on:focus-visible for every interactive element.
  */
 :focus-visible {
   outline: 2px solid var(--navyMid);
@@ -29,7 +29,7 @@ body {
 }
 
 /*
- * prefers-reduced-motion fallback (issue #8): all non-essential motion
+ * prefers-reduced-motion fallback: all non-essential motion
  * collapses for motion-sensitive users. State changes remain instant.
  */
 @media (prefers-reduced-motion: reduce) {

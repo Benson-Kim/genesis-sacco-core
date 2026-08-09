@@ -1,27 +1,27 @@
-"""member dormancy lifecycle (P13.13)
+"""member dormancy lifecycle
 
 Revision ID: 0021
 Revises: 0020
 Create Date: 2026-08-01
 
-Expand-only revision backing BUILD_PROMPTS P13.13 (claimed as 0021 with
-down_revision 0020 per v1.2 rule 14 — 0020 is !30's dividends head).
+Expand-only revision backing the build plan (claimed as 0021 with down_revision 0020 per the
+migration-declaration rule — 0020 is dividends head).
 
   * members.status CHECK expanded (expand-only) with 'dormant'. The
     member status machine gains Active -> Dormant (nightly job only,
     when no member-initiated transaction fell inside the tenant's
     configured dormancy window), Dormant -> Active (automatic, inside
-    the deposit transaction) and Dormant -> Exited (through the real
-    P12 settlement workflow). All writers go through the single
-    domain transition function (gate 1.4).
+    the deposit transaction) and Dormant -> Exited (through the real settlement workflow). All
+    writers go through the single
+    domain transition function (concurrency safety).
 
   * idx_members_dormancy_scan — the dormancy batch scan's driving
-    index (gate 1.3: the index ships in the SAME migration as the
-    query it serves, application/dormancy.py::dormancy_scan_sql).
+    index (scalability: the index ships in the SAME migration as the query it serves,
+    application/dormancy.py:dormancy_scan_sql).
     Partial over status = 'active' because only active members are
     dormancy candidates: dormant/exited members never widen the scan,
     which is also what makes the job's re-run a lock-free no-op
-    (v1.1 rule 8 — the status predicate itself is the anti-join's
+    (the status predicate itself is the anti-join's
     first leg). The member-initiated-activity NOT EXISTS anti-join is
     served by the existing idx_txns_member_keyset (0008).
 

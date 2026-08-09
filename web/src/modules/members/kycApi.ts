@@ -1,25 +1,20 @@
 /**
- * Member-KYC API layer (issue #31 batch 3 — P13.12 profile and
- * document-checklist routes) over the GENERATED client.
+ * Member-KYC API layer (profile and document-checklist routes) over the GENERATED client.
  *
- * - Permission strings are the members module's own (server-enforced,
- *   gate 1.6): profile/document CREATION under members:create (they
- *   are registration wizard steps), reads under members:view (every
- *   profile read and checklist read is access-AUDITED server-side —
- *   review K1 / P13 blocker f), edits under members:edit.
+ * - Permission strings are the members module's own (server-enforced, least disclosure): profile/document CREATION under members:create (they
+ *   are registration wizard steps), reads under members:view (every profile read and checklist read is access-AUDITED server-side — / blocker f), edits under members:edit.
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the MATERIAL rule (web/README.md, gate 1.4): simple creates fold
+ *   the MATERIAL rule (web/README.md, concurrency safety): simple creates fold
  *   the op discriminator plus the full canonical body; versioned
  *   writes additionally fold the record version being acted on.
- * - The document list is the ONLY keyset read (gate 1.3: opaque
- *   `cursor` echoed back verbatim; no offset or page parameters).
+ * - The document list is the ONLY keyset read (scalability: opaque `cursor` echoed back verbatim; no offset or page parameters).
  * - Document UPDATE follows the contract's exclude-unset semantics
- *   (review K2): only keys the operator actually set are sent —
+ *   only keys the operator actually set are sent —
  *   an omitted expiry keeps the stored one, an EXPLICIT null clears
  *   a wrongly-entered date.
  * - Ids travel as path parameters serialized by the generated client;
  *   bearer/tenant/idempotency values travel as HEADERS ONLY and no
- *   PII ever enters a URL (gate 1.6).
+ *   PII ever enters a URL (least disclosure).
  * - NO money moves here: the single monetary-looking field (declared
  *   monthly income) is an informational string inside the profile
  *   payload, constrained by the boundary grammar in kycSchemas.ts.
@@ -98,8 +93,7 @@ export async function updateKycProfile(
   return kycProfileSchema.parse(data);
 }
 
-/** Checklist read (members:view; keyset, gate 1.3; access-audited
- * server-side per P13 blocker f). */
+/** Checklist read (members:view; keyset, scalability; access-audited server-side per blocker f). */
 export async function fetchKycDocumentsPage(
   memberId: string,
   cursor: string | null,
@@ -138,7 +132,7 @@ export async function createKycDocument(
  * Move a checklist document through its status machine and/or correct
  * its expiry (members:edit): version-pinned (409 on stale); an illegal
  * transition is a server 422 regardless of what the UI offered.
- * Exclude-unset semantics (review K2): pass `expires_at` ONLY when the
+ * Exclude-unset semantics: pass `expires_at` ONLY when the
  * operator set it — omitted keeps the stored expiry, null clears it.
  */
 export async function updateKycDocument(

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Legacy branch-backfill dialog (issue #31 batch 4): `POST
+ * Legacy branch-backfill dialog: `POST
  * /jobs/branch-backfill` (settings:edit — the registry it populates;
  * the POST /jobs/arrears operations convention).
  *

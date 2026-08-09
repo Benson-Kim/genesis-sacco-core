@@ -1,14 +1,14 @@
 /*
- * Permissions matrix — role sidebar + permission table (P15).
+ * Permissions matrix — role sidebar + permission table.
  * Salvaged from duo/feature/p13-5-frontend-followthrough @ 198a238;
  * adapted to this branch's token set (scale.css --fs-* and --duration-*;
  * the salvage source's --font-size-*, --ease-standard, --focus-ring do
- * not exist here) and issue-#8 conventions: visible outline focus
+ * not exist here) and issue- conventions: visible outline focus
  * rings and a >=44px checkbox hit target (.checkTarget wrapper).
  */
 
 /* Page layout comes from the shared responsive module
-   (src/modules/layout/grid.module.css .sideMain) — one copy, gate 1.1. */
+   (src/modules/layout/grid.module.css.sideMain) — one copy, reuse-first. */
 
 /* Role sidebar */
 .roleList {
@@ -59,7 +59,7 @@
   font-weight: 800;
 }
 
-/* Focus ring replaced, never removed (issue #8). */
+/* Focus ring replaced, never removed. */
 .roleItem:focus-visible {
   outline: 2px solid var(--navy);
   outline-offset: -2px;
@@ -133,7 +133,7 @@
   text-align: center;
 }
 
-/* >=44px hit target wrapping the 24px visual checkbox (issue #8). */
+/* >=44px hit target wrapping the 24px visual checkbox. */
 .checkTarget {
   display: inline-grid;
   place-items: center;
@@ -177,7 +177,7 @@
   display: block;
 }
 
-/* Focus ring replaced, never removed (issue #8). */
+/* Focus ring replaced, never removed. */
 .check:focus-visible {
   outline: 2px solid var(--navy);
   outline-offset: 2px;

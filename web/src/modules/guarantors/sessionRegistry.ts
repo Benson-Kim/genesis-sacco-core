@@ -1,7 +1,7 @@
 /**
- * Per-tab witnessed-guarantee registry (P15 module 5 — honesty side).
+ * Per-tab witnessed-guarantee registry (module 5 — honesty side).
  *
- * WHY THIS EXISTS: the P9/P13.14 contract exposes NO guarantee
+ * WHY THIS EXISTS: the P9/ contract exposes NO guarantee
  * list/read endpoint — GuaranteeOut exists ONLY as the response of the
  * four writes (pledge, consent, release, substitute). The screen's
  * follow-up actions (consent a pledge, release, substitute) need the
@@ -11,12 +11,12 @@
  * status, version) so the operator can carry a pledge through consent
  * and release within their session.
  *
- * Scope and honesty (the makerRegistry precedent, !58): the registry is
+ * Scope and honesty (the makerRegistry precedent): the registry is
  * per-tab and in-memory — it cannot see guarantees pledged by another
  * operator, in another tab, or before this page load; those records are
  * reachable only through the backend audit trail until a list endpoint
  * ships (recorded as follow-up scope in the MR). The ENFORCED
- * invariants are server-side regardless (gate 1.6): capacity under the
+ * invariants are server-side regardless (least disclosure): capacity under the
  * guarantor's deposit-account row lock, the status machine
  * (pledged -> active -> released), optimistic-lock versions and the
  * cover rule. Nothing here is a source of truth — every figure shown
@@ -64,7 +64,7 @@ export function markWitnessedConflict(guaranteeId: string): void {
   emit();
 }
 
-/** Session-teardown hygiene (!60 F2, wired structurally per W58-2):
+/** Session-teardown hygiene (wired structurally per W58-2):
  * registered as a session-scoped store below, so BOTH teardown paths —
  * the query-path 401 dual-cache teardown (app providers) and explicit
  * sign-out (auth logout) — clear it. Witnessed financial records and

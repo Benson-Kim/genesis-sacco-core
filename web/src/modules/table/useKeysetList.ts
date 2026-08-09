@@ -15,7 +15,7 @@ export type KeysetListResult<T> = UseInfiniteQueryResult<
 >;
 
 /**
- * Cursor-driven list state for keyset-paginated endpoints (gate 1.3).
+ * Cursor-driven list state for keyset-paginated endpoints (scalability).
  * `fetchPage(null)` loads the first page; subsequent pages follow the
  * server-issued `next_cursor` — never offsets.
  */

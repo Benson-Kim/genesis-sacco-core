@@ -5,6 +5,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from genesis.api.access import router as access_router
@@ -31,8 +32,10 @@ from genesis.api.reports import router as reports_router
 from genesis.api.tenant_settings import router as tenant_settings_router
 from genesis.api.transactions import router as transactions_router
 from genesis.api.users import router as users_router
+from genesis.application.pagination import assert_cursor_signing_key_configured
 from genesis.errors import AppError, ErrorCategory
 from genesis.logging import configure_logging, correlation_id_var
+from genesis.settings import get_settings
 
 logger = logging.getLogger("genesis.api")
 
@@ -43,7 +46,20 @@ def _envelope(category: ErrorCategory) -> dict[str, str]:
 
 def create_app() -> FastAPI:
     configure_logging()
+    # Fail-closed boot guard: a missing
+    # or short cursor-signing key aborts startup here, never at the
+    # first decode.
+    assert_cursor_signing_key_configured()
+    settings = get_settings()
     app = FastAPI(title="Genesis Prestige API", version="0.1.0")
+    if settings.cors_origins_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins_list,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(members_router)

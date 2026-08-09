@@ -1,4 +1,4 @@
-"""Member exit & settlement services (P12, gates 1.1-1.6).
+"""Member exit & settlement services.
 
 Workflow (mirrors the prototype's Governance > Member exit screen):
 
@@ -9,7 +9,7 @@ Workflow (mirrors the prototype's Governance > Member exit screen):
      UNIQUE, the initiator may never vote on their own request). The
      quorum is read from tenant configuration AT VOTE TIME under the
      exit row lock, falling back to the code-owned COMMITTEE_QUORUM
-     (P13.7): a quorum change between votes governs the next vote's
+     constant: a quorum change between votes governs the next vote's
      tally only — it can never decide an exit retroactively.
 
 User-level separation of duties (the P4 matrix grants members:edit and
@@ -27,7 +27,7 @@ request-withdrawal path (see void_exit).
   4. void_exit — approved/requested -> rejected escape hatch: a drifted
      snapshot is voided and a fresh request captures new balances.
 
-Lock ordering (matches every existing money path; gate 1.4):
+Lock ordering (matches every existing money path; concurrency safety):
 
     member row (FOR UPDATE)
       -> deposit account (FOR UPDATE)      P9 pledge / P11 withdrawal order
@@ -54,10 +54,10 @@ Eligibility (prototype criteria):
 
 Fees come exclusively from tenant_settings.exit_fee (0009 pattern);
 tenants without a settings row charge no fee. The request body never
-carries money parameters (the P11 caller-rate lesson, gate 1.6).
+carries money parameters (the P11 caller-rate lesson, least disclosure).
 
 Every read AND write carries an explicit tenant_id predicate on top of
-forced RLS (defence in depth, gate 1.6). Rejection messages are least-
+forced RLS (defence in depth). Rejection messages are least-
 disclosure: no balances or capacities are echoed; the audit rows keep
 the figures for staff entitled to them.
 """
@@ -80,7 +80,12 @@ from genesis.application.ledger import post_exit_settlement
 from genesis.application.loans import _close_loan, _interest_due
 from genesis.application.members import mark_member_exited
 from genesis.application.outbox import enqueue_event
-from genesis.application.pagination import build_created_id_cursor, parse_created_id_cursor
+from genesis.application.pagination import (
+    build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
+    parse_created_id_cursor,
+)
 from genesis.application.tenant_settings import committee_quorum
 from genesis.application.transactions import _lock_account, _set_balance
 from genesis.domain.committee import Decision, Vote, decide
@@ -102,11 +107,15 @@ _EXIT_COLS = (
     "settlement_transaction_id, version, created_at"
 )
 
+#: Cursor scope id: signed cursors are bound to this
+#: endpoint and this tenant — no cross-scope replay (tenant isolation).
+EXITS_LIST_SCOPE = "member_exits.list"
+
 #: Application stages that block an exit (P8 blocker set, single list).
 _OPEN_STAGES = "('submitted', 'appraisal', 'committee', 'approved')"
 
-#: Unresolved POSTED write-off claim probe (issue #21) — ONE copy
-#: (gate 1.1) shared verbatim by the locked settlement computation and
+#: Unresolved POSTED write-off claim probe — ONE copy
+#: (reuse-first) shared verbatim by the locked settlement computation and
 #: the advisory eligibility read, so the two can never diverge on the
 #: rule. Explicit tenant predicates on top of forced RLS (v1.1 rule 4);
 #: served by idx_loan_write_offs_member + idx_loan_recoveries_write_off.
@@ -120,7 +129,7 @@ UNRESOLVED_WRITEOFF_CLAIM_SQL = (
     "LIMIT 1"
 )
 
-# --- Advisory exit-eligibility read (P15 batch 5, U6; issue #31) ----------
+# --- Advisory exit-eligibility read ----------
 #
 # Blocker FACTS only — counts and booleans, NEVER an amount (least
 # disclosure under the members:view gate; the settlement figures stay
@@ -138,7 +147,7 @@ ELIGIBILITY_MEMBER_SQL = (
 
 #: Live guarantees GIVEN by the member — the SAME status set the P9
 #: enforcement path uses (LIVE_GUARANTEE_STATUSES via
-#: live_guarantee_params, gate 1.1). Served by idx_guarantees_guarantor.
+#: live_guarantee_params, reuse-first). Served by idx_guarantees_guarantor.
 ELIGIBILITY_GUARANTEES_SQL = (
     "SELECT COUNT(*) FROM guarantees "
     "WHERE guarantor_member_id = CAST(:m AS uuid) "
@@ -213,7 +222,7 @@ class ExitStatementDoc:
     loan_balance: Decimal
     fees: Decimal
     net_payable: Decimal
-    #: Initiator attribution (issue #30 R3, the !64 honest-limitation
+    #: Initiator attribution (the honest-limitation
     #: row): the staff principal who created the request, on the
     #: statement document itself — an examiner reading a settlement
     #: sees WHO requested it without a context switch to the audit log.
@@ -257,7 +266,7 @@ def _row_to_exit(row: Any) -> ExitRecord:
 async def _exit_fee(session: AsyncSession, tenant_id: uuid.UUID) -> Decimal:
     """Tenant-configured exit fee; tenants without a settings row charge none.
 
-    The fee is NEVER caller-supplied (gate 1.6; the P11 caller-rate
+    The fee is NEVER caller-supplied (least disclosure; the P11 caller-rate
     lesson) — this lookup is the only source.
     """
     row = (
@@ -272,7 +281,7 @@ async def _exit_fee(session: AsyncSession, tenant_id: uuid.UUID) -> Decimal:
 async def _lock_member(
     session: AsyncSession, tenant_id: uuid.UUID, member_id: uuid.UUID
 ) -> tuple[str, int]:
-    """Member row FOR UPDATE — the settlement serialisation point (gate 1.4)."""
+    """Member row FOR UPDATE — the settlement serialisation point (concurrency safety)."""
     row = (
         await session.execute(
             text(
@@ -349,14 +358,14 @@ async def _compute_under_locks(
     """Take the full lock set and compute the settlement components.
 
     Shared verbatim by request (snapshot) and posting (re-verification)
-    so both sides can never diverge (gate 1.1). Returns the computation,
+    so both sides can never diverge (reuse-first). Returns the computation,
     the per-loan payoffs, and the locked account ids. Caller must
     already hold the member row FOR UPDATE.
 
     Eligibility raised here (least disclosure — no figures echoed):
       * live guarantees GIVEN by the member (under the deposit lock)
       * open loan applications
-      * an unresolved POSTED write-off claim (issue #21)
+      * an unresolved POSTED write-off claim
     """
     deposit_account_id, deposit_balance = await _lock_account(
         session, tenant_id, kind="deposit", member_id=member_id
@@ -371,7 +380,7 @@ async def _compute_under_locks(
         )
     if await _open_application_count(session, tenant_id, member_id) > 0:
         raise ConflictError("member has open loan applications: resolve them before exit")
-    # Issue #21 (write-off is NOT forgiveness — the documented exit
+    # Write-off is NOT forgiveness (the documented exit
     # decision): a POSTED write-off's surviving claim blocks exit until
     # fully recovered. The member's written-off loan carries no
     # *active* balance, so without this guard the claim would silently
@@ -380,13 +389,13 @@ async def _compute_under_locks(
     # rule 2). Race-safe: the caller holds the member row FOR UPDATE
     # and every recovery receipt takes the same member row FOR SHARE
     # (corrections.record_recovery_receipt), so this read serialises
-    # against concurrent receipts at the member tier (the P13.15
+    # against concurrent receipts at the member tier (the
     # adjustment-vs-exit argument). A committee-approved WAIVER is a
-    # future explicit branch recorded on issue #21; until it exists,
+    # future explicit branch, recorded as a follow-up; until it exists,
     # full recovery is the only unblock.
     unresolved_claim = (
         await session.execute(
-            # ONE copy of the claim rule (gate 1.1): the module-level
+            # ONE copy of the claim rule (reuse-first): the module-level
             # constant is shared with the advisory eligibility read.
             text(UNRESOLVED_WRITEOFF_CLAIM_SQL),
             {"m": str(member_id), "tid": str(tenant_id)},
@@ -417,7 +426,7 @@ async def request_exit(
     *,
     reason: str | None = None,
 ) -> ExitRecord:
-    """Create the settlement snapshot the committee will approve (gate 1.4).
+    """Create the settlement snapshot the committee will approve (concurrency safety).
 
     Eligibility and every component are computed under the full lock
     set so the snapshot is internally consistent. The partial UNIQUE
@@ -429,10 +438,10 @@ async def request_exit(
         raise ConflictError(f"member {member_id} has already exited")
     if not member_may(MemberStatus(status), MoneyOperation.EXIT_REQUEST):
         # Allow-list, not deny-list (the code-owned capability map,
-        # P13.13 FM2): members in good standing, in arrears AND dormant
+        # strictly enforced): members in good standing, in arrears AND dormant
         # members may request an exit — Dormant -> Exited runs through
         # this real P12 workflow. Any other (or future) status is
-        # refused with a least-disclosure message (gate 1.6) instead of
+        # refused with a least-disclosure message (least disclosure) instead of
         # silently passing through a deny-list gap.
         raise ConflictError(f"member {member_id} is not eligible to request an exit")
     ts = datetime.now(UTC)
@@ -440,7 +449,7 @@ async def request_exit(
     if computation.net_payable < ZERO:
         # Documented negative-settlement rule (genesis.domain.exits):
         # the SACCO never auto-claims funds it does not hold. Least
-        # disclosure (gate 1.6): the shortfall figure is never echoed —
+        # disclosure (least disclosure): the shortfall figure is never echoed —
         # staff entitled to it can read the balances via their normal
         # endpoints. Nothing is persisted: the rejection rolls back.
         raise ConflictError(
@@ -509,7 +518,7 @@ async def request_exit(
 @dataclass(frozen=True)
 class ExitEligibility:
     """Advisory blocker facts for an up-front eligibility checklist
-    (P15 batch 5, U6 — the prototype's vExit() criteria rows).
+    (the prototype's vExit() criteria rows).
 
     Facts only, never a figure: counts and booleans under members:view.
     ADVISORY by design — computed WITHOUT locks; the binding verdict is
@@ -520,7 +529,7 @@ class ExitEligibility:
 
     member_id: uuid.UUID
     member_status: str
-    #: The P13.13 capability map's verdict (member_may EXIT_REQUEST) —
+    #: The capability map's verdict (member_may EXIT_REQUEST) —
     #: exited members are structurally ineligible.
     status_allows_exit: bool
     open_exit_exists: bool
@@ -619,7 +628,7 @@ async def list_exits(
     cursor: str | None = None,
     limit: int = 20,
 ) -> tuple[list[ExitRecord], str | None]:
-    """Keyset-paginated exits listing, newest first, page cap 100 (gate 1.3).
+    """Keyset-paginated exits listing, newest first, page cap 100 (scalability).
 
     Backed by idx_exits_created_keyset (tenant_id, created_at DESC,
     id DESC) shipped in 0010 with this query; the status-filtered page
@@ -633,7 +642,10 @@ async def list_exits(
         clauses.append("status = :status")
         params["status"] = status.value
     if cursor:
-        params["c_ts"], params["c_id"] = parse_created_id_cursor(cursor, entity="exit")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext parse stays as defense-in-depth.
+        inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=EXITS_LIST_SCOPE, entity="exit")
+        params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="exit")
         clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
@@ -652,7 +664,11 @@ async def list_exits(
     next_cursor = None
     if len(rows) > limit and page_rows:
         last = page_rows[-1]
-        next_cursor = build_created_id_cursor(last[14], last[0])
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last[14], last[0]),
+            tenant_id=tenant_id,
+            endpoint=EXITS_LIST_SCOPE,
+        )
     return items, next_cursor
 
 
@@ -663,7 +679,7 @@ async def cast_exit_vote(
     exit_id: uuid.UUID,
     vote: Vote,
 ) -> ExitVoteTally:
-    """Record a committee vote on an exit settlement (P9 machinery, gate 1.4).
+    """Record a committee vote on an exit settlement (P9 machinery, concurrency safety).
 
     The exit row lock serialises voters; the DB UNIQUE makes double-
     voting impossible even outside this code path. Separation of
@@ -727,7 +743,7 @@ async def cast_exit_vote(
         entity_id=str(exit_id),
         after={"vote": vote.value, "approvals": approvals, "rejections": rejections},
     )
-    # Config read at vote time, under the exit row lock (P13.7).
+    # Config read at vote time, under the exit row lock (tenant configuration).
     decision = decide(approvals, rejections, quorum=await committee_quorum(session, tenant_id))
     status: ExitStatus = current
     if decision is not None:
@@ -788,7 +804,7 @@ async def void_exit(
     *,
     version: int,
 ) -> ExitRecord:
-    """Void an open exit (requested/approved -> rejected; gate 1.4).
+    """Void an open exit (requested/approved -> rejected; concurrency safety).
 
     The escape hatch when an approved snapshot has drifted (posting
     returned 409) or governance withdraws the request: voiding frees
@@ -866,7 +882,7 @@ async def post_settlement(
     version: int,
     channel: Channel,
 ) -> SettlementPostingResult:
-    """Atomically settle an approved exit (gates 1.4, 1.5). No partial success.
+    """Atomically settle an approved exit (the house gates). No partial success.
 
     All in the caller's transaction, under the full lock set:
 
@@ -929,7 +945,7 @@ async def post_settlement(
         session, tenant_id, member_id, ts
     )
 
-    # TOCTOU re-verification (gate 1.4): the committee approved THIS
+    # TOCTOU re-verification (concurrency safety): the committee approved THIS
     # snapshot; if any component moved since, nothing is posted. Least
     # disclosure — the drift details live in the audit trail via the
     # normal transaction history, not in the error.
@@ -1050,7 +1066,7 @@ async def post_settlement(
             after={"borrower_member_id": str(member_id), "released": int(swept.rowcount or 0)},
         )
 
-    # Terminal transition through the single P8 gatekeeper (gate 1.4).
+    # Terminal transition through the single P8 gatekeeper (concurrency safety).
     await mark_member_exited(session, tenant_id, actor_id, member_id, version=member_version)
 
     result = cast(
@@ -1113,7 +1129,7 @@ async def post_settlement(
 async def exit_statement(
     session: AsyncSession, tenant_id: uuid.UUID, exit_id: uuid.UUID
 ) -> ExitStatementDoc:
-    """Exit statement document as JSON (single indexed lookup, gate 1.3).
+    """Exit statement document as JSON (single indexed lookup, scalability).
 
     The CSV/PDF export path arrives with P13 core/exports (run_export,
     truncation headers, worker rendering) — tracked as a blocker issue

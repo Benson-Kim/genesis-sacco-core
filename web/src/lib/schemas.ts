@@ -1,12 +1,11 @@
 import { z } from "zod";
 
 /**
- * Shared response-boundary shapes — the SINGLE copy (gate 1.1) of the
+ * Shared response-boundary shapes — the SINGLE copy (reuse-first) of the
  * canonical money-string and ISO-timestamp assertions that previously
- * lived only in the exits and reports modules (issue #30 findings
- * A2 + S2: boundary-validation drift across module generations).
+ * lived only in the exits and reports modules (boundary-validation drift across module generations).
  *
- * MONEY RULE (P15 blocker (a)): money NEVER becomes a number in this
+ * MONEY RULE: money NEVER becomes a number in this
  * client. These schemas assert the SHAPE of the server's decimal
  * STRINGS so that a corrupted or mis-serialised figure ("007.10",
  * "1e5", "abc") is REJECTED at the Zod boundary instead of flowing
@@ -57,7 +56,7 @@ import { z } from "zod";
  *    balance dropped after pledging or no deposit account exists).
  *
  * 5. ISO timestamp (`isoTimestampSchema`): exactly what the backend's
- *    `datetime.isoformat()` emits (the !63 F-R4 lesson) — seconds
+ *    `datetime.isoformat()` emits (an earlier review lesson) — seconds
  *    always present, optional fractional seconds, optional `Z`/`±HH:MM`
  *    offset. These fields feed `fmtDateTime` on operator-facing
  *    surfaces; a garbage timestamp would render "Invalid Date" there,

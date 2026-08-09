@@ -1,13 +1,10 @@
 "use client";
 
 /**
- * Branch detail drawer (issue #31 batch 4 — the P13.6 registry
- * console): the fresh branch record plus the three writes the
+ * Branch detail drawer (the registry console): the fresh branch record plus the three writes the
  * contract exposes against it — the version-pinned RENAME
  * (settings:edit) and the two people ASSIGNMENTS, each behind its OWN
- * module's edit grant (access_control:edit for users, members:edit
- * for members — the registry/entity split recorded on the router;
- * the server enforces regardless, gate 1.6).
+ * module's edit grant (access_control:edit for users, members:edit for members — the registry/entity split recorded on the router; the server enforces regardless, least disclosure).
  *
  * - FRESH branch read (record class, staleTime 0): the rename pins
  *   the freshest version — drift since the operator's read is a 409
@@ -20,7 +17,7 @@
  *   version is a NEW intent.
  * - CONTRACT HONESTY: the read contract exposes NO roster (no
  *   "users/members of this branch" list) and NO delete/deactivate —
- *   neither is faked here; recorded on issue #31 as contract
+ *   neither is faked here; recorded on as contract
  *   follow-ups.
  */
 import { useRef, useState, type FormEvent } from "react";
@@ -58,14 +55,13 @@ import { BranchAssignPanel, type AssignAdapter } from "./BranchAssignPanel";
 import { BranchRosterPanel, type RosterAdapter } from "./BranchRosterPanel";
 import styles from "./Branches.module.css";
 
-/** USER roster adapter (#31 (j).1 — access_control:view, the batch-4
- * assignment split mirrored on reads). Identity facts only, rendered
+/** USER roster adapter ((j).1 — access_control:view, the assignment split mirrored on reads). Identity facts only, rendered
  * as inert React text. */
 const userRosterAdapter: RosterAdapter<BranchUserRosterRow> = {
   kind: "users",
   title: "Users assigned to this branch",
   note:
-    "Reading the USER roster is user administration (access_control:view — the read leg of the batch-4 assignment split), never a settings right. Identity facts only; the full user record stays on the users screen.",
+    "Reading the USER roster is user administration (access_control:view — the read leg of the assignment permission split), never a settings right. Identity facts only; the full user record stays on the users screen.",
   columns: [
     {
       key: "user",
@@ -89,12 +85,12 @@ const userRosterAdapter: RosterAdapter<BranchUserRosterRow> = {
   emptyMessage: "No users are assigned to this branch yet.",
 };
 
-/** MEMBER roster adapter (#31 (j).1 — members:view). */
+/** MEMBER roster adapter ((j).1 — members:view). */
 const memberRosterAdapter: RosterAdapter<BranchMemberRosterRow> = {
   kind: "members",
   title: "Members assigned to this branch",
   note:
-    "Reading the MEMBER roster is a member read (members:view — the read leg of the batch-4 assignment split), never a settings right. Identity facts only; figures stay on the members register.",
+    "Reading the MEMBER roster is a member read (members:view — the read leg of the assignment permission split), never a settings right. Identity facts only; figures stay on the members register.",
   columns: [
     {
       key: "member",
@@ -118,8 +114,7 @@ const memberRosterAdapter: RosterAdapter<BranchMemberRosterRow> = {
   emptyMessage: "No members are assigned to this branch yet.",
 };
 
-/** User-assignment adapter (access_control:edit — the P13.5 users
- * precedent). Options/fresh reads come from the users module's own
+/** User-assignment adapter (access_control:edit — the users precedent). Options/fresh reads come from the users module's own
  * API layer (its Zod boundary included). */
 const userAdapter: AssignAdapter = {
   kind: "user",
@@ -127,7 +122,7 @@ const userAdapter: AssignAdapter = {
   entityLabel: "User",
   op: "branch-assign-user",
   note:
-    "Assigning a USER is user administration (access_control:edit — the P13.5 precedent), not a settings right. The write pins the user row's fresh version.",
+    "Assigning a USER is user administration (access_control:edit), not a settings right. The write pins the user row's fresh version.",
   fetchOptionsPage: async (cursor) => {
     const page = await fetchUsersPage({ status: "", roleId: "" }, cursor);
     return {
@@ -150,7 +145,7 @@ const userAdapter: AssignAdapter = {
   ],
 };
 
-/** Member-assignment adapter (members:edit — the P8 precedent). */
+/** Member-assignment adapter (members:edit — the precedent). */
 const memberAdapter: AssignAdapter = {
   kind: "member",
   title: "Assign a member to this branch",
@@ -222,7 +217,7 @@ function RenameForm({ branch }: Readonly<{ branch: BranchRecord }>) {
   const conflict = rename.isError && isConflict(rename.error);
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the branch (renamed or
+    // Explicit reload flow: refetch the branch (renamed or
     // re-registered by a concurrent operator — the pinned version is
     // stale, or the new name collides); the failed request is
     // structurally WITHDRAWN. NOTHING is replayed; the reloaded record
@@ -260,7 +255,7 @@ function RenameForm({ branch }: Readonly<{ branch: BranchRecord }>) {
     <form onSubmit={submitRename} noValidate>
       <div className={styles.subhead}>Rename branch</div>
       {notice !== "" && <Banner>{notice}</Banner>}
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={rename.error} onReload={reloadAfterConflict} />
       {rename.isError && !conflict && !renderedInline && <ErrorBanner error={rename.error} />}
       <FormField
@@ -309,10 +304,10 @@ export function BranchDetailDrawer({
   const mayRename = can(permissions.data, "settings", "edit");
   const mayAssignUser = can(permissions.data, "access_control", "edit");
   const mayAssignMember = can(permissions.data, "members", "edit");
-  // Roster READS (#31 (j).1): the batch-4 assignment permission split
+  // Roster READS ((j).1): the assignment permission split
   // mirrored — the entity being READ decides the gate. Withholding is
   // STRUCTURAL: without the grant the panel never mounts and the
-  // roster endpoint is never probed (gate 1.6; server enforces
+  // roster endpoint is never probed (least disclosure; server enforces
   // regardless).
   const mayViewUserRoster = can(permissions.data, "access_control", "view");
   const mayViewMemberRoster = can(permissions.data, "members", "view");
@@ -349,12 +344,12 @@ export function BranchDetailDrawer({
       </div>
       <div className={styles.formNote}>
         The read contract exposes no delete/deactivate for a branch — none is
-        invented here (still recorded on issue #31 as a contract follow-up).
-        Roster reads below follow the batch-4 assignment permission split:
+        invented here. Roster reads below follow the assignment permission
+        split:
         each mounts only under its OWN module&apos;s view grant.
       </div>
 
-      {/* Rosters (#31 (j).1): mounted ONLY under their respective view
+      {/* Rosters ((j).1): mounted ONLY under their respective view
           grants — settings rights alone mount neither panel and
           neither roster endpoint is probed (structural withholding,
           jest-proven). */}

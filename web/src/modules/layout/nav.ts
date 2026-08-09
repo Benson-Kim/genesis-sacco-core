@@ -6,7 +6,7 @@ export interface NavItem {
   href: string;
   /** RBAC module gating visibility; null = visible to any signed-in user. */
   module: ModuleId | null;
-  /** Dual-state icon: outline inactive → filled active (issue #8). */
+  /** Dual-state icon: outline inactive → filled active. */
   icon: NavIconShape;
 }
 
@@ -14,7 +14,7 @@ export interface NavSection {
   label: string;
   items: NavItem[];
   /**
-   * Bottom-anchored utility zone (issue #8): secondary/administrative
+   * Bottom-anchored utility zone: secondary/administrative
    * links pin to the sidebar footer, keeping core navigation clean.
    */
   utility?: boolean;
@@ -68,7 +68,7 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "exit",
       },
       {
-        // P13.13 dormancy worklist (issue #31 batch 7, ledger (f)):
+        //  dormancy worklist:
         // the register's own dormant filter + the members:edit
         // operations run. Lives under the members RBAC module (the
         // member-exit precedent; no dedicated dormancy module exists
@@ -79,8 +79,7 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "members",
       },
       {
-        // Share-transfers console (issue #31 batch 6, ledger (e) —
-        // audit #30 R2 remainder): the P13.11 share lifecycle's exit
+        // Share-transfers console: the share lifecycle's exit
         // path. Lives under the members RBAC module (the route is
         // gated members:approve server-side — there is no dedicated
         // shares module in the P4 matrix; the member-exit-under-
@@ -91,7 +90,7 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "members",
       },
       {
-        // The P13.11 dividends lifecycle console (issue #31 batch 2);
+        // The dividends lifecycle console;
         // lives under the transactions RBAC module (every /dividends
         // route is gated on transactions view/edit/approve server-side
         // — there is no dedicated dividends module in the P4 matrix).
@@ -101,17 +100,15 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "transactions",
       },
       {
-        // P13.15 corrections console (issue #31 batch 1 — audit #30
-        // R1): the fraud channel's DEDICATED corrections RBAC module,
-        // never generic transactions (A3 maker-checker).
+        // Corrections console: the fraud channel's DEDICATED corrections RBAC module,
+        // never generic transactions (maker-checker).
         label: "Corrections",
         href: "/modules/corrections",
         module: "corrections",
         icon: "transactions",
       },
       {
-        // P12.5 accounting-periods console (issue #31 batch 4 — audit
-        // #30 A5): period-close visibility + the approve-gated close.
+        // Accounting-periods console: period-close visibility + the approve-gated close.
         // Lives under the transactions RBAC module (every
         // /accounting-periods route is gated on transactions
         // view/approve server-side — the dividends precedent; there is
@@ -122,7 +119,7 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: "transactions",
       },
       {
-        // P13.16 recovery worklist (issue #31 batch 1 — audit #30 R1);
+        //  recovery worklist;
         // lives under the loan_book RBAC module (every /recovery-cases
         // route is gated on loan_book view/create/edit server-side —
         // there is no dedicated recovery module in the P4 matrix; the
@@ -144,7 +141,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Settings", href: "/modules/settings", module: "settings", icon: "settings" },
       {
-        // P13.6 branches registry console (issue #31 batch 4): the
+        //  branches registry console: the
         // registry CRUD sits under settings view/create/edit per the
         // P4 matrix (the prototype manages branches from Settings);
         // people assignments in the drawer follow their OWN modules.

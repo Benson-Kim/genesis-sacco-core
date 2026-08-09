@@ -1,20 +1,18 @@
 "use client";
 
 /**
- * Dashboard chart supplements (issue #32 / #31 batch 5, U3+X4 — the
- * prototype's KPI sparklines, the grouped deposit and disbursement bars,
- * performing donut and classification progress bars).
+ * Dashboard chart supplements (the prototype's KPI sparklines, the grouped deposit and disbursement bars, performing donut and classification progress bars).
  *
- * RECORDED DESIGN DECISION (#32, route (a)): every percentage here is
+ * RECORDED DESIGN DECISION (route (a)): every percentage here is
  * a SERVER-computed integer from the charts slice of
  * GET /dashboard/summary — normalized backend-side in Decimal inside
  * the same snapshot as the sibling figures. This module performs NO
- * money math (P15 blocker (a)): the only arithmetic below is SVG
+ * money math: the only arithmetic below is SVG
  * coordinate spacing over list INDEXES and pre-normalized 0..100
  * integers; every rendered money/label string is a verbatim server
  * value through the string-only formatters.
  *
- * A11y (#32 constraint): charts are SUPPLEMENTS, never sole carriers —
+ * A11y (constraint): charts are SUPPLEMENTS, never sole carriers —
  * each geometry container is aria-hidden and the sibling Stat text /
  * tables remain the accessible truth; colour is never the only signal
  * (class names and percent TEXT always accompany a bar). Hand-rolled
@@ -110,10 +108,6 @@ export function FlowsBarChart({ flows }: Readonly<{ flows: FlowsChart }>) {
                 </span>
                 <span className={styles.legendItem}>
                     <span className={`${styles.legendSwatch} ${styles.swatchNavy}`} /> Disbursed
-                </span>
-                <span className={styles.scaleNote}>
-                    Bar scale: 0 – {fmtKes(flows.axis_max)} (server-computed; reversal-only
-                    months clamp to zero — the signed truth is in the table)
                 </span>
             </div>
         </div>

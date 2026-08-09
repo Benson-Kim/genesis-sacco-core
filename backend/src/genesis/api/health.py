@@ -1,4 +1,4 @@
-"""Liveness and readiness endpoints (MASTER_PROMPT gate 1.2)."""
+"""Liveness and readiness endpoints (the house doctrine reliability)."""
 
 from fastapi import APIRouter, Response
 

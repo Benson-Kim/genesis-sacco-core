@@ -2,30 +2,23 @@ import { z } from "zod";
 import { isoTimestampSchema, moneySchema } from "@/lib/schemas";
 
 /**
- * Zod-validated response boundary for the Corrections module (P15
- * follow-on batch 1, issue #31 — the P13.15 corrections API: repayment
- * adjustments, misc fees, loan write-offs and the issue-#21 recovery
- * receipts). Shapes mirror the generated client types
+ * Zod-validated response boundary for the Corrections module (follow-on, — the corrections API: repayment adjustments, misc fees, loan write-offs and the issue- recovery receipts). Shapes mirror the generated client types
  * (components["schemas"]["AdjustmentRecordOut"], AdjustmentOut, FeeOut,
  * WriteOffOut, WriteOffVoteResultOut, WriteOffPostOut,
  * RecoveryReceiptOut, RecoveryReceiptRowOut, RecoveryReceiptsOut) —
  * the drift-checked OpenAPI snapshot remains the contract; these
  * schemas only assert it at runtime.
  *
- * MONEY RULE (P15 blocker (a)) — corrections are the FRAUD CHANNEL:
+ * MONEY RULE — corrections are the FRAUD CHANNEL:
  * every figure on this surface is a SERVER-computed decimal STRING
- * (reversal legs derived from the original transaction's append-only
- * legs, write-off figures from the write-once 0025 snapshot, fee
- * amounts from P13.7 tenant configuration, recovery positions from the
- * snapshot + append-only receipts under the write-off row lock). They
+ * (reversal legs derived from the original transaction's append-only legs, write-off figures from the write-once 0025 snapshot, fee amounts from tenant configuration, recovery positions from the snapshot + append-only receipts under the write-off row lock). They
  * render verbatim via fmtKes and are NEVER coerced, combined, netted or
  * re-derived client-side — the client does not even verify that
  * amount equals the sum of its three components (that identity is the
  * 0025 ck_repayment_adjustments_components CHECK, and posting-time
  * re-verification is the server's).
  *
- * THE SIGN (moneySchema vs signedMoneySchema, chosen per field from
- * the migration CHECK constraints — the !67 convention):
+ * THE SIGN (moneySchema vs signedMoneySchema, chosen per field from the migration CHECK constraints — the convention):
  * - repayment_adjustments (0025): amount CHECK (> 0), penalties /
  *   interest / principal CHECK (>= 0); 0031 adds
  *   loan_balance_at_request and loan_penalty_due_at_request, CHECK
@@ -58,8 +51,7 @@ export const ADJUSTMENT_STATUS_LABELS: Record<AdjustmentStatus, string> = {
 };
 
 /** Terminal adjustment states: every checker affordance is
- * structurally WITHDRAWN for them (the server enforces the 0031
- * transition matrix regardless — gate 1.6). */
+ * structurally WITHDRAWN for them (the server enforces the 0031 transition matrix regardless — least disclosure). */
 export const TERMINAL_ADJUSTMENT_STATUSES: readonly AdjustmentStatus[] = ["posted", "rejected"];
 
 export function isTerminalAdjustmentStatus(status: AdjustmentStatus): boolean {
@@ -82,7 +74,7 @@ export const WRITE_OFF_STATUS_LABELS: Record<WriteOffStatus, string> = {
 /** Terminal write-off states (rejected frees the per-loan slot; posted
  * is money history): vote/void/post affordances are structurally
  * WITHDRAWN — only the recovery-receipt affordances survive a POSTED
- * write-off (issue #21). */
+ * write-off. */
 export const TERMINAL_WRITE_OFF_STATUSES: readonly WriteOffStatus[] = ["rejected", "posted"];
 
 export function isTerminalWriteOffStatus(status: WriteOffStatus): boolean {
@@ -101,8 +93,8 @@ export const WRITE_OFF_VOTES = ["approve", "reject"] as const;
 export type WriteOffVote = (typeof WRITE_OFF_VOTES)[number];
 
 /** Mirrors the backend FeeType enum (application/corrections.py):
- * code-owned fee vocabulary — each member maps to the P13.7 settings
- * key its amount is resolved from (v1.1 rule 1). The caller can only
+ * code-owned fee vocabulary — each member maps to the settings
+ * key its amount is resolved from. The caller can only
  * ever name a type from this enum, never an amount. */
 export const FEE_TYPES = ["registration"] as const;
 export const feeTypeSchema = z.enum(FEE_TYPES);
@@ -113,12 +105,12 @@ export const FEE_TYPE_LABELS: Record<FeeType, string> = {
 };
 
 /**
- * One adjustment workflow row (AdjustmentRecordOut — issue #24): the
+ * One adjustment workflow row (AdjustmentRecordOut): the
  * pending request a checker reviews, or the terminal posted/rejected
  * history. Every money field is a decimal string in the CANONICAL
  * server shape; extra keys are STRIPPED at this boundary.
  *
- * ATTRIBUTION (the !70 pattern): maker_id is the CONTRACT's maker —
+ * ATTRIBUTION (the pattern): maker_id is the CONTRACT's maker —
  * server truth, REQUIRED (0025: maker_id NOT NULL); checker_id is
  * nullable (undecided rows). Both render under LEAST DISCLOSURE as the
  * bare staff UUID via the short-id convention — never a name or email
@@ -178,7 +170,7 @@ export const adjustmentResultSchema = z.object({
 export type AdjustmentResult = z.infer<typeof adjustmentResultSchema>;
 
 /** Misc-fee posting result (FeeOut): the FE- ledger row — the amount
- * is the SERVER's P13.7-configured figure, verbatim (no fee amount
+ * is the SERVER's -configured figure, verbatim (no fee amount
  * ever travels in a request). */
 export const feeResultSchema = z.object({
   txn_id: z.string(),
@@ -190,16 +182,15 @@ export const feeResultSchema = z.object({
 export type FeeResult = z.infer<typeof feeResultSchema>;
 
 /**
- * The write-once write-off snapshot (WriteOffOut — 0025, v1.1 rule 3):
+ * The write-once write-off snapshot (WriteOffOut — 0025):
  * the figures the committee approves, re-verified component-by-
  * component at posting (409 on drift, posting nothing).
  *
  * ATTRIBUTION HONESTY: the 0025 table carries requested_by, but
  * WriteOffOut deliberately does NOT serialise it — the requester is
- * NOT on this contract (recorded as a contract follow-up on issue
- * #31). The per-tab makerRegistry is therefore the ONLY witness for
- * the SoD affordances here (the !70 fallback pattern); the server
- * enforces requester-can't-vote/post regardless (gate 1.6).
+ * NOT on this contract (recorded as a contract follow-up on). The per-tab makerRegistry is therefore the ONLY witness for
+ * the SoD affordances here (the fallback pattern); the server
+ * enforces requester-can't-vote/post regardless (least disclosure).
  */
 export const writeOffSchema = z.object({
   id: z.string(),
@@ -254,7 +245,7 @@ export const writeOffPostResultSchema = z.object({
 
 export type WriteOffPostResult = z.infer<typeof writeOffPostResultSchema>;
 
-/** Recovery receipt result (RecoveryReceiptOut — issue #21): the RC-
+/** Recovery receipt result (RecoveryReceiptOut): the RC-
  * posting plus the reconstructed claim position, all SERVER figures
  * verbatim (recovered_total and outstanding_claim computed under the
  * write-off row lock — never client math). */
@@ -303,10 +294,9 @@ export const recoveryReceiptsPageSchema = z.object({
 export type RecoveryReceiptsPage = z.infer<typeof recoveryReceiptsPageSchema>;
 
 /**
- * Client-side pre-validation of the workbench entry forms (the server
- * re-validates and is the enforcer — gate 1.6). NO money field exists
- * in ANY of these inputs: the P13.15 contract derives every figure
- * server-side (v1.1 rule 1) — the only caller-chosen values are ids,
+ * Client-side pre-validation of the workbench entry forms (the server re-validates and is the enforcer — least disclosure). NO money field exists
+ * in ANY of these inputs: the contract derives every figure
+ * server-side — the only caller-chosen values are ids,
  * reasons, the code-owned fee type, the vote and the CASH channel.
  */
 const UUID_MSG = "Enter the full UUID (8-4-4-4-12 hex).";

@@ -1,4 +1,4 @@
-"""Retention purge for expired idempotency keys (P13.17c / DSA-3).
+"""Retention purge for expired idempotency keys (.17c / DSA-3).
 
 The purge is housekeeping ONLY: expiry semantics never depend on it.
 The fence ``expires_at > now()`` in api/idempotency.py (replay lookup
@@ -6,7 +6,7 @@ AND claim takeover) makes an expired row behave as absent before any
 purge runs — this job merely reclaims the storage (and the stored
 response envelopes: the data-retention liability DSA-3 names).
 
-Concurrency + re-run posture (FM3, v1.1 rule 8):
+Concurrency + re-run posture:
 
   * bounded batches through the shared batch runner — each DELETE
     claims at most batch_size rows via a FOR UPDATE SKIP LOCKED
@@ -31,7 +31,7 @@ Concurrency + re-run posture (FM3, v1.1 rule 8):
 
 The idempotency claim lifecycle stays a single-node locker touching
 idempotency_keys rows only — no domain locks, no new lock-graph edges
-(docs/diagrams/lock-order.md §3, updated in this MR).
+(docs/diagrams/lock-order.md, updated in this MR).
 """
 
 from __future__ import annotations
@@ -44,15 +44,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application.batch_runner import SessionScope, run_in_batches
 
-#: Purge batch bound (gate 1.3): at most this many rows per short
-#: transaction. Config-owned module constant (v1.1 rule 1) — the 0024
+#: Purge batch bound (scalability): at most this many rows per short
+#: transaction. Config-owned module constant — the 0024
 #: PURGE_BATCH_SIZE precedent.
 PURGE_BATCH_SIZE = 500
 
 #: The batched purge DELETE. The driving subquery is served by
 #: idx_idempotency_keys_expiry (0029); the tenant predicate is
-#: explicit on top of RLS (gate 1.6 defence in depth). Module-level so
-#: the P13.17 EXPLAIN test captures this exact statement.
+#: explicit on top of RLS (least disclosure defence in depth). Module-level so
+#: the EXPLAIN test captures this exact statement.
 PURGE_BATCH_SQL = (
     "DELETE FROM idempotency_keys WHERE id IN ("
     "SELECT id FROM idempotency_keys "

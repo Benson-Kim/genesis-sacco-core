@@ -52,6 +52,7 @@ const DEBIT_TXN = {
   occurred_at: "2026-07-18T10:15:00+00:00",
   is_reversal: false,
   created_by: null,
+  external_ref: null,
 };
 
 const CREDIT_TXN = {
@@ -65,6 +66,7 @@ const CREDIT_TXN = {
   occurred_at: "2026-07-19T08:00:00+00:00",
   is_reversal: false,
   created_by: null,
+  external_ref: "SGH3KLM9QT",
 };
 
 const MEMBER_OUT = {
@@ -208,13 +210,16 @@ test("happy path (money write): OTP login → ledger renders DR/CR VERBATIM → 
 
   await page.getByRole("button", { name: "+ Post transaction" }).click();
   const drawer = page.getByRole("dialog", { name: "Post transaction" });
-  await drawer.getByLabel("Member").selectOption(MEMBER_ID);
+  // #35 item 14: unique-number blur lookup — no member-list select.
+  await drawer.getByLabel("Member number").fill("M-0001");
+  await drawer.getByLabel("Member number").blur();
   // The FRESH member read (staleTime 0) lands before the confirmation
   // can arm (stale-read prevention, pattern (e)).
   await expect(drawer.getByText(/Member verified: Jane Wanjiku · M-0001/)).toBeVisible();
   expect(state.memberReads).toBeGreaterThan(0);
   await drawer.getByLabel("Amount (KES)").fill("5000.10");
   await drawer.getByLabel("Channel").selectOption("mpesa");
+  await drawer.getByLabel("External reference").fill("SGH3KLM9QT");
   await drawer.getByRole("button", { name: "Post to ledger…" }).click();
 
   // Typed confirmation: the write happens only after the byte-identical
@@ -237,7 +242,11 @@ test("happy path (money write): OTP login → ledger renders DR/CR VERBATIM → 
   // HEADERS, nothing in the query string.
   expect(state.postBodies).toHaveLength(1);
   expect(state.postPaths[0]).toBe(`/members/${MEMBER_ID}/deposits`);
-  expect(state.postBodies[0]).toEqual({ amount: "5000.10", channel: "mpesa" });
+  expect(state.postBodies[0]).toEqual({
+    amount: "5000.10",
+    channel: "mpesa",
+    external_ref: "SGH3KLM9QT",
+  });
   expect(state.postHeaders[0]?.["idempotency-key"]).toBeTruthy();
   expect(state.postHeaders[0]?.["authorization"]).toMatch(/^Bearer /);
 });
@@ -271,10 +280,12 @@ test("adversarial (money write): stale withdrawal → 409 conflict banner, EXACT
   await page.getByRole("button", { name: "+ Post transaction" }).click();
   const drawer = page.getByRole("dialog", { name: "Post transaction" });
   await drawer.getByLabel("Type").selectOption("withdrawal");
-  await drawer.getByLabel("Member").selectOption(MEMBER_ID);
+  await drawer.getByLabel("Member number").fill("M-0001");
+  await drawer.getByLabel("Member number").blur();
   await expect(drawer.getByText(/Member verified:/)).toBeVisible();
   await drawer.getByLabel("Amount (KES)").fill("8000.00");
   await drawer.getByLabel("Channel").selectOption("bank");
+  await drawer.getByLabel("External reference").fill("SLIP-4471");
   await drawer.getByRole("button", { name: "Post to ledger…" }).click();
   const confirm = page.getByRole("dialog", { name: "Post to ledger" });
   await confirm.getByLabel('Type "M-0001" to confirm').fill("M-0001");

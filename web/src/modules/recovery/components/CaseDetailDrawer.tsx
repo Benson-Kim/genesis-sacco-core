@@ -1,27 +1,26 @@
 "use client";
 
 /**
- * Recovery-case drawer (P15 batch 1 — the P13.16 case file): the full
+ * Recovery-case drawer (the case file): the full
  * CaseOut record, the append-only case file (keyset notes) and the
  * case writes its status allows — assignment, staff dispositions
- * (issue #23 N2; !53 F1/F2) and THE single post-closure outcome note
- * (issue #23 N3). Reads are loan_book:view; every write here is
+ * and THE single post-closure outcome note. Reads are loan_book:view; every write here is
  * loan_book:edit (the case-mutation grant).
  *
  * - FRESH RECORD READ (record class, staleTime 0): every write arms
  *   against the freshest available read; the version anchors the
  *   assign/disposition bodies and every key material.
- * - LEAST DISCLOSURE (addendum A5): NO balance, penalty or provision
+ * - LEAST DISCLOSURE (addendum): NO balance, penalty or provision
  *   figure exists on this surface — the loan's money lives behind the
- *   P10 loan screens for the entitled. Staff UUIDs (opened_by,
- *   assignee, note authors) render via the !70 short-id convention —
+ *    loan screens for the entitled. Staff UUIDs (opened_by,
+ *   assignee, note authors) render via the short-id convention —
  *   never a name or email; "Assign to me" uses the session's own id.
  * - DISPOSITIONS: only the STAFF-settable targets are offered (pause
  *   disputed / irrecoverable — reason REQUIRED; resume; close
  *   restructured — outcome note REQUIRED, written atomically
  *   server-side). closed_cured / closed_written_off are NOT offered:
  *   loan facts close those (the nightly pass) and the server refuses
- *   them (409, FM2).
+ *   them (409).
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase,
  *   pending short-circuit, `retry: 0`; assign/disposition key material
  *   folds the fresh record VERSION (also pinned on the wire) + reload
@@ -62,7 +61,7 @@ import {
 import { caseStatusPill } from "./pills";
 import styles from "./Recovery.module.css";
 
-/** Bare staff UUID under least disclosure (the !70 short-id convention). */
+/** Bare staff UUID under least disclosure (the short-id convention). */
 function ShortId({ id }: Readonly<{ id: string }>) {
   return (
     <span className={styles.mono} title={id}>
@@ -92,7 +91,7 @@ export function CaseDetailDrawer({
   const [outcomeText, setOutcomeText] = useState("");
   const [outcomeError, setOutcomeError] = useState("");
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency keys (!60 F3).
+  // Freshness component for the idempotency keys.
   const [reloadEpoch, setReloadEpoch] = useState(0);
   // Per-note intent counter (rule 4's repeat leg): consecutive
   // IDENTICAL notes ("called, no answer" twice) are distinct intents.
@@ -117,7 +116,7 @@ export function CaseDetailDrawer({
   const noteRows = notes.data?.pages.flatMap((page) => page.items) ?? [];
 
   const assign = useMutation({
-    // STRUCTURAL freshness guard (F-M1): the versioned write refuses
+    // STRUCTURAL freshness guard: the versioned write refuses
     // to fire without the loaded fresh record.
     mutationFn: (assignee: string) => {
       const fresh = detail.data;
@@ -286,9 +285,9 @@ export function CaseDetailDrawer({
   const hasOutcomeNote = noteRows.some((row) => row.is_outcome);
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record and the file;
+    // Explicit reload flow: refetch the record and the file;
     // the stale write is NEVER replayed — re-entering it is a NEW
-    // intent whose key rotates via the reload epoch (!60 F3).
+    // intent whose key rotates via the reload epoch.
     void queryClient.refetchQueries({ queryKey: ["recovery", "case", caseId] });
     void queryClient.invalidateQueries({ queryKey: ["recovery", "case", caseId, "notes"] });
     void queryClient.invalidateQueries({ queryKey: ["recovery", "worklist"] });
@@ -373,7 +372,7 @@ export function CaseDetailDrawer({
           <ShortId id={record.loan_id} />
         </Kv>
         <Kv label="Opened by">
-          {/* Contract attribution (the !70 pattern): bare staff UUID,
+          {/* Contract attribution (the pattern): bare staff UUID,
               short-id convention — never resolved to a name/email. */}
           <ShortId id={record.opened_by} />
         </Kv>
@@ -404,7 +403,7 @@ export function CaseDetailDrawer({
         hand.
       </div>
 
-      {/* One copy of the 409 reload flow (gate 1.1). */}
+      {/* One copy of the 409 reload flow (reuse-first). */}
       <ConflictBanner error={assign.error} onReload={reloadRecord} />
       {assign.isError && !isConflict(assign.error) && <ErrorBanner error={assign.error} />}
       <ConflictBanner error={disposition.error} onReload={reloadRecord} />

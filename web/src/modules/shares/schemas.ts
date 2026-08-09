@@ -2,9 +2,7 @@ import { z } from "zod";
 import { moneySchema } from "@/lib/schemas";
 
 /**
- * Zod-validated boundary for the share-transfers console (issue #31
- * batch 10, ledger (l)/(m) — the !77 human-authorized remediation
- * reworking the batch-6 ledger-(e) console). Shapes mirror the
+ * Zod-validated boundary for the share-transfers console (the human-authorized remediation reworking the ledger-(e) console). Shapes mirror the
  * generated client types (components["schemas"]["ShareTransfer*"]) —
  * the drift-checked OpenAPI snapshot remains the contract; these
  * schemas only assert it at runtime.
@@ -20,20 +18,19 @@ import { moneySchema } from "@/lib/schemas";
  *   NOTHING), then posts BOTH ledger legs atomically and notifies
  *   BOTH members via the outbox.
  * - `POST /share-transfers/{id}/rejection` — version-pinned checker
- *   rejection with the MANDATORY rationale (!52 F2).
+ *   rejection with the MANDATORY rationale.
  * - `GET /share-transfers` (+ by-id) — the ledger-(m) history
  *   register (members:view, the house read-split): keyset, PENDING
  *   FIRST then newest first (the server's order, never re-sorted).
  *
- * MONEY (P15 blocker (a)): the request amount is the operation's
+ * MONEY: the request amount is the operation's
  * SUBJECT, typed as a decimal STRING end-to-end and never parsed into
  * a number. Every response figure is a server-computed decimal string
  * asserted by moneySchema and rendered VERBATIM — balances belong to
  * two different members and are never summed, netted or reconciled
  * client-side.
  *
- * LEAST DISCLOSURE: register rows carry bare UUIDs (the !66/!70
- * short-id convention) and NO balance snapshot — the audit rows hold
+ * LEAST DISCLOSURE: register rows carry bare UUIDs (the / short-id convention) and NO balance snapshot — the audit rows hold
  * the exact figures server-side.
  */
 
@@ -92,11 +89,7 @@ export type ShareTransferResult = z.infer<typeof shareTransferResultSchema>;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Client-side pre-validation of the maker's request form (the server
- * re-validates and is the enforcer — gate 1.6: 2dp bound at the
- * contract, balance check under the full lock set, active-member and
- * distinct-members checks server-side; self-transfer is ALSO a 0020
- * DB CHECK).
+ * Client-side pre-validation of the maker's request form (the server re-validates and is the enforcer — least disclosure: 2dp bound at the contract, balance check under the full lock set, active-member and distinct-members checks server-side; self-transfer is ALSO a 0020 DB CHECK).
  */
 export const transferEntrySchema = z
   .object({
@@ -136,8 +129,7 @@ export const transferEntrySchema = z
 
 export type TransferEntry = z.infer<typeof transferEntrySchema>;
 
-/** The checker's rejection rationale — REQUIRED (!52 F2; the server
- * enforces min_length=1/max 500 at the contract regardless). */
+/** The checker's rejection rationale — REQUIRED (F2; the server enforces min_length=1/max 500 at the contract regardless). */
 export const rejectReasonEntrySchema = z.object({
   reason: z
     .string()

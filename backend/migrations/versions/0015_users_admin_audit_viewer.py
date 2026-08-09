@@ -1,29 +1,29 @@
-"""users administration & audit-log viewer (P13.5)
+"""users administration & audit-log viewer
 
 Revision ID: 0015
 Revises: 0014
 Create Date: 2026-07-30
 
-Additive (expand-only) revision backing BUILD_PROMPTS P13.5:
+Additive (expand-only) revision backing the build plan:
 
   1. users.last_active_at — nullable timestamptz, written ONLY at token
      issue (OTP verify / refresh rotation), never per request, so the
      prototype "last active" column exists without per-request write
      amplification. Nullable: existing users have never been observed.
 
-  2. idx_users_created_keyset — the users listing paginates on the P11
-     (created_at DESC, id DESC) keyset (gate 1.3); shipped in the same
+  2. idx_users_created_keyset — the users listing paginates on the
+     (created_at DESC, id DESC) keyset (scalability); shipped in the same
      revision as the query that needs it.
 
-  3. Audit-log viewer indexes (gate 1.3, EXPLAIN-asserted in
-     tests/test_p135_explain.py). GET /audit-log paginates on
+  3. Audit-log viewer indexes (scalability, EXPLAIN-asserted in tests/test_p135_explain.py). GET
+  /audit-log paginates on
      (at DESC, id DESC) and filters by entity/actor/action/date, so
      each filter shape gets a tenant-led composite index ending in the
      keyset columns:
-       - idx_audit_keyset          (tenant_id, at DESC, id DESC)
-       - idx_audit_actor_keyset    (tenant_id, actor_id, at DESC, id DESC)
-       - idx_audit_action_keyset   (tenant_id, action, at DESC, id DESC)
-       - idx_audit_entity_keyset   (tenant_id, entity, at DESC, id DESC)
+       - idx_audit_keyset (tenant_id, at DESC, id DESC)
+       - idx_audit_actor_keyset (tenant_id, actor_id, at DESC, id DESC)
+       - idx_audit_action_keyset (tenant_id, action, at DESC, id DESC)
+       - idx_audit_entity_keyset (tenant_id, entity, at DESC, id DESC)
      0001's idx_audit_time (tenant_id, at) is a strict prefix of
      idx_audit_keyset and is dropped as redundant write amplification
      (the 0014 idx_applications_stage precedent). idx_audit_entity

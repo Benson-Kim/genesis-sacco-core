@@ -1,6 +1,5 @@
 /**
- * Share-transfers API layer (issue #31 batch 10, ledger (l)/(m) — the
- * !77 human-authorized maker-checker rework) over the GENERATED
+ * Share-transfers API layer (the human-authorized maker-checker rework) over the GENERATED
  * client.
  *
  * WHAT THE CONTRACT EXPOSES (read the router, consume exactly that):
@@ -9,8 +8,7 @@
  *   persisted approval snapshot; NO money moves here.
  * - `GET /share-transfers` (members:view — the house read-split) —
  *   the ledger-(m) keyset register, PENDING FIRST then newest first
- *   (the checker's job order; gate 1.3: opaque cursor echoed back
- *   verbatim, no offset/page parameters, hard max 100 server-side).
+ *   (the checker's job order; scalability: opaque cursor echoed back verbatim, no offset/page parameters, hard max 100 server-side).
  * - `GET /share-transfers/{transfer_id}` (members:view) — the FRESH
  *   record read behind every checker write.
  * - `POST /share-transfers/{transfer_id}/approval` (members:approve,
@@ -19,10 +17,10 @@
  *   re-verifies it under the full lock set (409 on drift, posting
  *   NOTHING), then posts BOTH ST- legs and notifies BOTH members.
  * - `POST /share-transfers/{transfer_id}/rejection` — version-pinned
- *   with the MANDATORY rationale (!52 F2).
+ *   with the MANDATORY rationale.
  *
  * - Every mutation takes a caller-supplied Idempotency-Key following
- *   the web/README.md MATERIAL rules (gate 1.4).
+ *   the web/README.md MATERIAL rules (concurrency safety).
  * - MONEY (blocker (a)): the request amount is the operation's
  *   SUBJECT — the typed decimal STRING end-to-end, never a float; NO
  *   other money parameter exists on any body (extra="forbid"
@@ -30,7 +28,7 @@
  *   string asserted by the Zod boundary.
  * - Ids travel as path/body parameters serialized by the generated
  *   client; bearer/tenant/idempotency secrets travel as HEADERS ONLY
- *   (gate 1.6).
+ *   (least disclosure).
  */
 import { toApiError } from "@genesis/api-client";
 import { keysetPageSchema, type KeysetPage } from "@/modules/table/schemas";
@@ -47,7 +45,7 @@ export const REGISTER_PAGE_SIZE = 20;
 const transfersPageSchema = keysetPageSchema(shareTransferRecordSchema);
 
 /**
- * MAKER phase (issue #31 (l), members:approve): create a PENDING
+ * MAKER phase ((l), members:approve): create a PENDING
  * transfer bound to the persisted approval snapshot. The body carries
  * the transferee and the subject amount ONLY; the server enforces
  * active-member, distinct-members and sufficient-balance under the
@@ -70,8 +68,7 @@ export async function requestShareTransfer(
 }
 
 /**
- * The share-transfer history register (members:view; issue #31 ledger
- * (m)): keyset, PENDING FIRST then newest first — the server's order,
+ * The share-transfer history register (members:view): keyset, PENDING FIRST then newest first — the server's order,
  * never re-sorted locally. The checker works from this register; the
  * auditor walks the full history behind the pending band.
  */
@@ -96,8 +93,8 @@ export async function fetchShareTransfer(transferId: string): Promise<ShareTrans
 }
 
 /**
- * CHECKER phase (issue #31 (l), members:approve): approve the
- * PERSISTED snapshot. The body is DELIBERATELY EMPTY (v1.1 rule 3) —
+ * CHECKER phase ((l), members:approve): approve the
+ * PERSISTED snapshot. The body is DELIBERATELY EMPTY —
  * the server re-verifies every snapshot component under the full lock
  * set (409 on drift, posting nothing), then posts BOTH ST- legs,
  * updates both balances and notifies BOTH members atomically. Maker ≠
@@ -119,8 +116,7 @@ export async function approveShareTransfer(
 /**
  * Reject a pending transfer (checker decision, members:approve): the
  * version pins the record state the operator acted on (1.4) and the
- * rationale is REQUIRED (!52 F2 — four-eyes practice puts the
- * checker's reason on the record). No money moves; the rejected row
+ * rationale is REQUIRED (four-eyes practice puts the checker's reason on the record). No money moves; the rejected row
  * is terminal write-once workflow history.
  */
 export async function rejectShareTransfer(

@@ -1,4 +1,4 @@
-"""Per-request tenant scoping via Postgres RLS (ADR-0002, gate 1.6)."""
+"""Per-request tenant scoping via Postgres RLS (ADR-0002, least disclosure)."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -32,7 +32,7 @@ async def tenant_snapshot_session(
     session_factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,
 ) -> AsyncIterator[AsyncSession]:
-    """Tenant session on a REPEATABLE READ transaction (P13 blocker h).
+    """Tenant session on a REPEATABLE READ transaction (blocker h).
 
     Exports read across multiple statements (opening balances, keyset
     batches, per-month aggregates); under READ COMMITTED a concurrent

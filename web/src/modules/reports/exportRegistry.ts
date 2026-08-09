@@ -1,7 +1,7 @@
 /**
- * Per-tab witnessed-exports registry (P15 module 8 — honesty side).
+ * Per-tab witnessed-exports registry (module 8 — honesty side).
  *
- * WHY THIS EXISTS: the P13 contract exposes NO export list endpoint —
+ * WHY THIS EXISTS: the contract exposes NO export list endpoint —
  * `ExportOut` is reachable only as the response of `POST /exports`
  * (this tab's own request) or `GET /exports/{id}` (requester-only, and
  * the id must already be known). The screen's follow-up affordances
@@ -9,7 +9,7 @@
  * place this client can honestly obtain it is a response THIS TAB
  * witnessed. The registry records those records verbatim.
  *
- * Scope and honesty (the guarantors sessionRegistry precedent, !61):
+ * Scope and honesty (the guarantors sessionRegistry precedent):
  * the registry is per-tab and in-memory — it cannot see exports
  * requested by another operator, in another tab, or before this page
  * load; those artifacts remain reachable through the backend audit
@@ -36,7 +36,7 @@ export function recordWitnessedExport(record: ExportOut): void {
   emit();
 }
 
-/** Session-teardown hygiene (!60 F2, wired structurally per W58-2):
+/** Session-teardown hygiene (wired structurally per W58-2):
  * registered as a session-scoped store below, so BOTH teardown paths —
  * the query-path 401 dual-cache teardown (app providers) and explicit
  * sign-out (auth logout) — clear it. Witnessed export records (ids,

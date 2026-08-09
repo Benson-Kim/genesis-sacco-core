@@ -1,5 +1,5 @@
 /* Labelled key/value detail row — promoted verbatim from the module-local
-   copies (#31 batch 9, DA-72.2). Default variant = the drawer/dialog
+   copies. Default variant = the drawer/dialog
    convention (12 modules); `.quiet` = the users/audit convention. */
 .kvRow {
   display: flex;

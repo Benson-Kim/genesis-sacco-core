@@ -1,20 +1,20 @@
 "use client";
 
 /**
- * Transactions ledger register (P15 module 6 — prototype `vTxn`).
+ * Transactions ledger register (prototype `vTxn`).
  *
  * Security posture (loans/applications precedent):
  * - Every rendered string (txn refs, ids) is attacker-influenced data;
  *   it renders exclusively through React text interpolation — no
  *   parser sink exists in this module (gate-tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). "Post transaction"
+ *   the server enforces every call (least disclosure). "Post transaction"
  *   mounts only with transactions:create AND members:view (the drawer
  *   cannot pick or fresh-read the member without the members grant —
  *   hidden, and ZERO member fetches otherwise). "Run deposit interest"
  *   mounts only with transactions:edit. The member filter mounts only
  *   with members:view.
- * - Keyset pagination only (opaque cursors — gate 1.3); every filter
+ * - Keyset pagination only (opaque cursors — scalability); every filter
  *   (member, type, channel, direction, exact ref, date range) is a
  *   SERVER query parameter — nothing is filtered locally.
  * - MONEY (blocker (a)): each amount is an API decimal STRING rendered
@@ -32,6 +32,7 @@ import { useKeysetList } from "@/modules/table/useKeysetList";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
+import { FormField } from "@/modules/forms/FormField";
 import { fetchMembersPage } from "@/modules/members/api";
 import type { Member } from "@/modules/members/schemas";
 import { EMPTY_TXN_FILTERS, fetchTransactionsPage, type TxnListFilters } from "../api";
@@ -48,7 +49,7 @@ import {
 import { reversalPill, txnTypePill } from "./pills";
 import styles from "./Transactions.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load
+// Drawer-level code splitting: drawer chunks load
 // on first open, not with the list route.
 const TransactionDetailDrawer = dynamic(
   () => import("./TransactionDetailDrawer").then((m) => m.TransactionDetailDrawer),
@@ -72,7 +73,7 @@ type DrawerState =
 /**
  * Member filter — a separate component so its keyset hook mounts ONLY
  * for operators holding members:view (a stripped role fetches NOTHING;
- * the useKeysetList primitive is consumed unmodified, gate 1.1).
+ * the useKeysetList primitive is consumed unmodified, reuse-first).
  */
 function MemberFilter({
   value,
@@ -88,22 +89,23 @@ function MemberFilter({
   const options = members.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <div className={styles.filterGroup}>
-      <label className={styles.filterLabel} htmlFor="txn-filter-member">
-        Member
-      </label>
-      <select
-        id="txn-filter-member"
-        className={`${styles.select} ${styles.filterControl}`}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">All members</option>
-        {options.map((member) => (
-          <option key={member.id} value={member.id}>
-            {member.name} · {member.member_no}
-          </option>
-        ))}
-      </select>
+      <FormField id="txn-filter-member" label="Member">
+        {(control) => (
+          <select
+            {...control}
+            className={`${styles.select} ${styles.filterControl}`}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          >
+            <option value="">All members</option>
+            {options.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name} · {member.member_no}
+              </option>
+            ))}
+          </select>
+        )}
+      </FormField>
       {members.hasNextPage && (
         <Button
           type="button"
@@ -123,9 +125,17 @@ export function TransactionsScreen() {
   // Text/date filters stage locally and apply on submit (one server
   // round-trip per applied filter set, not per keystroke).
   const [refDraft, setRefDraft] = useState("");
+  // Free-text search (ref prefix / member number / name
+  // prefix) — a SERVER query parameter, staged and applied like the
+  // other drafts; nothing is filtered locally.
+  const [searchDraft, setSearchDraft] = useState("");
   const [fromDraft, setFromDraft] = useState("");
   const [toDraft, setToDraft] = useState("");
   const [draftError, setDraftError] = useState("");
+  // Date presets. Presets are a CLIENT-SIDE convenience
+  // that compute the two existing declared params (date_from/date_to);
+  // the server never sees a preset token. "" (All) sends no date keys.
+  const [datePreset, setDatePreset] = useState<"" | "today" | "7d" | "30d" | "custom">("");
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   const list = useKeysetList<Transaction>({
@@ -154,12 +164,40 @@ export function TransactionsScreen() {
       return;
     }
     setDraftError("");
+    // Manual dates supersede any preset: the pressed state moves to
+    // Custom (or All when both are empty) so the UI never lies.
+    setDatePreset(fromValue === "" && toValue === "" ? "" : "custom");
     setFilters((current) => ({
       ...current,
       ref: refDraft.trim(),
+      search: searchDraft.trim(),
       date_from: fromValue,
       date_to: toValue,
     }));
+  }
+
+  function applyDatePreset(preset: "" | "today" | "7d" | "30d" | "custom") {
+    setDatePreset(preset);
+    if (preset === "custom") return; // manual from/to inputs take over
+    if (preset === "") {
+      setFromDraft("");
+      setToDraft("");
+      setFilters((current) => ({ ...current, date_from: "", date_to: "" }));
+      return;
+    }
+    // Hand-computable window: [today - (N-1) days, today], local clock.
+    const spanDays = preset === "today" ? 1 : preset === "7d" ? 7 : 30;
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(to.getDate() - (spanDays - 1));
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const fromValue = iso(from);
+    const toValue = iso(to);
+    setFromDraft(fromValue);
+    setToDraft(toValue);
+    setDraftError("");
+    setFilters((current) => ({ ...current, date_from: fromValue, date_to: toValue }));
   }
 
   const columns: Column<Transaction>[] = [
@@ -171,14 +209,24 @@ export function TransactionsScreen() {
     {
       key: "ref",
       header: "Ref",
-      render: (txn) => <span className={styles.mono}>{txn.txn_ref}</span>,
+      // external_ref: the operator-entered external
+      // receipt reference, muted next to the system ref; attacker-
+      // influenced data — React text interpolation only.
+      render: (txn) => (
+        <span className={styles.mono}>
+          {txn.txn_ref}
+          {txn.external_ref !== null && (
+            <span className={styles.muted}> · {txn.external_ref}</span>
+          )}
+        </span>
+      ),
     },
     {
       key: "member",
       header: "Member",
       render: (txn) =>
         // The P11 list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record (!58 precedent).
+        // detail drawer resolves the member record.
         txn.member_id === null ? (
           <span className={styles.muted}>—</span>
         ) : (
@@ -231,52 +279,50 @@ export function TransactionsScreen() {
     <div>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel} htmlFor="txn-filter-type">
-              Type
-            </label>
-            <select
-              id="txn-filter-type"
-              className={`${styles.select} ${styles.filterControl}`}
-              value={filters.type}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  type: event.target.value as TxnListFilters["type"],
-                }))
-              }
-            >
-              <option value="">All types</option>
-              {TXN_TYPES.map((option) => (
-                <option key={option} value={option}>
-                  {TXN_TYPE_LABELS[option]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className={styles.filterGroup}>
-            <label className={styles.filterLabel} htmlFor="txn-filter-channel">
-              Channel
-            </label>
-            <select
-              id="txn-filter-channel"
-              className={`${styles.select} ${styles.filterControl}`}
-              value={filters.channel}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  channel: event.target.value as TxnListFilters["channel"],
-                }))
-              }
-            >
-              <option value="">All channels</option>
-              {CHANNELS.map((option) => (
-                <option key={option} value={option}>
-                  {CHANNEL_LABELS[option]}
-                </option>
-              ))}
-            </select>
-          </div>
+          <FormField id="txn-filter-type" label="Type">
+            {(control) => (
+              <select
+                {...control}
+                className={`${styles.select} ${styles.filterControl}`}
+                value={filters.type}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    type: event.target.value as TxnListFilters["type"],
+                  }))
+                }
+              >
+                <option value="">All types</option>
+                {TXN_TYPES.map((option) => (
+                  <option key={option} value={option}>
+                    {TXN_TYPE_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
+          <FormField id="txn-filter-channel" label="Channel">
+            {(control) => (
+              <select
+                {...control}
+                className={`${styles.select} ${styles.filterControl}`}
+                value={filters.channel}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    channel: event.target.value as TxnListFilters["channel"],
+                  }))
+                }
+              >
+                <option value="">All channels</option>
+                {CHANNELS.map((option) => (
+                  <option key={option} value={option}>
+                    {CHANNEL_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
           <div className={styles.filterGroup}>
             <span className={styles.filterLabel}>Direction</span>
             <div className={styles.segment} role="group" aria-label="Direction">
@@ -309,43 +355,77 @@ export function TransactionsScreen() {
               }
             />
           )}
+          <div className={styles.filterGroup}>
+            <span className={styles.filterLabel}>Date</span>
+            <div className={styles.segment} role="group" aria-label="Date preset">
+              {(
+                [
+                  ["", "All"],
+                  ["today", "Today"],
+                  ["7d", "Last 7 days"],
+                  ["30d", "Last 30 days"],
+                  ["custom", "Custom range"],
+                ] as const
+              ).map(([preset, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={styles.segmentButton}
+                  aria-pressed={datePreset === preset}
+                  onClick={() => applyDatePreset(preset)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <form className={styles.filters} onSubmit={applyDrafts} noValidate>
-            <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="txn-filter-ref">
-                Reference (exact)
-              </label>
-              <input
-                id="txn-filter-ref"
-                className={`${styles.input} ${styles.filterControl}`}
-                maxLength={32}
-                value={refDraft}
-                onChange={(event) => setRefDraft(event.target.value)}
-              />
-            </div>
-            <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="txn-filter-from">
-                From date
-              </label>
-              <input
-                id="txn-filter-from"
+            <FormField id="txn-filter-search" label="Search (ref or member)">
+              {(control) => (
+                <input
+                  {...control}
+                inputMode="search"
+                  className={`${styles.input} ${styles.filterControl}`}
+                  maxLength={64}
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField id="txn-filter-ref" label="Reference (exact)">
+              {(control) => (
+                <input
+                  {...control}
+                inputMode="search"
+                  className={`${styles.input} ${styles.filterControl}`}
+                  maxLength={32}
+                  value={refDraft}
+                  onChange={(event) => setRefDraft(event.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField id="txn-filter-from" label="From date">
+              {(control) => (
+                <input
+                  {...control}
                 type="date"
-                className={`${styles.input} ${styles.filterControl}`}
-                value={fromDraft}
-                onChange={(event) => setFromDraft(event.target.value)}
-              />
-            </div>
-            <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="txn-filter-to">
-                To date
-              </label>
-              <input
-                id="txn-filter-to"
+                  className={`${styles.input} ${styles.filterControl}`}
+                  value={fromDraft}
+                  onChange={(event) => setFromDraft(event.target.value)}
+                />
+              )}
+            </FormField>
+            <FormField id="txn-filter-to" label="To date">
+              {(control) => (
+                <input
+                  {...control}
                 type="date"
-                className={`${styles.input} ${styles.filterControl}`}
-                value={toDraft}
-                onChange={(event) => setToDraft(event.target.value)}
-              />
-            </div>
+                  className={`${styles.input} ${styles.filterControl}`}
+                  value={toDraft}
+                  onChange={(event) => setToDraft(event.target.value)}
+                />
+              )}
+            </FormField>
             <Button type="submit">Apply</Button>
             {draftError !== "" && (
               <span className={styles.formNote} role="alert">

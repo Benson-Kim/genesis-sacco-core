@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Skip-to-content link (P15 Phase B accessibility primitive, issue #8):
+ * Skip-to-content link (accessibility primitive):
  * the first focusable element in the shell; visually hidden until
  * focused, then a visible 44px+ target. Jumps keyboard/AT users past the
  * sidebar navigation straight to the main content region.

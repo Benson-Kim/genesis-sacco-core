@@ -1,4 +1,4 @@
-"""Structured JSON logging with correlation IDs and PII scrubbing (gates 1.2, 1.6)."""
+"""Structured JSON logging with correlation IDs and PII scrubbing (the house gates)."""
 
 import json
 import logging

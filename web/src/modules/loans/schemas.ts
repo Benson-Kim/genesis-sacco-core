@@ -2,13 +2,12 @@ import { z } from "zod";
 import { aggregateMoneySchema, isoTimestampSchema, moneySchema } from "@/lib/schemas";
 
 /**
- * Zod-validated response boundary for the loan-book module (P15 module 4
- * — P10 API). Shapes mirror the generated client types
+ * Zod-validated response boundary for the loan-book module (module 4 — API). Shapes mirror the generated client types
  * (components["schemas"]["LoanOut"] etc.) — the drift-checked OpenAPI
  * snapshot remains the contract; these schemas only assert it at
  * runtime.
  *
- * MONEY RULE (P15 blocker (a)): every monetary field (principal,
+ * MONEY RULE: every monetary field (principal,
  * balance, penalty_due, schedule/quote figures, portfolio aggregates)
  * is a decimal STRING end-to-end, rendered via fmtKes or verbatim and
  * never coerced or combined arithmetically. Outstanding balances,
@@ -54,7 +53,7 @@ export const loanSchema = z.object({
   application_id: z.string(),
   member_id: z.string(),
   product_id: z.string(),
-  /** CANONICAL server money shapes (issue #30 A2/S2 retrofit), all
+  /** CANONICAL server money shapes (retrofit), all
    * fmtKes-fed: `loans.principal` CHECK (principal > 0),
    * `loans.balance` CHECK (balance >= 0) (migration 0001) and
    * `loans.penalty_due` CHECK (penalty_due >= 0) (migration 0007) are
@@ -76,7 +75,7 @@ export const loanSchema = z.object({
   provision_pct: z.string(),
   penalty_due: moneySchema,
   /** datetime.isoformat() shapes — both feed fmtDateTime on the drawer
-   * (the !63 F-R4 lesson): garbage is REJECTED, never "Invalid Date". */
+   * (an earlier review lesson): garbage is REJECTED, never "Invalid Date". */
   disbursed_at: isoTimestampSchema.nullable(),
   closed_at: isoTimestampSchema.nullable(),
   version: z.number().int(),
@@ -90,10 +89,10 @@ export const scheduleRowSchema = z.object({
   installment_no: z.number().int(),
   /** DATE isoformat ("YYYY-MM-DD", _schedule_out row.due_date) rendered
    * VERBATIM — deliberately NOT isoTimestampSchema, which would reject
-   * every legitimate response (issue #30 A2/S2 sweep note). */
+   * every legitimate response (sweep note). */
   due_date: z.string(),
   /** loan_schedules columns, each CHECK (>= 0) numeric(18,2)
-   * (migration 0001) via str(Decimal) — fmtKes-fed (A2/S2 retrofit). */
+   * (migration 0001) via str(Decimal) — fmtKes-fed (retrofit). */
   principal_due: moneySchema,
   interest_due: moneySchema,
   total_due: moneySchema,
@@ -107,12 +106,12 @@ export type ScheduleRow = z.infer<typeof scheduleRowSchema>;
  * facts; the total is the SERVER's sum, never recomputed here. */
 export const settlementQuoteSchema = z.object({
   /** DATE isoformat (quote_date.isoformat(), api/loan_book.py) rendered
-   * VERBATIM — deliberately NOT isoTimestampSchema (A2/S2 sweep note). */
+   * VERBATIM — deliberately NOT isoTimestampSchema (sweep note). */
   as_of: z.string(),
   /** Every bucket is to_cents-quantised by domain settlement_quote()
    * (which also REFUSES negative buckets) and the total is the
    * to_cents property sum — canonical non-negative two-place shapes,
-   * all fmtKes-fed (issue #30 A2/S2 retrofit). */
+   * all fmtKes-fed (retrofit). */
   principal_balance: moneySchema,
   interest_due: moneySchema,
   penalties_due: moneySchema,
@@ -142,7 +141,7 @@ export const repaymentResultSchema = z.object({
   /** Allocation buckets (domain allocate_repayment: min and to_cents
    * over non-negative dues) and the post-write balances (to_cents;
    * the loans balance and penalty_due CHECKs >= 0) — canonical
-   * non-negative shapes, all fmtKes-fed (issue #30 A2/S2 retrofit). */
+   * non-negative shapes, all fmtKes-fed (retrofit). */
   penalties: moneySchema,
   interest: moneySchema,
   principal: moneySchema,
@@ -162,7 +161,7 @@ export const classificationSliceSchema = z.object({
   /** SQL aggregates (COALESCE(SUM(...), 0), application/loans.py
    * portfolio_summary): an empty aggregate legitimately serialises as
    * the bare "0" — the aggregate shape is the honest boundary
-   * (issue #30 A2/S2 retrofit); fmtKes-fed. */
+   * (retrofit); fmtKes-fed. */
   balance: aggregateMoneySchema,
   provisions: aggregateMoneySchema,
 });
@@ -171,12 +170,12 @@ export const portfolioSummarySchema = z.object({
   active_loans: z.number().int(),
   /** COALESCE(SUM(...), 0) aggregates via str(Decimal) — bare "0" on
    * an empty book, two-place otherwise; every one fmtKes-fed
-   * (issue #30 A2/S2 retrofit). */
+   * (retrofit). */
   outstanding_balance: aggregateMoneySchema,
   npl_balance: aggregateMoneySchema,
   /** Ratio percentages (to_cents ratios, ZERO when the book is empty)
    * — rendered as "%" text, never fmtKes-fed: deliberately left
-   * unasserted (A2/S2 sweep note). */
+   * unasserted (sweep note). */
   npl_ratio_pct: z.string(),
   par30_balance: aggregateMoneySchema,
   par30_ratio_pct: z.string(),
@@ -187,7 +186,7 @@ export const portfolioSummarySchema = z.object({
 
 export type PortfolioSummary = z.infer<typeof portfolioSummarySchema>;
 
-/** Money-movement channels the P10 contract accepts for disbursement
+/** Money-movement channels the contract accepts for disbursement
  * and repayments (require_cash_channel: mpesa | bank — accrual/internal
  * are engine-owned and the UI never offers them). */
 export const CASH_CHANNELS = ["mpesa", "bank"] as const;
@@ -199,15 +198,14 @@ export const CHANNEL_LABELS: Record<CashChannel, string> = {
   bank: "Bank",
 };
 
-/** Leading zeros rejected (W59-5, the !60 F6 class): "007.10" is not a
+/** Leading zeros rejected (W59-5, the F6 class): "007.10" is not a
  * well-formed decimal string and the typed-confirmation banner must
  * never render "KES 007.10". Pure string shape — no numeric coercion. */
 const DECIMAL_RE = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/;
 const ALL_ZERO_RE = /^0(?:\.0{1,2})?$/;
 
 /**
- * Client-side pre-validation of the repayment form (the server
- * re-validates and is the enforcer — gate 1.6). The amount is validated
+ * Client-side pre-validation of the repayment form (the server re-validates and is the enforcer — least disclosure). The amount is validated
  * as a decimal STRING shape (2dp, non-zero — pure string inspection,
  * no numeric coercion) and sent as a string: it is never parsed into a
  * float.

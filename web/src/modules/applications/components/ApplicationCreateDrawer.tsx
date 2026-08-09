@@ -1,11 +1,10 @@
 "use client";
 
 /**
- * Loan-application intake drawer (P15 module 3 — prototype `vNewApp`,
- * adapted to the P9 contract):
+ * Loan-application intake drawer (module 3 — prototype `vNewApp`, adapted to the P9 contract):
  * - Sends ONLY the member, product, amount, term and purpose.
  *   Rate/pricing are server-resolved from the product; the API rejects
- *   caller-sent money parameters (extra="forbid", v1.1 rule 1).
+ *   caller-sent money parameters (extra="forbid").
  * - NO live preview of installments or borrowing power: the prototype
  *   computed those locally, which blocker (a) forbids — every derived
  *   figure (cover%, max eligible) is server-computed and rendered on
@@ -15,7 +14,7 @@
  * - FormField + form-errors (blocker (f)): client Zod issues merge with
  *   server 422 ApiError.fields; the server verdict wins per field.
  * - One Idempotency-Key per logical submission (stable across retries,
- *   rotates on content change); double-submit short-circuits (gate 1.4).
+ *   rotates on content change); double-submit short-circuits (concurrency safety).
  */
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -55,7 +54,7 @@ export function ApplicationCreateDrawer({
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
-  // Member picker: ACTIVE members via the keyset contract (gate 1.3) —
+  // Member picker: ACTIVE members via the keyset contract (scalability) —
   // pages of 20 with an explicit "load more". The P8 list has no search
   // parameter; recorded honestly as a UX limitation in the MR.
   const members = useKeysetList<Member>({
@@ -208,7 +207,7 @@ export function ApplicationCreateDrawer({
         </div>
         {/* Create conflicts (409 duplicate) and every other failure render
             the least-disclosure ErrorBanner — a create has no version to
-            reload (!56 finding F-B4 rationale). 422 fields ALSO render
+            reload (finding F-B4 rationale). 422 fields ALSO render
             inline above via form-errors. */}
         {create.isError && !renderedInline && <ErrorBanner error={create.error} />}
         <div className={styles.actions}>

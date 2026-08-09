@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Declaration detail drawer (issue #31 batch 2): the FULL server
- * declaration snapshot (DeclarationOut) plus the P13.11 lifecycle
+ * Declaration detail drawer: the FULL server
+ * declaration snapshot (DeclarationOut) plus the lifecycle
  * writes this record's status allows — committee votes and void.
  * Distribution opens its own dialog from here (screen-level state).
  *
@@ -15,14 +15,13 @@
  * - MAKER-CHECKER (blocker (f)): vote affordances mount ONLY inside
  *   MakerCheckerPanel — checker controls exist only for a different,
  *   known principal (getOwnUserId; no override prop). The maker
- *   identity is the CONTRACT's `requested_by` FIRST (issue #31 ledger
- *   (a).4 — server truth, the exits !66/0036 precedent); the per-tab
+ *   identity is the CONTRACT's `requested_by` FIRST (server truth, the exits /0036 precedent); the per-tab
  *   witness (makerRegistry.ts) is consulted ONLY for unattributed
  *   rows (requested_by === null) — attribution is never invented. The
  *   server bans the declarer's self-vote and enforces one vote per
- *   voter regardless (gate 1.6).
+ *   voter regardless (least disclosure).
  *   VOID deliberately sits OUTSIDE the panel (the exits precedent):
- *   the contract gates POST .../void on transactions:approve (verified
+ *   the contract gates POST.../void on transactions:approve (verified
  *   against backend api/dividends.py — TxnApproveCtx) and permits an
  *   approve-holder to void their OWN declaration (it moves no money
  *   and only narrows state — the documented drift remedy that frees
@@ -34,7 +33,7 @@
  * - A 409 (someone voted/voided/distributed underneath, or the version
  *   drifted) renders the shared ConflictBanner's explicit
  *   reload-and-re-enter flow with an INFORMATIONAL notice + announce()
- *   (!60 F5) — NOTHING is replayed.
+ *    — NOTHING is replayed.
  * - TERMINAL statuses (rejected/distributed) structurally WITHDRAW
  *   every write affordance (the server enforces the transition matrix
  *   regardless).
@@ -81,7 +80,7 @@ export function DeclarationDetailDrawer({
   const [confirmVoid, setConfirmVoid] = useState(false);
   const [voteResult, setVoteResult] = useState<DividendVoteResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency keys (!60 F3): bumped on
+  // Freshness component for the idempotency keys: bumped on
   // every explicit post-conflict reload — a re-entered identical action
   // after a 409 is a NEW intent with a NEW key (some conflicts, e.g.
   // "someone else voted", do not bump the record version).
@@ -200,14 +199,14 @@ export function DeclarationDetailDrawer({
   const voteConflict = vote.isError && isConflict(vote.error);
   const voidConflict = voidMutation.isError && isConflict(voidMutation.error);
 
-  // SERVER TRUTH FIRST (issue #31 ledger (a).4, the exits !66/0036
+  // SERVER TRUTH FIRST (the exits /0036
   // precedent): requested_by is the contract's declarer attribution —
   // the maker-checker record itself, not a per-tab witness. The
   // registry (the declaration THIS TAB witnessed) is consulted only
   // when the server record is unattributed (requested_by === null);
   // nothing is ever invented. The server 403s the declarer's
   // self-vote and self-distribution on the PERSISTED column
-  // regardless (gate 1.6).
+  // regardless (least disclosure).
   const witnessedMakerId = dividendMakerOf(record.id);
   const makerId = record.requested_by ?? witnessedMakerId;
   const ownId = getOwnUserId();
@@ -225,10 +224,10 @@ export function DeclarationDetailDrawer({
           : "Declaring officer (witnessed by this tab).";
 
   function reloadRecord() {
-    // Explicit reload flow (!60 F5): refetch the record (its status,
+    // Explicit reload flow: refetch the record (its status,
     // version or tally moved underneath) and the register; the stale
     // write is NEVER replayed — re-entering it is a NEW intent whose
-    // key rotates via the reload epoch (!60 F3).
+    // key rotates via the reload epoch.
     void queryClient.refetchQueries({ queryKey: ["dividends", "detail", declarationId] });
     void queryClient.invalidateQueries({ queryKey: ["dividends", "list"] });
     setReloadEpoch((epoch) => epoch + 1);
@@ -248,7 +247,7 @@ export function DeclarationDetailDrawer({
       dismissOnOverlay={false}
     >
       {/* Informational, NOT success styling: the notice reports a
-          post-conflict reload (W59-4, the !60 F5 class). */}
+          post-conflict reload (W59-4, the F5 class). */}
       {notice !== "" && <Banner>{notice}</Banner>}
 
       <div className={styles.detailGrid}>
@@ -262,7 +261,7 @@ export function DeclarationDetailDrawer({
           {record.fy_start} → {record.fy_end}
         </Kv>
         <Kv label="Declared by">
-          {/* Declarer attribution (issue #31 ledger (a).4): the
+          {/* Declarer attribution: the
               SERVER's bare staff UUID, short-id convention — least
               disclosure: no name/email is ever fetched for it. NULL
               renders the honest unattributed affordance: an actor is
@@ -298,7 +297,7 @@ export function DeclarationDetailDrawer({
         Every figure above is the SERVER&apos;s snapshot at declaration time —
         nothing is summed or re-derived in this screen (payout = dividend +
         rebate is the database&apos;s CHECK). Dormant members remain
-        shareholders and are inside the eligible count (issue #19 policy).
+        shareholders and are inside the eligible count.
         Distribution re-verifies the snapshot against live balances and
         conflicts on any drift.
       </div>
@@ -324,7 +323,7 @@ export function DeclarationDetailDrawer({
         </div>
       )}
 
-      {/* One copy of the 409 reload flow (gate 1.1): a moved status,
+      {/* One copy of the 409 reload flow (reuse-first): a moved status,
           drifted version or already-recorded vote is reloaded, NEVER
           replayed. */}
       <ConflictBanner error={vote.error} onReload={reloadRecord} />
@@ -405,7 +404,7 @@ export function DeclarationDetailDrawer({
 
       <div className={styles.actions}>
         {/* VOID: offered on any OPEN declaration to transactions:approve
-            holders ONLY — the contract gate on POST .../void is
+            holders ONLY — the contract gate on POST.../void is
             transactions:approve (backend api/dividends.py,
             TxnApproveCtx), and an approve-holding declarer may void
             their OWN declaration (it moves no money and only narrows

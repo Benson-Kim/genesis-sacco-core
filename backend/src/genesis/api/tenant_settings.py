@@ -1,15 +1,15 @@
-"""Tenant settings endpoints (P13.7, gate 1.6).
+"""Tenant settings endpoints (least disclosure).
 
 The prototype Settings screens' backend (Interest / Parameters /
 Approval matrix tabs). Settings ARE the money parameters, so this API
-is their single legitimate writer (v1.1 rule 1): the request body
+is their single legitimate writer: the request body
 rejects unknown fields (extra="forbid" -> 422, so an unknown setting
 key can never ride in), every known field carries the same bounds the
 DB CHECKs enforce (migration 0017), and band payloads are validated
 against the code-owned domain contract at the boundary. Routes carry
 RequirePermission settings x view/edit (deny by default); mutations
 are idempotent via the Idempotency-Key middleware and optimistic-
-locked via the version field (gate 1.4).
+locked via the version field (concurrency safety).
 
 Money amounts travel as decimal strings (the codebase-wide contract):
 a JSON float in a band payload is rejected, never rounded.
@@ -123,7 +123,7 @@ class SettingsOut(BaseModel):
     """The full settings view; null means "not configured" (fallbacks
     documented per key in the registry). Decimals travel as strings.
     ``corrupt_keys`` names stored band keys that failed read-side
-    revalidation (degraded to null in this view, review R3) — names
+    revalidation (degraded to null in this view) — names
     only, never the corrupt payload (least disclosure)."""
 
     configured: bool

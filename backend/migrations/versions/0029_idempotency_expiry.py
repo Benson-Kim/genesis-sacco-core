@@ -1,4 +1,4 @@
-"""idempotency key expiry (P13.17c / DSA-3)
+"""idempotency key expiry (.17c / DSA-3)
 
 Revision ID: 0029
 Revises: 0028
@@ -7,11 +7,11 @@ Create Date: 2026-08-02
 Claimed as 0029 with down_revision 0028 (this MR's own (b) claim; the
 chain 0026 <- 0027 <- 0028 <- 0029 was declared up front per v1.2 rule
 14 — one number per separable item). Expand-only objects backing
-P13.17(c):
+(c):
 
   * idempotency_keys.expires_at — the replay-retention cutoff. The
     application sets it explicitly on every claim from
-    Settings.idempotency_retention_hours (server config, v1.1 rule 1 —
+    Settings.idempotency_retention_hours (server config, —
     never caller-supplied; no request field exists for it and the
     middleware computes it in SQL as now() + make_interval). The
     column DEFAULT here serves two purposes and is NOT the config
@@ -21,13 +21,12 @@ P13.17(c):
         `expires_at > now()` starts expiring legacy rows 24h after
         this migration runs instead of grandfathering them forever;
       - it keeps the pre-0029 application INSERT (which names no
-        expires_at) working for one release (§3 expand -> migrate ->
-        contract), matching the Settings default of 24 hours.
+        expires_at) working for one release (expand -> migrate -> contract), matching the Settings
+        default of 24 hours.
 
   * idx_idempotency_keys_expiry — the driving index for the retention
-    purge's FOR UPDATE SKIP LOCKED subquery (gate 1.3: shipped in the
-    same MR as the query it serves,
-    application/idempotency_purge.py:PURGE_BATCH_SQL). The replay
+    purge's FOR UPDATE SKIP LOCKED subquery (scalability: shipped in the same MR as the query it
+    serves, application/idempotency_purge.py:PURGE_BATCH_SQL). The replay
     lookup itself stays on the (tenant_id, key) UNIQUE from 0001.
 
 NO new tables: no TENANT_TABLES / ENTITY_MODULES / RLS delta —
@@ -37,8 +36,8 @@ since 0001.
 Insider posture (DB-level, honest): a direct-SQL UPDATE of expires_at
 cannot be fenced by a CHECK (CHECK cannot reference now()). Tampering
 can only SHORTEN a key's replay window — degrading an expired key to a
-NEW request with its own single effect (the FM3 exactly-one-effect
-property, enforced by the atomic takeover in api/idempotency.py) — or
+NEW request with its own single effect (the exactly-one-effect property, enforced by the atomic
+takeover in api/idempotency.py) — or
 EXTEND how long a stored non-money response envelope replays; it can
 never produce a second money effect for one claim epoch.
 

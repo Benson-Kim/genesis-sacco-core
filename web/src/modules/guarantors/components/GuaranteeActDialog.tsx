@@ -1,11 +1,9 @@
 "use client";
 
 /**
- * Consent / release dialog for a guarantee THIS TAB witnessed (P15
- * module 5 — P9 consent, P13.14 release):
+ * Consent / release dialog for a guarantee THIS TAB witnessed (module 5 — P9 consent, release):
  *
- * - CONSENT (`POST /guarantees/{id}/consent`, member_identity:approve
- *   since P14.5) records the staff-attested consent OVERRIDE:
+ * - CONSENT (`POST /guarantees/{id}/consent`, member_identity:approve since) records the staff-attested consent OVERRIDE:
  *   pledged -> active. Consent is the MEMBER principal's own act on the
  *   /member surface; this staff path exists for the cases where the
  *   member cannot act (no credential yet, paper consent) and MUST cite
@@ -13,7 +11,7 @@
  *   the guard is the citation + typed confirmation + the server's
  *   status machine and optimistic lock.
  * - RELEASE (`POST /guarantees/{id}/release`) frees the pledge per the
- *   P13.14 rules. The UI offers it only where the contract can accept
+ *    rules. The UI offers it only where the contract can accept
  *   it: a pledged (unconsented) guarantee, or an active one still
  *   backing an UNDISBURSED application (the cover rule is re-verified
  *   server-side under the borrower's account lock). An active guarantee
@@ -86,7 +84,7 @@ export function GuaranteeActDialog({
   const [result, setResult] = useState<Guarantee | null>(null);
   const [withdrawn, setWithdrawn] = useState(false);
   const [notice, setNotice] = useState<string>("");
-  // P14.5: the staff consent override MUST cite its evidence — the
+  // the staff consent override MUST cite its evidence — the
   // citation is part of the audited fact, so it also rides the
   // idempotency-key body (a changed citation is a new intent).
   const [consentReference, setConsentReference] = useState("");
@@ -131,8 +129,8 @@ export function GuaranteeActDialog({
   });
 
   const conflict = mutation.isError && isConflict(mutation.error);
-  // Server 422 verdicts render inline on the citation field (P14.5:
-  // the consent override's mandatory evidence), never a bare banner.
+  // Server 422 verdicts render inline on the citation field
+  // (the consent override's mandatory evidence), never a bare banner.
   const fieldErrors = fromApiError(mutation.error);
   const consentInlineError =
     act === "consent" &&
@@ -140,7 +138,7 @@ export function GuaranteeActDialog({
     mutation.error.status === 422 &&
     Object.keys(fieldErrors).length > 0;
 
-  // The UI offers only what the contract can accept (gate 1.6); the
+  // The UI offers only what the contract can accept (least disclosure); the
   // server enforces the status machine regardless.
   const eligible =
     act === "consent"
@@ -151,7 +149,7 @@ export function GuaranteeActDialog({
 
   function reloadAfterConflict() {
     // Explicit reload flow — with NO per-guarantee read in the contract,
-    // reload refetches the server truth this screen CAN read (the P13.9
+    // reload refetches the server truth this screen CAN read (the
     // aggregates) and structurally withdraws this tab's stale copy; the
     // act is NEVER replayed (a fresh server response is required to
     // re-arm any affordance on this record).
@@ -162,8 +160,8 @@ export function GuaranteeActDialog({
     setNotice(
       "This guarantee changed outside this tab and its actions are withdrawn here — the contract exposes no per-guarantee read to refresh it.",
     );
-    // Every async outcome is announced (issue #8): the withdrawal is an
-    // outcome, not a success — the live region must say so (!60 F5).
+    // Every async outcome is announced: the withdrawal is an
+    // outcome, not a success — the live region must say so.
     announce("Guarantee actions withdrawn — the record changed outside this tab.");
   }
 
@@ -175,7 +173,7 @@ export function GuaranteeActDialog({
       variant="dialog"
     >
       {/* Informational, NOT success styling: the notice reports a
-          CONFLICTED/WITHDRAWN record (!60 F5). */}
+          CONFLICTED/WITHDRAWN record. */}
       {notice !== "" && <Banner variant="info">{notice}</Banner>}
       <div className={styles.detailGrid}>
         <Kv label="Guarantee record">
@@ -188,7 +186,7 @@ export function GuaranteeActDialog({
         <Kv label="Record version">{guarantee.version}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={mutation.error} onReload={reloadAfterConflict} />
       {mutation.isError && !conflict && !consentInlineError && (
         <ErrorBanner error={mutation.error} />
@@ -214,7 +212,7 @@ export function GuaranteeActDialog({
               id="consent-reference"
               label="Consent evidence reference"
               error={fieldErrors["consent_reference"]}
-              hint="P14.5: consent is the member's own act on the member surface; this staff override MUST cite the evidence it rests on (e.g. the signed consent form) — written as an audited fact."
+              hint="Consent is the member's own act on the member surface; this staff override MUST cite the evidence it rests on (e.g. the signed consent form) — written as an audited fact."
             >
               {(control) => (
                 <input
@@ -234,7 +232,7 @@ export function GuaranteeActDialog({
             </Button>
             {/* Both acts get the danger treatment: consent converts the
                 pledge into ACTIVE collateral (money-adjacent), the same
-                severity class as pledge/release (review !60 F7). */}
+                severity class as pledge/release. */}
             <Button
               type="button"
               variant="danger"

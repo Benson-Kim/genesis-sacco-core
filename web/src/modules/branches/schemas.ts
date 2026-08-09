@@ -5,8 +5,7 @@ import { USER_STATUSES } from "@/modules/users/schemas";
 
 /**
  * Zod-validated response boundary for the branches registry console
- * (issue #31 batch 4 — the P13.6 registry contract; audit #30 risk 1
- * scope: production API with no console surface). Shapes mirror the
+ * (the registry contract; risk 1 scope: production API with no console surface). Shapes mirror the
  * generated client types (components["schemas"]["BranchOut"],
  * BranchAssignmentOut, BackfillRunOut) — the drift-checked OpenAPI
  * snapshot remains the contract; these schemas only assert it at
@@ -15,20 +14,20 @@ import { USER_STATUSES } from "@/modules/users/schemas";
  * NO MONEY FIELD exists on this contract (honesty over decoration): a
  * branch is organisational metadata only — the router documents that
  * "no money/cost/path parameter exists here for a caller to supply,
- * and none may ride along" (gate 1.6). The shared moneySchema is
+ * and none may ride along" (least disclosure). The shared moneySchema is
  * deliberately NOT imported; asserting a money shape the contract
  * does not carry would be fake validation.
  *
  * Field-by-field shape derivation (backend/src/genesis, not guessed):
  * - created_at: datetime.isoformat() (api/branches.py:_out) →
  *   `isoTimestampSchema` — feeds fmtDateTime; garbage is REJECTED at
- *   the boundary, never rendered "Invalid Date" (A2/S2 posture).
+ *   the boundary, never rendered "Invalid Date" (posture).
  * - name: free text (DB CHECK btrim(name) <> '', migration 0016) —
  *   rendered exclusively as React text (XSS-inert, gate-tested).
- * - version: optimistic-lock integer (gate 1.4) pinning every rename;
+ * - version: optimistic-lock integer (concurrency safety) pinning every rename;
  *   BranchAssignmentOut.version is the USER/MEMBER row's new version
  *   (the assignment locks the entity being edited, not the branch).
- * - BackfillRunOut: side-effect COUNTS only (§4) — integers, nothing
+ * - BackfillRunOut: side-effect COUNTS only — integers, nothing
  *   else; a completed re-run legitimately reports all zeros.
  * - No status/enum vocabulary exists anywhere on this contract.
  */
@@ -68,15 +67,14 @@ export const backfillRunSchema = z.object({
 export type BackfillRun = z.infer<typeof backfillRunSchema>;
 
 /* ------------------------------------------------------------------ *
- * Branch rosters (#31 ledger (j).1) — the expand-only reads over the
- * 0016 assignment columns, mirroring the batch-4 assignment
+ * Branch rosters — the expand-only reads over the
+ * 0016 assignment columns, mirroring the assignment
  * permission split on READS: the user roster is access_control:view,
  * the member roster is members:view — never a settings right.
- * Identity facts ONLY (least disclosure, gate 1.6): no role, no
+ * Identity facts ONLY (least disclosure, least disclosure): no role, no
  * last-active, no contact details, NO money field — none is asserted
- * or invented (the batch-4 fake-validation posture). Status
- * vocabularies are the OWNING modules' pinned enums (reuse-first,
- * gate 1.1): an unknown status is a contract violation, REJECTED.
+ * or invented (the fake-validation posture). Status
+ * vocabularies are the OWNING modules' pinned enums (reuse-first, reuse-first): an unknown status is a contract violation, REJECTED.
  * ------------------------------------------------------------------ */
 export const branchUserRosterSchema = z.object({
   id: z.string(),

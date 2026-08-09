@@ -163,3 +163,24 @@
   color: var(--brick);
   margin: var(--space-xs) 0;
 }
+
+/* Read-only-by-default shell (#35 item 3) */
+.viewModeBar {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+.viewModeNote {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+}
+
+.viewModeFieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: auto;
+}

@@ -1,11 +1,11 @@
-"""System-user administration services (P13.5, gates 1.1-1.6).
+"""System-user administration services.
 
 Reuses the existing `users` table (0001) — no parallel table. Creation
 claims the (tenant_id, email) UNIQUE atomically (`INSERT ... ON
 CONFLICT DO NOTHING` + rowcount, v1.1 rule 5); edits are
-optimistic-locked and surface 409 on stale versions (gate 1.4); status
+optimistic-locked and surface 409 on stale versions (concurrency safety); status
 moves go through the single transition function in domain/users.py
-under the target row lock (gate 1.4). Suspension takes effect
+under the target row lock (concurrency safety). Suspension takes effect
 immediately IN THE SAME TRANSACTION: pending OTP challenges are voided
 (consumed_at doubles as the void marker, reusing the P3 single-use gate
 — evaluate_challenge refuses a consumed challenge forever) and every
@@ -22,7 +22,7 @@ suspended nor re-roled away from System Admin. Checked under row locks
 (below), so two concurrent suspensions of the last two admins serialize
 and exactly one gets 409 — admins can never hit zero.
 
-Lock ordering (documented per MASTER_PROMPT §5.9; matches the P3 auth
+Lock ordering (documented per the house lock-order review; matches the P3 auth
 paths, which were re-ordered in this MR to agree):
 
     active-System-Admin user rows (ORDER BY id)   -- serialization point
@@ -47,13 +47,13 @@ actor whose OWN role — resolved server-side from the users table
 inside the transaction, never from the JWT alone — is System Admin may
 change a System Admin's email, grant the System Admin role, or change
 the role of a current System Admin. Refusals are 403s that carry only
-the error category to the caller (least disclosure, gate 1.6).
+the error category to the caller (least disclosure).
 
 All reads AND writes carry explicit bound tenant_id predicates on top
 of forced RLS (v1.1 rule 4); every mutation writes its audit row
-in-transaction via the shared writer (gate 1.5) and notifies via the
-transactional outbox only (gate 1.2). OTP codes are never disclosed,
-stored, or logged by any path here (least disclosure, gate 1.6).
+in-transaction via the shared writer (data integrity) and notifies via the
+transactional outbox only (reliability). OTP codes are never disclosed,
+stored, or logged by any path here (least disclosure).
 """
 
 from __future__ import annotations
@@ -68,9 +68,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application.audit import record_audit
+from genesis.application.members import parse_phone
 from genesis.application.outbox import enqueue_event
 from genesis.application.pagination import (
     build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
     parse_created_id_cursor,
 )
 from genesis.domain.rbac import SYSTEM_ADMIN
@@ -81,6 +84,10 @@ from genesis.domain.users import (
 )
 from genesis.errors import ConflictError, ForbiddenError, NotFoundError
 
+#: Cursor scope id: signed cursors are bound to this
+#: endpoint and this tenant — no cross-scope replay (tenant isolation).
+USERS_LIST_SCOPE = "users.list"
+
 
 @dataclass(frozen=True)
 class UserRecord:
@@ -89,8 +96,8 @@ class UserRecord:
     email: str
     phone: str | None
     branch: str | None
-    #: P13.6 registry FK (0016), surfaced read-only alongside the legacy
-    #: free-text branch until the text column contracts (!24 finding #3).
+    #: Branches registry FK (0016), surfaced read-only alongside the legacy
+    #: free-text branch until the text column contracts (a recorded follow-up).
     #: Writes go exclusively through the branches assign endpoint.
     branch_id: uuid.UUID | None
     role_id: uuid.UUID
@@ -114,7 +121,7 @@ _USER_COLUMNS = (
 
 
 def users_page_sql(*, with_cursor: bool, with_status: bool, with_role: bool) -> str:
-    """Users listing page (keyset on created_at DESC, id DESC — gate 1.3).
+    """Users listing page (keyset on created_at DESC, id DESC — scalability).
 
     Served by idx_users_created_keyset (0015, shipped with this query).
     Fragments are static literals chosen in code; every value is a bound
@@ -168,7 +175,7 @@ async def _role_name(session: AsyncSession, tenant_id: uuid.UUID, role_id: uuid.
 
 
 async def get_user(session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID) -> UserRecord:
-    # Explicit tenant predicate on top of RLS (gate 1.6 v1.1).
+    # Explicit tenant predicate on top of RLS (defence in depth).
     row = (
         await session.execute(
             text(
@@ -204,6 +211,9 @@ async def create_user(
     role_name = await _role_name(session, tenant_id, role_id)
     if role_name is None:
         raise NotFoundError(f"role {role_id} not found")
+    # E.164 storage normalization on write — sanitized 422
+    # on invalid input, never echoed (least disclosure).
+    phone = parse_phone(phone)
     user_id = uuid.uuid4()
     claimed = (
         await session.execute(
@@ -227,7 +237,7 @@ async def create_user(
     ).first()
     if claimed is None:
         # Least disclosure: the category reaches the caller; the email
-        # involved lives only in this internal message (gate 1.6).
+        # involved lives only in this internal message (least disclosure).
         raise ConflictError(f"email already in use for user create: {email}")
     await record_audit(
         session,
@@ -263,11 +273,14 @@ async def list_users(
     status: UserStatus | None = None,
     role_id: uuid.UUID | None = None,
 ) -> UserPage:
-    """Keyset-paginated listing on (created_at DESC, id DESC) (gate 1.3)."""
+    """Keyset-paginated listing on (created_at DESC, id DESC) (scalability)."""
     limit = max(1, min(limit, 100))
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if cursor:
-        c_ts, c_id = parse_created_id_cursor(cursor, entity="user")
+        # Opaque signed cursor: verify+unseal first;
+        # the plaintext parse stays as defense-in-depth.
+        inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=USERS_LIST_SCOPE, entity="user")
+        c_ts, c_id = parse_created_id_cursor(inner, entity="user")
         params["c_ts"] = c_ts
         params["c_id"] = c_id
     if status is not None:
@@ -290,7 +303,11 @@ async def list_users(
     next_cursor = None
     if len(rows) > limit and items:
         last = items[-1]
-        next_cursor = build_created_id_cursor(last.created_at, last.id)
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last.created_at, last.id),
+            tenant_id=tenant_id,
+            endpoint=USERS_LIST_SCOPE,
+        )
     return UserPage(items=items, next_cursor=next_cursor)
 
 
@@ -306,11 +323,11 @@ async def update_user(
     phone: str | None = None,
     branch: str | None = None,
 ) -> UserRecord:
-    """Optimistic-locked profile edit; stale versions surface 409 (gate 1.4).
+    """Optimistic-locked profile edit; stale versions surface 409 (concurrency safety).
 
     Role and status are deliberately NOT editable here: role assignment
     and activate/suspend are separate, separately-audited mutations with
-    their own guards (P13.5). Omitted fields keep their current values.
+    their own guards. Omitted fields keep their current values.
 
     Email change is a CREDENTIAL mutation (review F1): email is the sole
     OTP login identifier, so rewriting it is account takeover unless
@@ -325,7 +342,10 @@ async def update_user(
     current = await get_user(session, tenant_id, user_id)
     new_name = full_name if full_name is not None else current.full_name
     new_email = email if email is not None else current.email
-    new_phone = phone if phone is not None else current.phone
+    # E.164 normalization on write; untouched fields keep
+    # their stored value (legacy formats are read-tolerated — the 0042
+    # backfill migrates them).
+    new_phone = parse_phone(phone) if phone is not None else current.phone
     new_branch = branch if branch is not None else current.branch
     email_changed = email is not None and email != current.email
     if email_changed:
@@ -447,7 +467,7 @@ async def _actor_role_id(
 
 
 async def _lock_admin_set(session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID | None:
-    """Lock every ACTIVE System Admin user row, ordered by id (gate 1.4).
+    """Lock every ACTIVE System Admin user row, ordered by id (concurrency safety).
 
     This is the serialization point of the self-lockout invariant: any
     transaction that could shrink the active-admin set must queue here,
@@ -512,7 +532,7 @@ async def _void_pending_otp_challenges(
 
     consumed_at is the single-use marker the P3 gatekeeper
     (domain/otp.evaluate_challenge) already refuses — setting it voids
-    the challenge without a parallel state column (gate 1.1). Codes are
+    the challenge without a parallel state column (reuse-first). Codes are
     hashes at rest and are never read, returned, or logged here.
     """
     result = cast(
@@ -556,13 +576,13 @@ async def change_user_status(
     version: int,
     new_status: UserStatus,
 ) -> UserRecord:
-    """Activate/suspend through the single transition function (gate 1.4).
+    """Activate/suspend through the single transition function (concurrency safety).
 
     Self-guard first (user-level separation of duties), then the ordered
     admin-set lock, then the target row lock — see the module docstring
     for the full ordering. Suspension voids pending OTP challenges and
     revokes every refresh family IN THIS TRANSACTION, so a suspended
-    user's tokens are refused at auth immediately (P13.5).
+    user's tokens are refused at auth immediately.
     """
     if actor_id == user_id:
         raise ForbiddenError("users cannot change their own status")
@@ -579,7 +599,7 @@ async def change_user_status(
         and await _count_active_admins(session, tenant_id, admin_role_id) <= 1
     ):
         # Self-lockout guard: admin lockout is a denial-of-service
-        # vector, not an administration feature (P13.5).
+        # vector, not an administration feature.
         raise ConflictError("cannot suspend the last active System Admin")
     result = cast(
         CursorResult[Any],
@@ -640,7 +660,7 @@ async def assign_role(
     version: int,
     role_id: uuid.UUID,
 ) -> UserRecord:
-    """Audited role assignment with before/after (gate 1.5).
+    """Audited role assignment with before/after (data integrity).
 
     Same guard set as suspension: no self-edit, and re-roling the last
     active System Admin away from System Admin is refused under the
@@ -729,7 +749,7 @@ async def invalidate_otp_challenges(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> int:
-    """Admin-triggered OTP challenge invalidation (P13.5, gate 1.6).
+    """Admin-triggered OTP challenge invalidation.
 
     Voids every pending challenge under the target row lock; the count
     is recorded in the audit row. No code is ever disclosed — the
@@ -755,7 +775,7 @@ async def reenrol_otp(
     actor_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> tuple[int, int]:
-    """Admin-triggered OTP re-enrolment (P13.5, gate 1.6).
+    """Admin-triggered OTP re-enrolment.
 
     Forces a fresh OTP sign-in: voids pending challenges AND revokes
     every refresh family in one transaction, then notifies the user via

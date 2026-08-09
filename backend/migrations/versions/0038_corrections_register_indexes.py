@@ -1,18 +1,17 @@
-"""corrections register keyset indexes (issue #31 ledger (a).1/(a).2)
+"""corrections register keyset indexes
 
 Revision ID: 0038
 Revises: 0037
 Create Date: 2026-08-06
 
-Expand-only revision backing the issue-#31 batch-6 HUMAN-AUTHORIZED
-read-contract expansion (ledger items (a).1 and (a).2): the P13.15
+Expand-only revision backing the HUMAN-AUTHORIZED
+read-contract expansion (ledger items (a).1 and (a).2): the
 corrections contract gains keyset LIST reads — the pending-adjustments
 checker register and the write-off register — so the checker/committee
-no longer works from a hand-carried id (the batch-1 console shipped
-by-id only because no list endpoint existed; the gap was recorded on
-#31 and is closed here). NO table, column, constraint or RLS change:
+no longer works from a hand-carried id (the console shipped by-id only because no list endpoint
+existed; the gap was recorded on and is closed here). NO table, column, constraint or RLS change:
 two indexes only, shipped in the SAME MR as the queries they serve
-(gate 1.3 — index ships with its query).
+(scalability — index ships with its query).
 
 Index audit first (v1.1 discipline): repayment_adjustments carries
 (tenant_id, loan_id/orig_txn/rev_txn/maker/checker) FK indexes and the

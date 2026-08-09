@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Application detail drawer (P15 module 3 — prototype `vAppDetail`):
+ * Application detail drawer (module 3 — prototype `vAppDetail`):
  * stage workflow indicator, applicant card (resolved via the members
  * module — the P9 record carries member_id only), server-computed
  * figures rendered verbatim, and the officer stage moves.
@@ -14,7 +14,7 @@
  *   and therefore goes through ConfirmDangerModal's typed confirmation.
  * - APPROVED is not an officer move: only committee quorum produces it
  *   (and only the loan-book disbursement contract produces DISBURSED) —
- *   the UI never offers what the API forbids (gate 1.6).
+ *   the UI never offers what the API forbids (least disclosure).
  * - When THIS operator recommends to committee, the per-tab maker
  *   registry records them so the committee screen's MakerCheckerPanel
  *   structurally withholds their own vote affordances.
@@ -174,8 +174,8 @@ export function ApplicationDetailDrawer({
     void queryClient.refetchQueries({ queryKey: ["applications", "detail", applicationId] });
     transition.reset();
     setNotice({ text: "Record reloaded — re-check the stage before acting again.", tone: "info" });
-    // Every async outcome is announced (issue #8): the post-conflict
-    // reload is an outcome, not a success (W59-4, the !60 F5 class).
+    // Every async outcome is announced: the post-conflict
+    // reload is an outcome, not a success (W59-4, the F5 class).
     announce("Record reloaded after the conflict — re-check the stage.");
   }
 
@@ -187,7 +187,7 @@ export function ApplicationDetailDrawer({
   return (
     <Modal title="Application detail" onClose={onClose} closeDisabled={transition.isPending}>
       {/* Success notices keep the ok styling; the post-conflict reload
-          notice is informational (W59-4, the !60 F5 class). */}
+          notice is informational (W59-4, the F5 class). */}
       {notice !== null && <Banner variant={notice.tone}>{notice.text}</Banner>}
       <StageIndicator stage={app.stage} />
       <div className={styles.detailGrid}>
@@ -208,17 +208,15 @@ export function ApplicationDetailDrawer({
         <Kv label="Rate">{app.rate_pct}% (product-set)</Kv>
         <Kv label="Security cover">{coverPill(app.cover_pct)}</Kv>
         <Kv label="Max eligible">
-          {app.max_eligible !== null && app.max_eligible !== undefined
-            ? fmtKes(app.max_eligible)
-            : "—"}
+          {app.max_eligible !== null ? fmtKes(app.max_eligible) : "—"}
         </Kv>
         <Kv label="Purpose">{app.purpose ?? "—"}</Kv>
         <Kv label="Stage">{stagePill(app.stage)}</Kv>
         <Kv label="Created by">
-          {/* Initiator attribution (issue #30 / !66 follow-up): the
+          {/* Initiator attribution (/ follow-up): the
               SERVER's bare staff UUID, short-id convention — least
-              disclosure (FM-D): no name/email is ever fetched for it.
-              NULL renders the honest unattributed affordance (FM-B):
+              disclosure: no name/email is ever fetched for it.
+              NULL renders the honest unattributed affordance:
               an actor is never invented. */}
           {app.created_by !== null ? (
             <span className={styles.mono} title={app.created_by}>
@@ -229,10 +227,10 @@ export function ApplicationDetailDrawer({
           )}
         </Kv>
         <Kv label="Recommended by">
-          {/* Recommender attribution (issue #30 close-out, 0037): the
+          {/* Recommender attribution (close-out, 0037): the
               SERVER's bare staff UUID, short-id convention — least
-              disclosure (FM-D): no name/email is ever fetched for it.
-              NULL renders the honest affordance (FM-B): not yet
+              disclosure: no name/email is ever fetched for it.
+              NULL renders the honest affordance: not yet
               referred to committee, or unattributed history — an actor
               is never invented. */}
           {app.recommended_by !== null ? (
@@ -245,7 +243,7 @@ export function ApplicationDetailDrawer({
         </Kv>
         <Kv label="Record version">{app.version}</Kv>
       </div>
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={transition.error} onReload={reloadRecord} />
       {transition.isError && !conflict && <ErrorBanner error={transition.error} />}
       {mayEdit && (

@@ -2,10 +2,10 @@
 
 Claiming happens in a short transaction touching ONLY outbox rows and is
 committed before any provider call, so dispatch never holds domain row
-locks (gate 1.4). Providers are called through adapters that are
-idempotent by event id (gate 1.2).
+locks (concurrency safety). Providers are called through adapters that are
+idempotent by event id (reliability).
 
-P13.17(e) / DSA-6 hardening (no observable delivery-semantics change):
+(e) / DSA-6 hardening (no observable delivery-semantics change):
 
 * the claimed batch is leased with ONE set-based UPDATE instead of one
   UPDATE per row — same rows (exactly the SKIP LOCKED claim, still
@@ -13,13 +13,13 @@ P13.17(e) / DSA-6 hardening (no observable delivery-semantics change):
   still committed BEFORE any provider call;
 * dispatched rows are delivery receipts, not an archive: purge_dispatched
   deletes them once older than DISPATCHED_RETENTION_DAYS, in bounded
-  batches through the shared batch runner (v1.1 rule 8) so the purge
+  batches through the shared batch runner so the purge
   never holds a long transaction. Pending rows are undone work and dead
   rows are the alertable dead-letter queue — neither is EVER purged;
 * run_dispatch_cycle discovers due tenants with one registry query
   (outbox_due_tenant_ids(), migration 0024 — the 0003 SECURITY DEFINER
   pattern) instead of sweeping every active tenant each interval, with
-  the !37 per-tenant error isolation on the walk.
+  the per-tenant error isolation on the walk.
 """
 
 from __future__ import annotations
@@ -47,13 +47,13 @@ MAX_ATTEMPTS = 8
 BASE_BACKOFF_SECONDS = 30
 CLAIM_LEASE_SECONDS = 300
 #: DSA-6 retention window for dispatched rows. Config-owned exactly like
-#: MAX_ATTEMPTS above (v1.1 rule 1): a module constant, never
+#: MAX_ATTEMPTS above: a module constant, never
 #: caller-supplied — changing retention policy is a reviewed code change.
 #: Applies ONLY to status = 'dispatched'; pending and dead rows are
 #: exempt by status, not by age.
 DISPATCHED_RETENTION_DAYS = 30
 #: Purge batch bound: each DELETE removes at most this many rows inside
-#: its own short transaction (gate 1.3 — no long transactions).
+#: its own short transaction (scalability — no long transactions).
 PURGE_BATCH_SIZE = 500
 #: run_worker interleaves a purge cycle on this slower cadence: the
 #: retention window is measured in days, so hourly is ample and the
@@ -185,7 +185,7 @@ async def purge_dispatched(
 ) -> int:
     """Delete dispatched rows older than the retention window (DSA-6).
 
-    Bounded batches through the shared batch runner (v1.1 rule 8): each
+    Bounded batches through the shared batch runner: each
     DELETE claims at most batch_size rows via a FOR UPDATE SKIP LOCKED
     driving subquery (served by idx_outbox_dispatched_purge, migration
     0024) inside its OWN short transaction, so the purge never holds a
@@ -194,9 +194,9 @@ async def purge_dispatched(
 
     ONLY status = 'dispatched' rows are eligible. Pending rows are
     undone work and dead rows are the alertable dead-letter queue — the
-    status predicate, not age, is the guard (P13.17 FM5). The purge
+    status predicate, not age, is the guard. The purge
     touches outbox_events rows only: the outbox stays a single-node
-    locker (lock-order.md §3).
+    locker (lock-order.md).
     """
 
     async def _purge_batch(
@@ -225,7 +225,7 @@ async def purge_dispatched(
 async def outbox_metrics(
     factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID
 ) -> OutboxMetrics:
-    """Lag and failure metrics; P21 wires these into exporters and alerts."""
+    """Lag and failure metrics; wires these into exporters and alerts."""
     async with tenant_session(factory, tenant_id) as session:
         row = (
             await session.execute(
@@ -295,11 +295,11 @@ async def run_dispatch_cycle(
 ) -> int:
     """One pass over the tenants that actually have due work (DSA-6).
 
-    Per-tenant isolation for unexpected failures (the !37 dormancy-cycle
-    pattern, preserved on the due-tenant walk): one tenant's dispatch
+    Per-tenant isolation for unexpected failures (the dormancy-cycle pattern, preserved on the
+    due-tenant walk): one tenant's dispatch
     error is logged with its stack trace and the cycle keeps walking —
     the failed tenant's events stay pending (or leased) and are retried
-    next cycle. Never a silent pass (gate 1.2).
+    next cycle. Never a silent pass (reliability).
     """
     delivered = 0
     for tenant_id in await list_due_tenants(factory):

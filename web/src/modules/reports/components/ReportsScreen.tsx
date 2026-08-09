@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Reports & exports screen (P15 module 8 — prototype `vRep`, adapted
- * to the P13 contract).
+ * Reports & exports screen (module 8 — prototype `vRep`, adapted to the contract).
  *
  * WHAT THE CONTRACT EXPOSES (and therefore what exists here): the
  * export workflow ONLY — request an export by `ReportName`, check its
@@ -11,7 +10,7 @@
  * report-COMPUTING endpoint: the prototype's on-screen tables are NOT
  * reproduced from client-side queries (that would require exactly the
  * client-computed figures blocker (a) forbids). The on-screen view
- * (P15 batch 5, U2 — ViewExportDrawer) instead renders the SERVER's
+ * (ViewExportDrawer) instead renders the SERVER's
  * OWN rendered CSV artifact verbatim through the existing download
  * route — zero contract change; downloads stay canonical. There is
  * still NO export list endpoint (the session panel below shows only
@@ -24,7 +23,7 @@
  *   through React text interpolation — no parser sink exists in this
  *   module (gate-tested).
  * - The route mounts under deny-by-default RequireModule("reports");
- *   the API enforces reports:view on every call regardless (gate 1.6).
+ *   the API enforces reports:view on every call regardless (least disclosure).
  * - Downloads ride the GENERATED client + the shared downloadExport
  *   helper: bearer/tenant as HEADERS; the capability token is the
  *   contract's own path parameter; failures are least-disclosure.
@@ -54,7 +53,7 @@ import {
 } from "../schemas";
 import styles from "./Reports.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load
+// Drawer-level code splitting (speed): drawer chunks load
 // on first open, not with the route.
 const RequestExportDrawer = dynamic(
   () => import("./RequestExportDrawer").then((m) => m.RequestExportDrawer),
@@ -121,7 +120,7 @@ function statusPill(status: string) {
 }
 
 /** One witnessed export row: requester-only refresh, the on-screen
- * view (U2 — the prototype's "look at it now" job) + downloads. */
+ * view (the prototype's "look at it now" job) + downloads. */
 function ExportRow({
   record,
   onView,
@@ -149,10 +148,10 @@ function ExportRow({
   });
 
   const artifact = record.artifact;
-  // F-R1: the filename is built ONLY from sanitized parts — the stem is
+  // the filename is built ONLY from sanitized parts — the stem is
   // the recognised report enum value (or a fixed fallback; never the raw
   // server string), the date part is shape-checked (the boundary already
-  // asserts it, F-R4 — this keeps the SINK safe by construction), and
+  // asserts it, — this keeps the SINK safe by construction), and
   // the extension is appended last and fixed.
   const stem = exportFilenameStem(record.report);
   const asOfSlice = record.as_of.slice(0, 10);

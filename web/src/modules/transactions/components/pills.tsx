@@ -11,8 +11,8 @@ import {
  * Transaction type + direction pills (prototype `vTxn` colors, keyed on
  * the SERVER-reported direction — the client never re-derives which
  * side a type posts on). One copy for the register and the detail
- * drawer (gate 1.1). Never color alone: the pill text carries the
- * meaning (issue #8).
+ * drawer (reuse-first). Never color alone: the pill text carries the
+ * meaning.
  */
 export function txnTypePill(type: TxnType, direction: Side): ReactNode {
   if (direction === "debit") {

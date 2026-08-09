@@ -1,25 +1,25 @@
-"""Tenant settings management + consumer read path (P13.7, gates 1.1-1.6).
+"""Tenant settings management + consumer read path (the house gates).
 
 Generalises the 0009/0010 tenant_settings row into the prototype
 Settings screens' backend. Settings ARE the money parameters (rates,
 fees, quorums, authority ceilings), so this module is the SINGLE
-legitimate writer (gate 1.6 v1.1 rule 1): the API layer rejects
+legitimate writer (least disclosure): the API layer rejects
 unknown fields (extra="forbid" -> 422) and this service re-checks every
 key against the code-owned registry (genesis/domain/tenant_config.py)
 — a caller can never invent a setting, and every accepted key has a
 declared type, unit, bounds (DB CHECK, migration 0017) and consumer
 list.
 
-Concurrency (gate 1.4): one settings row per tenant (PK tenant_id).
+Concurrency (concurrency safety): one settings row per tenant (PK tenant_id).
 Writes are optimistic-locked single-row, single-statement transactions:
   * first-time configuration claims the row atomically with
-    INSERT ... ON CONFLICT DO NOTHING checked by rowcount (v1.1 rule 5;
+    INSERT... ON CONFLICT DO NOTHING checked by rowcount (
     version 0 means "no row yet"),
-  * subsequent edits UPDATE ... WHERE version = :ver and surface 409 on
+  * subsequent edits UPDATE... WHERE version =:ver and surface 409 on
     a stale version (exactly one of two concurrent writers wins).
-No SELECT ... FOR UPDATE is taken anywhere in this module, so no lock-
-ordering cycle with the P12 settlement chain (member -> accounts ->
-loans) or the P13.5 admin-set chain is possible: consumers read the
+No SELECT... FOR UPDATE is taken anywhere in this module, so no lock-
+ordering cycle with the settlement chain (member -> accounts ->
+loans) or the admin-set chain is possible: consumers read the
 settings row with plain MVCC snapshot reads while already holding
 their own domain locks.
 
@@ -28,16 +28,16 @@ before any consumer acts on it (defence against manual SQL edits — the
 0017 DB CHECK can only pin the JSON top-level type). Corrupted stored
 bands fail CLOSED for CONSUMERS: the money path gets a 409 conflict,
 never a silently skipped guard. The settings VIEWER (GET /settings)
-instead degrades per-key (review R3): a corrupt key is returned as
+instead degrades per-key: a corrupt key is returned as
 null and surfaced by NAME ONLY in ``corrupt_keys`` (never the corrupt
 payload — least disclosure), keeping ``version`` readable so an
 operator can repair the key via PUT instead of guessing versions
 blind.
 
 Every read AND write carries an explicit bound tenant_id predicate on
-top of forced RLS (v1.1 rule 4); every mutation writes its audit row
-in-transaction with the exact before/after figures (gate 1.5; least-
-disclosure errors carry only a category to the caller, gate 1.6).
+top of forced RLS; every mutation writes its audit row
+in-transaction with the exact before/after figures (data integrity; least- disclosure errors carry
+only a category to the caller, least disclosure).
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ from genesis.domain.tenant_config import (
 )
 from genesis.errors import ConflictError, ForbiddenError, InvalidInputError
 
-#: Code-owned column order for the settings row (v1.1 rule 6: these
+#: Code-owned column order for the settings row (these
 #: identifiers come from the registry, never from caller input).
 _SETTING_KEYS: tuple[str, ...] = tuple(SETTINGS_REGISTRY)
 
@@ -93,7 +93,7 @@ class TenantSettingsRecord:
     ``version`` 0 means the tenant has no settings row yet; a first
     write must claim it with version=0. ``None`` values mean "not
     configured": consumers fall back to their code-owned defaults.
-    ``corrupt_keys`` names (by key only, review R3) stored band values
+    ``corrupt_keys`` names (by key only) stored band values
     that failed read-side revalidation and were degraded to None in
     this VIEW — consumers of those keys keep failing closed.
     """
@@ -124,11 +124,11 @@ class TenantSettingsRecord:
 
 
 def settings_row_sql() -> str:
-    """The settings-row lookup (single PK probe, gate 1.3).
+    """The settings-row lookup (single PK probe, scalability).
 
     Column identifiers come from the code-owned registry, never caller
-    input (v1.1 rule 6); the tenant predicate is explicit on top of
-    forced RLS (v1.1 rule 4). Exported so the EXPLAIN capture
+    input; the tenant predicate is explicit on top of
+    forced RLS. Exported so the EXPLAIN capture
     (tests/test_p137_explain.py) asserts against the production SQL.
     """
     columns = ", ".join(_SETTING_KEYS)
@@ -138,9 +138,9 @@ def settings_row_sql() -> str:
     )
 
 
-#: Consumer reads (P9/P12 quorum, P9 authority bands): single-column PK
+#: Consumer reads (P9/ quorum, P9 authority bands): single-column PK
 #: probes, exported for the EXPLAIN capture. Explicit tenant predicate
-#: on top of forced RLS (v1.1 rule 4).
+#: on top of forced RLS.
 COMMITTEE_QUORUM_SQL = (
     "SELECT committee_quorum FROM tenant_settings WHERE tenant_id = CAST(:tid AS uuid)"
 )
@@ -168,7 +168,7 @@ def _revalidated_bands(key: str, value: object) -> tuple[Any, ...] | None:
         return _BAND_VALIDATORS[key](value)
     except BandConfigError as exc:
         # Least disclosure: the caller sees a 409 category; the exact
-        # defect stays in this internal message (gate 1.6).
+        # defect stays in this internal message (least disclosure).
         raise ConflictError(f"stored {key} failed revalidation: {exc}") from exc
 
 
@@ -194,7 +194,7 @@ def _record_from_raw(raw: dict[str, object] | None) -> TenantSettingsRecord:
         try:
             return _BAND_VALIDATORS[key](value)
         except BandConfigError:
-            # Viewer-side degradation (review R3): the settings VIEW
+            # Viewer-side degradation: the settings VIEW
             # names the corrupt key (never its payload) so an operator
             # can repair via PUT with the version this read returns.
             # Consumers keep failing CLOSED via _revalidated_bands.
@@ -235,7 +235,7 @@ async def get_settings(session: AsyncSession, tenant_id: uuid.UUID) -> TenantSet
 
     Stored band JSON is revalidated here too. A corrupted value never
     flows onward: it is degraded to None in this VIEW and named in
-    corrupt_keys (review R3) so the operator keeps a readable version
+    corrupt_keys so the operator keeps a readable version
     for the repair PUT, while every consumer of the key keeps failing
     closed (409) via _revalidated_bands.
     """
@@ -282,12 +282,12 @@ async def update_settings(
     version: int,
     changes: dict[str, object],
 ) -> TenantSettingsRecord:
-    """Optimistic-locked partial update of the settings row (gate 1.4).
+    """Optimistic-locked partial update of the settings row (concurrency safety).
 
     ``changes`` maps registry keys to new values (None clears a key).
-    version=0 claims a not-yet-existing row atomically (v1.1 rule 5);
+    version=0 claims a not-yet-existing row atomically;
     version>=1 edits the existing row, 409 on stale. Every mutation
-    writes an audit row with the exact before/after figures (gate 1.5).
+    writes an audit row with the exact before/after figures (data integrity).
     """
     unknown = sorted(set(changes) - set(_SETTING_KEYS))
     if unknown:
@@ -310,7 +310,7 @@ async def update_settings(
         params.get("committee_size", current["committee_size"] if current else None),
     )
     _check_quorum_size(merged_quorum, merged_size)
-    changed_keys = sorted(changes)  # code-owned registry keys (v1.1 rule 6)
+    changed_keys = sorted(changes)  # code-owned registry keys
 
     if version == 0:
         if current is not None:
@@ -333,7 +333,7 @@ async def update_settings(
             ).first()
         except IntegrityError as exc:
             # A DB CHECK refused a bound the API validation also pins;
-            # surfaced as a validation category (gate 1.6).
+            # surfaced as a validation category (least disclosure).
             raise InvalidInputError("settings value outside its permitted bounds") from exc
         if claimed is None:
             raise ConflictError(f"settings were configured concurrently for tenant {tenant_id}")
@@ -390,10 +390,10 @@ async def committee_quorum(session: AsyncSession, tenant_id: uuid.UUID) -> int:
 
     Falls back to the code-owned COMMITTEE_QUORUM constant when the
     tenant has no settings row or has not configured a quorum
-    (BUILD_PROMPTS P13.7: current constants as fallback defaults).
+    (the build plan: current constants as fallback defaults).
     Callers invoke this inside their own transaction while holding the
     application/exit row lock, so an in-flight vote binds to the config
-    committed at its own snapshot point (v1.1 rule 3) — a later config
+    committed at its own snapshot point — a later config
     change applies to later votes only, never retroactively.
     """
     row = (await session.execute(text(COMMITTEE_QUORUM_SQL), {"tid": str(tenant_id)})).first()
@@ -428,13 +428,13 @@ async def enforce_authority_band(
     Callers MUST already hold the application row lock: the matrix is
     then read from the current committed config at the transition's own
     snapshot point, so a config change mid-workflow governs future
-    transitions only, never retroactively (v1.1 rule 3). The actor's
+    transitions only, never retroactively. The actor's
     role is resolved server-side from the users table inside this
-    transaction — never from the JWT alone (the P13.5 F1/F2 precedent).
+    transaction — never from the JWT alone (the F1/precedent).
     A configured matrix caps EVERY role: roles not listed fail closed
-    at the FIRST band's ceiling (review R2 — misconfiguration degrades
+    at the FIRST band's ceiling (misconfiguration degrades
     safely, never uncaps); the P4 RBAC matrix remains the primary
-    gate. Only a tenant with NO matrix configured keeps the pre-P13.7
+    gate. Only a tenant with NO matrix configured keeps the pre-
     uncapped behaviour (fallback default).
     """
     bands = await approval_bands_config(session, tenant_id)
@@ -452,12 +452,12 @@ async def enforce_authority_band(
     ).first()
     if row is None:
         # Fail closed: an actor the users table cannot vouch for has no
-        # ratification authority (least disclosure, gate 1.6).
+        # ratification authority (least disclosure, least disclosure).
         raise ForbiddenError(f"actor {actor_id} has no resolvable role for authority check")
     role_name = str(row[0])
     if not authority_may_ratify(role_name, amount, bands):
         # Least disclosure: no figures echoed; the audit rows of the
-        # surrounding workflow carry the exact amounts (gate 1.6).
+        # surrounding workflow carry the exact amounts (least disclosure).
         raise ForbiddenError(
             f"role '{role_name}' may not ratify this amount under the approval matrix"
         )

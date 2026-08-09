@@ -2,13 +2,13 @@ import { z } from "zod";
 import type { components } from "@genesis/api-client";
 
 /**
- * Zod-validated response boundary for the tenant-settings API (P15,
- * Settings module — P13.7 backend). Shapes mirror the generated client
+ * Zod-validated response boundary for the tenant-settings API (the
+ * Settings module backend). Shapes mirror the generated client
  * types (components["schemas"]["SettingsOut"]); the drift-checked
  * OpenAPI snapshot remains the contract; these schemas only assert it
  * at runtime.
  *
- * MONEY RULE (P15 blocker (a)): every rate/amount travels as an API
+ * MONEY RULE (no client-side money math): every rate/amount travels as an API
  * decimal STRING, renders verbatim and is SUBMITTED as a string — the
  * client never coerces, compares or computes money values. Ordering /
  * contiguity of bands is enforced by the server (422 with field
@@ -56,7 +56,7 @@ export const settingsSchema = z.object({
   configured: z.boolean(),
   version: z.number().int(),
   /** Names of stored keys that failed read-side revalidation — NAMES
-   * only, never the corrupt payload (least disclosure, P13.7 R3). */
+   * only, never the corrupt payload (least disclosure). */
   corrupt_keys: z.array(z.string()),
   deposit_interest_annual_rate_pct: z.string().nullable(),
   dividend_rate_pct: z.string().nullable(),

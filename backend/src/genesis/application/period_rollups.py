@@ -1,4 +1,4 @@
-"""Closed-period rollups: per-account totals + member balances (P13.17b).
+"""Closed-period rollups: per-account totals + member balances (.17b).
 
 DSA-2/DSA-5 remediation (docs/DSA_HARDENING.md) without changing any
 observable money semantics:
@@ -12,18 +12,17 @@ observable money semantics:
     trial balance becomes: SUM(rollups of rolled periods) + live
     aggregate over every posting NOT covered by a rolled period
     (TRIAL_BALANCE_ROLLUP_SQL). Equality with the full scan to the
-    cent is the FM2 merge gate (tests/test_p1317_period_rollups.py).
+    cent is the merge gate (tests/test_p1317_period_rollups.py).
 
   * member_period_balances stores each active member's
     ledger-reconstructed signed balance at the period end; the
     member-statement opening balance anchors on the latest rolled
     period before the window (MEMBER_ANCHOR_SQL) and scans only the
     delta since — the DSA-5 replacement. The signed direction comes
-    from the P11 single source of truth (domain.ledger.member_direction)
+    from the single source of truth (domain.ledger.member_direction)
     applied to the SAME grouped-movement statement the statement
-    opening always ran (member_movement_sql generalises
-    reports.member_statement_opening_sql byte-identically for its
-    original configurations — no dual-maintained math, gate 1.1).
+    opening always ran (member_movement_sql generalises reports.member_statement_opening_sql
+    byte-identically for its original configurations — no dual-maintained math, reuse-first).
 
   * completeness marker: accounting_periods.rollup_at is set in the
     SAME transaction that writes a period's rows. Readers trust ONLY
@@ -34,7 +33,7 @@ observable money semantics:
     409, never self-healed) before it.
 
 Concurrency: the backfill claims one period per short transaction with
-FOR UPDATE SKIP LOCKED (shared batch runner, v1.1 rule 8) — a re-run
+FOR UPDATE SKIP LOCKED (shared batch runner) — a re-run
 scans zero rows and locks nothing; rollup writes claim atomically via
 ON CONFLICT (rule 5). Every read and write carries an explicit bound
 tenant_id predicate on top of forced RLS (rule 4); all values are
@@ -75,10 +74,10 @@ __all__ = [
 def account_activity_sql(*, with_from: bool, with_to: bool) -> str:
     """Per-account, per-side ledger activity, optionally period-scoped.
 
-    Moved VERBATIM from application/reports.py in P13.17(b): the single
+    Moved VERBATIM from application/reports.py in (b): the single
     aggregate behind the income statement, the SASRA return AND the
     per-account period rollups written at close_period — one statement,
-    never dual-maintained (gate 1.1). Bounded by the chart-of-accounts
+    never dual-maintained (reuse-first). Bounded by the chart-of-accounts
     cardinality, served by idx_ledger_txn + the transactions primary
     key (the trial-balance shape). Static fragments chosen in code;
     all values are bound parameters.
@@ -101,11 +100,10 @@ def account_activity_sql(*, with_from: bool, with_to: bool) -> str:
 
 
 def member_movement_sql(*, with_from: bool, with_start: bool) -> str:
-    """Grouped member movement by (type, is_reversal) (P11 shape).
+    """Grouped member movement by (type, is_reversal) (shape).
 
-    The generalisation of reports.member_statement_opening_sql (which
-    now delegates here — for with_start=False the emitted SQL is
-    byte-identical to the P13 original): the optional lower bound
+    The generalisation of reports.member_statement_opening_sql (which now delegates here — for
+    with_start=False the emitted SQL is byte-identical to the original): the optional lower bound
     serves the anchored delta scans of the DSA-5 opening balance and
     the rollup writer. The signed direction is applied in Python via
     member_direction (single source of truth); the DR/CR convention is
@@ -138,9 +136,9 @@ def signed_member_movement(rows: list[Any]) -> Decimal:
     return total
 
 
-#: Latest ROLLED period strictly before :before, per member — the
+#: Latest ROLLED period strictly before:before, per member — the
 #: DSA-5 opening anchor. Served by idx_member_period_balances_anchor
-#: (0028; ships with this query, gate 1.3). Only rolled periods
+#: (0028; ships with this query, scalability). Only rolled periods
 #: qualify (rollup_at set): an unrolled or fabricated-pre-backfill row
 #: is never trusted.
 MEMBER_ANCHOR_SQL = """
@@ -157,24 +155,24 @@ LIMIT 1
 
 #: Trial balance = rolled closed periods + live remainder (DSA-2). The
 #: rolled CTE trusts only periods whose completeness marker is set AND
-#: that are FULLY COVERED by :as_of — a rolled period participates as
-#: a rollup only when (:as_of AT TIME ZONE 'UTC')::date > period_end
-#: (strictly greater: an intra-day :as_of on the period-end day means
+#: that are FULLY COVERED by:as_of — a rolled period participates as
+#: a rollup only when (as_of AT TIME ZONE 'UTC'):date > period_end
+#: (strictly greater: an intra-day:as_of on the period-end day means
 #: the day is only partially covered, so the whole period falls
-#: through to the live scan, which caps at :as_of exactly). The live
+#: through to the live scan, which caps at:as_of exactly). The live
 #: CTE excludes exactly the SAME as_of-qualified periods' calendar
 #: days (the 0012 trigger's UTC-date convention) — the qualifier is
-#: applied SYMMETRICALLY in both CTEs, so every posting <= :as_of is
-#: counted exactly once for ANY historical :as_of, not just "now"
-#: (review !49 B1: an unqualified rolled CTE summed every rolled
+#: applied SYMMETRICALLY in both CTEs, so every posting <=:as_of is
+#: counted exactly once for ANY historical:as_of, not just "now"
+#: (an unqualified rolled CTE summed every rolled
 #: period's full totals unconditionally, overstating both sides of a
-#: historical trial balance while still balancing — the FM2 class).
+#: historical trial balance while still balancing — the class).
 #: The boundary is exact against the writer's exclusive d_to_excl
 #: bound: rollups cover occurred_at < UTC midnight of period_end + 1,
 #: and the date qualifier admits a period exactly from that midnight.
 #: Equality with the full scan (reports.TRIAL_BALANCE_SQL, kept as
-#: the oracle) at historical, boundary and current :as_of instants is
-#: the FM2 merge gate.
+#: the oracle) at historical, boundary and current:as_of instants is
+#: the merge gate.
 TRIAL_BALANCE_ROLLUP_SQL = """
 WITH rolled AS (
     SELECT b.account,
@@ -230,7 +228,7 @@ _EXISTING_MEMBER_ROWS_SQL = (
 )
 
 #: Backfill claim: oldest closed-but-unrolled period, one per short
-#: transaction, skipping rows a concurrent runner holds (v1.1 rule 8).
+#: transaction, skipping rows a concurrent runner holds.
 #: Served by the UNIQUE (tenant_id, period_start) index (0012).
 ROLLUP_BACKFILL_SCAN_SQL = (
     "SELECT id, period_start, period_end FROM accounting_periods "
@@ -259,7 +257,7 @@ async def member_balance_before(
     have produced a later anchor row (the writer covers every active
     member of a rolled period), so the delta scan over
     [anchor end + 1 day, before) misses nothing and double-counts
-    nothing. Without an anchor this is exactly the P13 full-history
+    nothing. Without an anchor this is exactly the full-history
     opening scan. Both paths additionally cap at `as_of` (the export
     snapshot instant); anchor content always predates as_of because
     only fully elapsed months can be closed.
@@ -309,15 +307,15 @@ async def write_period_rollups(
     period_end: date,
     source: str,
 ) -> PeriodRollupCounts:
-    """Write one closed period's rollups + completeness marker (FM2).
+    """Write one closed period's rollups + completeness marker.
 
     Runs inside the caller's transaction (close_period, or one backfill
     batch holding the period row FOR UPDATE). Statement order is a
-    correctness invariant (review !49 N3b), pinned by
+    correctness invariant, pinned by
     tests/test_p1317_period_rollups.py:
 
       1. INSERT the rollup rows for BOTH tables (ON CONFLICT DO
-         NOTHING claims, v1.1 rule 5);
+         NOTHING claims);
       2. set accounting_periods.rollup_at — THE SERIALISATION POINT:
          the marker UPDATE takes FOR NO KEY UPDATE on the period row,
          which conflicts with the FOR SHARE the 0028 late-insert
@@ -451,7 +449,7 @@ async def write_period_rollups(
             "from the ledger reconstruction; investigate before proceeding"
         )
     # One audit row per period; exact figures live in the write-once
-    # rollup tables themselves (v1.1 rule 7).
+    # rollup tables themselves.
     await record_audit(
         session,
         tenant_id,
@@ -488,8 +486,8 @@ async def run_rollup_backfill_for_tenant(
     One period per short transaction through the shared batch runner;
     the claim is the period row itself, FOR UPDATE SKIP LOCKED (v1.1
     rule 8) — concurrent runners take disjoint periods, and a re-run
-    scans zero rows, locks nothing and writes nothing (side-effect
-    counts, FM2). Nothing here is caller-suppliable: the worklist is
+    scans zero rows, locks nothing and writes nothing (side-effect counts). Nothing here is
+    caller-suppliable: the worklist is
     the rollup_at IS NULL set (rule 1).
     """
 

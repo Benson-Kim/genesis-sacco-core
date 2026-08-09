@@ -1,11 +1,11 @@
-"""Export rendering worker: drains export queues per tenant (P13).
+"""Export rendering worker: drains export queues per tenant.
 
 Deployment counterpart of the outbox dispatcher: a long-running loop
 that walks the active tenants (SECURITY DEFINER registry, 0003) and
 renders each tenant's pending export jobs. Rendering itself lives in
 genesis.application.exports.run_export_job — one REPEATABLE READ
-transaction per job (P13 blockers h, i); this module only composes
-sessions, matching the batch-runner injection pattern (gate 1.1).
+transaction per job (blockers h, i); this module only composes
+sessions, matching the batch-runner injection pattern (reuse-first).
 
 Request handlers never import this module (import-linter contract):
 the API enqueues jobs and, for operations, drives the same application

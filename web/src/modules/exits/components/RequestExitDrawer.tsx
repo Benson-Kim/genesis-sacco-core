@@ -1,16 +1,12 @@
 "use client";
 
 /**
- * Request-exit drawer (P15 module 7 — prototype member-exit intake,
- * adapted to the P12 contract): `POST /member-exits` (members:edit)
+ * Request-exit drawer (module 7 — prototype member-exit intake, adapted to the contract): `POST /member-exits` (members:edit)
  * snapshots the settlement (shares + deposits − loan balance −
  * tenant-configured fees) under the member row lock for committee
  * approval.
  *
- * - NO money field exists anywhere in this form (P12: the exit fee
- *   comes exclusively from tenant configuration; every settlement
- *   figure is computed server-side under locks; `extra="forbid"`
- *   server-side) — only the member and an optional reason travel.
+ * - NO money field exists anywhere in this form (the exit fee comes exclusively from tenant configuration; every settlement figure is computed server-side under locks; `extra="forbid"` server-side) — only the member and an optional reason travel.
  * - FRESH MEMBER READ before arming (record class, staleTime 0;
  *   pattern (e)): the confirmation only arms once the member record
  *   has been read fresh — an already-exited member is withdrawn
@@ -18,8 +14,7 @@
  * - EXACTLY ONE write per intent: ConfirmDangerModal typed phrase (the
  *   member number), pending short-circuit + disabled controls,
  *   `retry: 0`, one Idempotency-Key per logical intent. Key material
- *   folds in the fresh member VERSION, a post-409 reload epoch (!60
- *   F3/W59-2) and a per-success intent counter (W59-3/T2): stable
+ *   folds in the fresh member VERSION, a post-409 reload epoch (F3/W59-2) and a per-success intent counter (W59-3/T2): stable
  *   across pure retries, rotated when the member/reason, the reloaded
  *   record version, an acknowledged conflict OR a recorded success
  *   changes the intent.
@@ -27,7 +22,7 @@
  *   is not netted, active guarantees block the exit, or the member
  *   moved underneath) renders the shared ConflictBanner's explicit
  *   reload-and-re-enter flow: reload refetches the member and the
- *   register with an INFORMATIONAL notice + announce() (!60 F5); the
+ *   register with an INFORMATIONAL notice + announce(); the
  *   failed request is NEVER replayed.
  * - The result panel renders the SERVER's snapshot figures VERBATIM
  *   (blocker (a)) — including a possibly NEGATIVE net payable (the
@@ -63,7 +58,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
   const [confirmEntry, setConfirmEntry] = useState<ExitRequestEntry | null>(null);
   const [result, setResult] = useState<ExitRecord | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload, so a re-entered identical
   // request after a 409 is a NEW intent with a NEW key — never a
   // replay served from the backend idempotency store's pinned outcome.
@@ -74,7 +69,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
   const [intentSeq, setIntentSeq] = useState(0);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
-  // Member picker: the keyset contract (gate 1.3) — pages of 20 with an
+  // Member picker: the keyset contract (scalability) — pages of 20 with an
   // explicit "load more". No status filter: exits of arrears or dormant
   // members are legitimate governance flows (Dormant→Exited goes through
   // this workflow); the server enforces eligibility regardless.
@@ -94,7 +89,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
   });
   const freshMember = memberDetail.data;
 
-  // ADVISORY eligibility checklist (P15 batch 5, U6 — the prototype's
+  // ADVISORY eligibility checklist (the prototype's
   // vExit() criteria rows), read fresh (record class, staleTime 0) the
   // moment a member is chosen and rendered BEFORE submission. Counts
   // and booleans only — the contract carries NO amount. The read is
@@ -107,7 +102,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
     staleTime: STALE_TIME.record,
   });
   const facts = eligibility.data;
-  // SELF-GATING (gate 1.6, the memberExited pattern): when the fresh
+  // SELF-GATING (least disclosure, the memberExited pattern): when the fresh
   // advisory read reports blockers, the submit affordance is withheld —
   // the server enforces the same blockers under locks regardless. A
   // FAILED advisory read never gates: it is advisory only, and the
@@ -168,11 +163,11 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
   const spent = result !== null;
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the member (their loans,
+    // Explicit reload flow: refetch the member (their loans,
     // guarantees or exit slot moved underneath) and the register; the
     // failed request is structurally WITHDRAWN — re-entering it is a
-    // NEW operator intent whose key rotates via the reload epoch (!60
-    // F3). NOTHING is replayed.
+    // NEW operator intent whose key rotates via the reload epoch.
+    // NOTHING is replayed.
     void queryClient.refetchQueries({ queryKey: ["members", "detail", memberId] });
     void queryClient.refetchQueries({ queryKey: ["exits", "eligibility", memberId] });
     void queryClient.invalidateQueries({ queryKey: ["exits", "list"] });
@@ -213,7 +208,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
     Object.keys(serverErrors).length > 0;
 
   // Structural withdrawal: an exited member cannot exit again — the
-  // affordance is not offered (gate 1.6; the server rejects regardless).
+  // affordance is not offered (least disclosure; the server rejects regardless).
   const memberExited = freshMember !== undefined && freshMember.status === "exited";
 
   return (
@@ -227,7 +222,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
     >
       {notice !== "" && <Banner>{notice}</Banner>}
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={create.error} onReload={reloadAfterConflict} />
       {conflict && (
         <div className={styles.formNote}>
@@ -338,7 +333,7 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
             </div>
           )}
           {facts !== undefined && (
-            // U6: the prototype's vExit() criteria rows — SERVER facts
+            // the prototype's vExit() criteria rows — SERVER facts
             // rendered VERBATIM (counts and booleans only; the contract
             // carries NO amount). advisory_eligible is the server's own
             // conjunction — never re-derived from the rows here.

@@ -1,7 +1,7 @@
-"""Dividends & share lifecycle endpoints (P13.11, gate 1.6).
+"""Dividends & share lifecycle endpoints (least disclosure).
 
 Every route carries a RequirePermission dependency (deny-by-default);
-mutations are idempotent via the Idempotency-Key middleware (gate 1.4).
+mutations are idempotent via the Idempotency-Key middleware (concurrency safety).
 
 Permission gates (P4 matrix, decided and documented):
 
@@ -15,28 +15,26 @@ Permission gates (P4 matrix, decided and documented):
     Role-level separation of duties is not available (the matrix
     grants edit and approve to overlapping roles), so the compensating
     controls are user-level and server-side: the declaring user can
-    never VOTE on nor DISTRIBUTE their own declaration (403, the P12
-    precedent), and the decision needs the configured quorum (P9
+    never VOTE on nor DISTRIBUTE their own declaration (403, the precedent), and the decision needs
+    the configured quorum (P9
     machinery).
   * view / list — transactions x VIEW.
   * share transfer request / approval / rejection — members x
-    APPROVE: it moves member equity, the P12 settlement-posting
+    APPROVE: it moves member equity, the settlement-posting
     precedent (deliberately not members:edit, which covers non-money
-    lifecycle changes). TWO-PHASE maker-checker since issue #31
-    ledger (l) (MR !83, the !77 human-review HIGH finding): the
+    lifecycle changes). TWO-PHASE maker-checker since
+     (the human-review HIGH finding): the
     request creates a PENDING transfer bound to a persisted snapshot;
     a DISTINCT, non-assurance checker approves or rejects (server-side
     SoD + the 0040 DB CHECK). Same-permission different-principal is
-    the house posture (the P12/0031 precedent: the P4 matrix grants
-    overlapping role permissions, so separation is per USER,
-    server-side).
-  * share-transfer register / by-id read — members x VIEW (issue #31
-    ledger (m); the house read-split: corrections registers sit under
-    corrections:view while their mutations need create/approve).
+    the house posture (the /0031 precedent: the P4 matrix grants overlapping role permissions, so
+    separation is per USER, server-side).
+  * share-transfer register / by-id read — members x VIEW (the house read-split: corrections
+  registers sit under corrections:view while their mutations need create/approve).
     Least disclosure: bare UUIDs and verbatim decimal strings — the
     request-time balance snapshot is deliberately NOT serialised.
 
-Money parameters NEVER travel in request bodies (v1.1 rule 1): rates
+Money parameters NEVER travel in request bodies: rates
 and the financial-year period are resolved server-side from tenant
 configuration and the persisted approval snapshot; extra="forbid"
 turns a caller-supplied rate, period or total into a 422. The share
@@ -82,7 +80,7 @@ MembersApproveCtx = Annotated[AuthContext, Depends(_members_approve)]
 
 class DeclareBody(BaseModel):
     """Only the batch size is caller-tunable: rates and the financial
-    year come exclusively from tenant configuration (v1.1 rule 1) —
+    year come exclusively from tenant configuration —
     extra="forbid" rejects any attempt to supply them (422)."""
 
     model_config = ConfigDict(extra="forbid")
@@ -104,7 +102,8 @@ class DeclarationVoidBody(BaseModel):
 
 class DistributeBody(BaseModel):
     """No money fields, ever: every figure derives from the persisted
-    approval snapshot; extra="forbid" -> 422 (v1.1 rule 1)."""
+
+    approval snapshot; extra="forbid" -> 422."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -122,7 +121,8 @@ class ShareTransferBody(BaseModel):
 
 
 class ShareTransferApproveBody(BaseModel):
-    """NO money fields, ever (v1.1 rule 1): every figure derives from
+    """NO money fields, ever: every figure derives from
+
     the persisted pending transfer; extra="forbid" -> 422."""
 
     model_config = ConfigDict(extra="forbid")
@@ -130,7 +130,8 @@ class ShareTransferApproveBody(BaseModel):
 
 class ShareTransferRejectBody(BaseModel):
     """Version-pinned rejection with the MANDATORY checker rationale
-    (the !52 F2 posture); workflow metadata only, never money."""
+
+    (the F2 posture); workflow metadata only, never money."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -151,11 +152,11 @@ class DeclarationOut(BaseModel):
     total_rebate: str
     total_payout: str
     status: str
-    #: Declarer attribution (issue #31 ledger (a).4 — the human-
+    #: Declarer attribution (the human-
     #: authorized read-contract expansion): the EXISTING 0020 column
     #: that already drives the server's declarer-cannot-vote/distribute
     #: 403s, exposed as the bare staff UUID under least disclosure (the
-    #: !66/!70 exits precedent — resolving it stays behind
+    #: / exits precedent — resolving it stays behind
     #: access_control). Nullable, never invented: a NULL (system-actor
     #: declaration) serialises as an honest null.
     requested_by: str | None
@@ -183,7 +184,7 @@ class DistributionRunOut(BaseModel):
     skipped_zero: int
     skipped_claimed: int
     #: Mid-run-exited members disposed as unclaimed by this run
-    #: (issue #19 P3); exact figures live in the audit rows.
+    #: (P3); exact figures live in the audit rows.
     unclaimed: int
     dividend_total: str
     rebate_total: str
@@ -205,10 +206,9 @@ class ShareTransferOut(BaseModel):
 
 
 class ShareTransferRecordOut(BaseModel):
-    """The workflow record (issue #31 (l)/(m)): the register row and
-    the request/rejection responses. Least disclosure: bare UUIDs (the
-    !66/!70 precedent — resolving them stays behind the entitled
-    modules), the amount as the verbatim decimal string, and NO
+    """The workflow record: the register row and
+    the request/rejection responses. Least disclosure: bare UUIDs (the / precedent — resolving them
+    stays behind the entitled modules), the amount as the verbatim decimal string, and NO
     request-time balance snapshot (the approval re-verifies it
     server-side; the audit rows carry the exact figures). Maker and
     checker attribution are nullable-never-optional server truth: a
@@ -373,7 +373,7 @@ async def distribute(
 async def request_share_transfer(
     member_id: uuid.UUID, body: ShareTransferBody, ctx: MembersApproveCtx
 ) -> ShareTransferRecordOut:
-    """MAKER phase (issue #31 (l)): create a PENDING transfer bound to
+    """MAKER phase ((l)): create a PENDING transfer bound to
     the persisted approval snapshot — NO money moves until a distinct
     checker approves."""
     factory = get_sessionmaker(get_settings().database_url)
@@ -395,7 +395,7 @@ async def list_share_transfers(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ShareTransferListOut:
-    """The share-transfer history register (issue #31 ledger (m)):
+    """The share-transfer history register:
     keyset, PENDING FIRST then newest first — the checker's job order
     (the 0038 band pattern). Served under members:view (the house
     read-split); explicit tenant predicate doubling RLS; bound
@@ -423,7 +423,7 @@ async def get_share_transfer(transfer_id: uuid.UUID, ctx: MembersViewCtx) -> Sha
 async def approve_share_transfer(
     transfer_id: uuid.UUID, body: ShareTransferApproveBody, ctx: MembersApproveCtx
 ) -> ShareTransferOut:
-    """CHECKER phase (issue #31 (l)): a DISTINCT, non-assurance
+    """CHECKER phase ((l)): a DISTINCT, non-assurance
     principal re-verifies the snapshot under the full lock set (409 on
     drift, posting nothing), then posts BOTH ledger legs, updates both
     balances and notifies BOTH members via the outbox — atomically."""
@@ -447,7 +447,7 @@ async def reject_share_transfer(
     transfer_id: uuid.UUID, body: ShareTransferRejectBody, ctx: MembersApproveCtx
 ) -> ShareTransferRecordOut:
     """Reject a pending transfer (checker decision, optimistic-locked)
-    — the checker's rationale is REQUIRED (!52 F2) and recorded in the
+    — the checker's rationale is REQUIRED and recorded in the
     audit row, never echoed."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:

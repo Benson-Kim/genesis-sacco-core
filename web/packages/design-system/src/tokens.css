@@ -1,6 +1,6 @@
 /*
  * Design tokens as CSS custom properties — names and values are VERBATIM
- * from the prototype :root block (genesis_prestige_app.html). Kept in sync
+ * from the prototype:root block (genesis_prestige_app.html). Kept in sync
  * with tokens.ts by the design-system test suite.
  */
 :root {

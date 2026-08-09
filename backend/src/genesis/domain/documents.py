@@ -1,8 +1,8 @@
-"""Pure document rendering for exports: CSV and PDF (P13, gates 1.3, 1.6).
+"""Pure document rendering for exports: CSV and PDF (the house gates).
 
 Zero I/O — no imports from application, infrastructure, or api layers.
 
-CSV formula-injection defence (P13 blocker b): any TEXT cell whose
+CSV formula-injection defence (blocker b): any TEXT cell whose
 value begins with ``=``, ``+``, ``-`` or ``@`` — including tab/CR/LF
 prefixed variants used to smuggle those characters past naive checks —
 is prefixed with a single quote so spreadsheet applications treat it
@@ -14,7 +14,7 @@ emitted canonically and never corrupted by the prefix.
 
 The PDF renderer is a deliberately minimal, dependency-free PDF 1.4
 writer (Helvetica text pages). Adding a rendering library would need an
-ADR (MASTER_PROMPT section 6); the report documents are tabular text,
+ADR (the house doctrine section 6); the report documents are tabular text,
 which this covers without a new supply-chain surface. PDF text strings
 are escaped per the PDF string grammar, so cell content can never break
 out of its content stream.
@@ -67,7 +67,7 @@ class CsvBuilder:
     """Incremental CSV assembly, one batch of rows at a time.
 
     add_rows is pure CPU and is called by the export engine off the
-    event loop (gate 1.3); state is sequential per export job.
+    event loop (scalability); state is sequential per export job.
     """
 
     def __init__(self, headers: tuple[str, ...]) -> None:
@@ -101,7 +101,7 @@ _MAX_LINE_CHARS = 150
 
 
 def _pdf_escape(value: str) -> str:
-    """Escape a string for a PDF literal string ((), \\ and non-latin-1)."""
+    """Escape a string for a PDF literal string (\\ and non-latin-1)."""
     encoded = value.encode("latin-1", errors="replace").decode("latin-1")
     return encoded.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
 
@@ -140,17 +140,15 @@ class PdfBuilder:
     The page model is line-oriented, so each batch is folded into its
     formatted LINES immediately and the raw Cell tuples are released
     with the batch — the export engine no longer accumulates rows for
-    the PDF (P13.17d: the third in-memory copy is gone; what remains
-    is one string per rendered line, the same order of memory as the
-    CSV buffer). Page streams are assembled at finish(), because the
+    the PDF (.17d: the third in-memory copy is gone; what remains is one string per rendered line,
+    the same order of memory as the CSV buffer). Page streams are assembled at finish(), because the
     per-page meta line (row count / truncation) is only known once the
     engine has observed the final batch.
 
     add_rows is pure CPU and is called by the export engine off the
-    event loop (gate 1.3); state is sequential per export job.
+    event loop (scalability); state is sequential per export job.
     Batching is invisible in the output: any split of the same rows
-    yields byte-identical PDFs (the FM4 equality gate,
-    tests/test_p1317_pdf_incremental.py).
+    yields byte-identical PDFs (the equality gate, tests/test_p1317_pdf_incremental.py).
     """
 
     def __init__(self, headers: tuple[str, ...]) -> None:
@@ -182,7 +180,7 @@ def render_pdf(
     """Render a tabular report as a paginated text PDF (pure CPU).
 
     One-shot convenience over PdfBuilder — the single source of truth
-    for the page model (gate 1.1): a one-shot render IS an incremental
+    for the page model (reuse-first): a one-shot render IS an incremental
     render fed one batch.
     """
     builder = PdfBuilder(headers)

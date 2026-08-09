@@ -1,5 +1,5 @@
 /**
- * KYC wizard/edit form assembly (issue #31 batch 3): flat form values
+ * KYC wizard/edit form assembly: flat form values
  * to the nested wire payload and back, driven ENTIRELY by the specs in
  * kycSchemas.ts (one source of truth — the form cannot drift from the
  * boundary schema).
@@ -13,7 +13,7 @@
  * verbatim; integer fields (member count, vehicle year, passenger
  * capacity — none of them money) are converted with Number() only when
  * they are all digits; the informational monthly-income string stays a
- * STRING end-to-end (P15 blocker (a) posture in kycSchemas.ts).
+ * STRING end-to-end (the money rule posture in kycSchemas.ts).
  */
 import type { ZodError } from "zod";
 import type { FieldErrors } from "@/modules/forms/form-errors";
@@ -87,9 +87,7 @@ export function validateProfilePayload(
 }
 
 /**
- * Extract one section's object from a SERVER profile payload (one
- * copy for the edit-form flattening AND the read-only rendering —
- * gate 1.1). A one-item signatory list maps back to the single
+ * Extract one section's object from a SERVER profile payload (one copy for the edit-form flattening AND the read-only rendering — reuse-first). A one-item signatory list maps back to the single
  * section; anything absent reads as an empty object.
  */
 export function sectionData(

@@ -6,10 +6,9 @@ import { operatorMessage } from "@/lib/errors";
 import styles from "./ErrorBanner.module.css";
 
 /**
- * Shared least-disclosure error banner (salvaged from the P13.5 frontend
- * branch @ 198a238): sanitized per-status title, the correlation id, and
+ * Shared least-disclosure error banner (salvaged from the frontend branch @ 198a238): sanitized per-status title, the correlation id, and
  * 422 field-level messages from the toApiError parser — never figures,
- * balances or server internals (gate 1.6). Everything renders as React
+ * balances or server internals (least disclosure). Everything renders as React
  * text nodes, so attacker-influenced field names/messages stay inert.
  */
 export function ErrorBanner({ error }: Readonly<{ error: unknown }>) {

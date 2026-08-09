@@ -1,18 +1,15 @@
 "use client";
 
 /**
- * Maker-checker approval panel (P15 Phase B security primitive — one
- * copy, gate 1.1, for every module with an approval step: applications,
- * committee, transactions, member exit…).
+ * Maker-checker approval panel (security primitive — one copy, reuse-first, for every module with an approval step: applications, committee, transactions, member exit…).
  *
- * STRUCTURAL self-approval impossibility (the P13.15 maker-checker
- * posture, UX side): the checker affordances are passed in as
+ * STRUCTURAL self-approval impossibility (the maker-checker posture, UX side): the checker affordances are passed in as
  * `checkerActions`, and this panel MOUNTS THEM ONLY when the signed-in
  * user is a DIFFERENT, KNOWN principal from the maker:
- *   - own id unknown (no session claim)  => deny by default, no actions;
- *   - own id === maker id                => SoD banner, no actions.
+ *   - own id unknown (no session claim) => deny by default, no actions;
+ *   - own id === maker id => SoD banner, no actions.
  * There is no prop to override this — a screen cannot even offer
- * self-approval by mistake. The server enforces regardless (gate 1.6);
+ * self-approval by mistake. The server enforces regardless (least disclosure);
  * this panel exists so the UI never offers what the API forbids.
  *
  * Maker identity fields are attacker-influenced data and render as React

@@ -3,7 +3,7 @@
 /**
  * Server-computed installment schedule, rendered VERBATIM (blocker
  * (a)). One copy shared by the loan detail drawer and the disbursement
- * result panel (gate 1.1).
+ * result panel (reuse-first).
  */
 import { fmtKes } from "@/lib/format";
 import type { ScheduleRow } from "../schemas";

@@ -442,7 +442,7 @@ async function openWizard(user: ReturnType<typeof userEvent.setup>) {
   mountScreen();
   const drawer = await openKycDrawer(user);
   await user.click(await within(drawer).findByRole("button", { name: "Start KYC wizard" }));
-  return await screen.findByRole("dialog", { name: `KYC registration — ${MEMBER.name}` });
+  return await screen.findByRole("dialog", { name: `New member registration — ${MEMBER.name}` });
 }
 
 test("wizard: a blank required field blocks Continue with an inline error — NO request leaves", async () => {

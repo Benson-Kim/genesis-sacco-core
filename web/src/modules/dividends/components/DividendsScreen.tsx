@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Dividends register (issue #31 batch 2 — the P13.11 lifecycle
- * console): the declaration workflow's read surface plus entry points
+ * Dividends register (the lifecycle console): the declaration workflow's read surface plus entry points
  * for the lifecycle writes (declare → committee votes → void /
  * distribute).
  *
@@ -12,12 +11,11 @@
  *   text interpolation — no parser sink exists in this module
  *   (gate-tested).
  * - UI affordances follow the P4 matrix via /me/permissions — pure UX;
- *   the server enforces every call (gate 1.6). "Declare dividend"
- *   mounts only with transactions:edit (the P13.11 gate decision: the
- *   route itself is transactions:view via RequireModule); vote/void/
+ *   the server enforces every call (least disclosure). "Declare dividend"
+ *   mounts only with transactions:edit (the gate decision: the route itself is transactions:view via RequireModule); vote/void/
  *   distribute affordances mount in the drawers only with
  *   transactions:approve.
- * - Keyset pagination only (opaque cursors — gate 1.3); the P13.11
+ * - Keyset pagination only (opaque cursors — scalability); the
  *   list contract declares NO filters — none are offered and nothing
  *   is filtered locally.
  * - MONEY (blocker (a)): every declaration figure (bases, dividend,
@@ -39,7 +37,7 @@ import type { DeclarationRecord } from "../schemas";
 import { declarationStatusPill } from "./pills";
 import styles from "./Dividends.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): drawer chunks load
+// Drawer-level code splitting (speed): drawer chunks load
 // on first open, not with the list route.
 const DeclareDividendDrawer = dynamic(
   () => import("./DeclareDividendDrawer").then((m) => m.DeclareDividendDrawer),
@@ -69,7 +67,7 @@ export function DividendsScreen() {
     fetchPage: (cursor) => fetchDeclarationsPage(cursor),
   });
 
-  // Declaring is back-office ledger governance (the P13.11 gate
+  // Declaring is back-office ledger governance (the gate
   // decision: transactions:edit — deliberately not transactions:create,
   // which would let counter tellers open tenant-wide payout workflows).
   const mayDeclare = can(permissions.data, "transactions", "edit");
@@ -85,7 +83,7 @@ export function DividendsScreen() {
     {
       key: "declared_by",
       header: "Declared by",
-      // Declarer attribution (issue #31 ledger (a).4): the SERVER's
+      // Declarer attribution: the SERVER's
       // bare staff UUID via the short-id convention — least
       // disclosure, no name/email is ever fetched for it. NULL is the
       // honest unattributed affordance — never invented.
@@ -164,7 +162,7 @@ export function DividendsScreen() {
           Rates and the financial year come exclusively from tenant
           configuration (Settings ▸ Deposits &amp; shares); every figure below
           is a server-computed snapshot. Dormant members remain shareholders
-          and are included in every declaration (issue #19 policy).
+          and are included in every declaration.
         </div>
         <div className={styles.toolbarActions}>
           {mayDeclare && (

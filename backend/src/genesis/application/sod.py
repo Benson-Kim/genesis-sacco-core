@@ -1,16 +1,15 @@
-"""Shared maker-checker segregation-of-duties guard (gate 1.1).
+"""Shared maker-checker segregation-of-duties guard (reuse-first).
 
-ONE copy of the issue-#24 N1 checker check, hoisted from
+ONE copy of the checker-separation check, hoisted from
 application/corrections.py when the share-transfer maker-checker
-workflow (issue #31 ledger (l), MR !83) became its second consumer —
+workflow became its second consumer —
 the two workflows must never diverge on the rule:
 
   * the checker must be a DIFFERENT user than the maker (the
     collusion-resistant DB CHECK — 0031 ck_repayment_adjustments_sod /
     0040 ck_share_transfers_sod — is the backstop behind this guard);
-  * the checker must not hold an assurance function (the !47 B2
-    principle: the Auditor reviews the workflow trail and therefore
-    can never act inside it). The role name is resolved SERVER-SIDE
+  * the checker must not hold an assurance function (the B2 principle: the Auditor reviews the
+  workflow trail and therefore can never act inside it). The role name is resolved SERVER-SIDE
     from the actor's role_id (users -> roles join), never from the JWT
     or a client-supplied flag;
   * an actor the users table cannot vouch for checks NOTHING (fail

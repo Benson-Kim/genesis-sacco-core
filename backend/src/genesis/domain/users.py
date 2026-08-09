@@ -1,4 +1,4 @@
-"""System-user domain: status machine (P13.5, gate 1.4).
+"""System-user domain: status machine (concurrency safety).
 
 Zero I/O. Mirrors the prototype Access-control Users tab statuses:
 Active <-> Suspended, enforced by a single transition function so every
@@ -17,7 +17,7 @@ class UserStatus(enum.StrEnum):
 
 
 class InvalidUserStatusTransitionError(Exception):
-    """Raised when a user status transition is not allowed (gate 1.4)."""
+    """Raised when a user status transition is not allowed (concurrency safety)."""
 
 
 _ALLOWED: dict[UserStatus, frozenset[UserStatus]] = {
@@ -27,7 +27,7 @@ _ALLOWED: dict[UserStatus, frozenset[UserStatus]] = {
 
 
 def transition(current: UserStatus, target: UserStatus) -> UserStatus:
-    """Validate a status transition; raise on any illegal move (gate 1.4).
+    """Validate a status transition; raise on any illegal move (concurrency safety).
 
     Self-transitions (active->active, suspended->suspended) are illegal:
     a no-op status write would still bump the version and emit audit and

@@ -1,4 +1,4 @@
-"""per-account and per-member period rollups (P13.17b / DSA-2, DSA-5)
+"""per-account and per-member period rollups (.17b / DSA-2, DSA-5)
 
 Revision ID: 0028
 Revises: 0027
@@ -7,7 +7,7 @@ Create Date: 2026-08-02
 Claimed as 0028 with down_revision 0027 (this MR's own (a) claim; the
 chain is 0026 <- 0027 <- 0028 <- 0029, declared up front per v1.2 rule
 14 — one number per separable item). Expand-only objects backing
-P13.17(b):
+(b):
 
   * accounting_periods.rollup_at — the rollup COMPLETENESS marker: set
     in the same transaction that writes the period's rollup rows (at
@@ -24,20 +24,20 @@ P13.17(b):
     closed period, so these totals are immutable facts the moment the
     close commits: trial balance = SUM(rollups of rolled periods) +
     live aggregate over everything else — provably equal to the full
-    scan (the FM2 equality gate, tests/test_p1317_period_rollups.py).
+    scan (the equality gate, tests/test_p1317_period_rollups.py).
 
   * member_period_balances — the member's ledger-reconstructed running
     balance at the period end (DSA-5), written only for members with
     activity in the period. Statement opening balance = latest rolled
     anchor + the delta since — same figures as the full history scan
-    (FM2), computed via the SAME grouped-movement statement +
-    member_direction single source of truth (v1.1 rule 2 is untouched:
+    computed via the SAME grouped-movement statement +
+    member_direction single source of truth (is untouched:
     these are per-PERIOD facts derived from the append-only record,
     frozen by the 0012 trigger — not the point-in-time mutable-balance
     snapshots that rule forbids as an interest basis).
 
-  * Insider hardening, all DB-level (FM2 — a drifted rollup that
-    reports a balanced book is worse than no rollup):
+  * Insider hardening, all DB-level (a drifted rollup that reports a balanced book is worse than no
+  rollup):
       - WRITE-ONCE triggers: UPDATE/DELETE refused on both tables for
         every trigger-subject role, including direct SQL through the
         app role (0020 precedent);
@@ -45,9 +45,8 @@ P13.17(b):
         into either rollup table for that period is refused — a
         fabricated extra account/member row after completion is
         unrepresentable; the fence's period probe is a LOCKING read
-        (SELECT .. FOR SHARE, review !49 N3 — FOR SHARE conflicts with
-        the marker UPDATE's FOR NO KEY UPDATE where the review's
-        FOR KEY SHARE would not), so an in-flight INSERT and the
+        (SELECT.. FOR SHARE, — FOR SHARE conflicts with the marker UPDATE's FOR NO KEY UPDATE where
+        the review's FOR KEY SHARE would not), so an in-flight INSERT and the
         marker UPDATE serialise instead of racing through an MVCC
         window; before completion, a fabricated row is excluded from
         every read (marker not set) and collides with the writer's
@@ -56,8 +55,8 @@ P13.17(b):
         a rollup row for a period that was never closed is
         unrepresentable;
       - composite FK (tenant_id, member_id) -> members (tenant_id, id)
-        (review !49 N2; the 0014 uq_transactions_tenant_id_id
-        precedent): RI checks bypass RLS, so a plain REFERENCES
+        (the 0014 uq_transactions_tenant_id_id precedent): RI checks bypass RLS, so a plain
+        REFERENCES
         members(id) made a row pairing tenant A's tenant_id with
         tenant B's member_id representable at the DB level - the
         composite target closes it; the backing UNIQUE on
@@ -74,7 +73,7 @@ ADD COLUMN (nullable, no default) takes ACCESS EXCLUSIVE on
 accounting_periods briefly — no rewrite; CREATE TRIGGER on
 accounting_periods takes SHARE ROW EXCLUSIVE; ALTER TABLE members ADD
 CONSTRAINT UNIQUE takes ACCESS EXCLUSIVE on members while its index
-builds (N2). All block concurrent period reads/postings (respectively
+builds. All block concurrent period reads/postings (respectively
 member reads) for the duration — within this project's accepted
 maintenance-window migration model. New tables lock nothing in use.
 

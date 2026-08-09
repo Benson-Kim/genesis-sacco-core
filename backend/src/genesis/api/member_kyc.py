@@ -1,4 +1,4 @@
-"""Member KYC endpoints: profiles & document checklist (P13.12, gate 1.6).
+"""Member KYC endpoints: profiles & document checklist (least disclosure).
 
 Every route carries a RequirePermission dependency against the P4
 matrix (deny-by-default; the spec-walk test covers them structurally):
@@ -6,19 +6,19 @@ profile/document creation under members:create (they are registration
 wizard steps), reads under members:view — KYC fields are PII and leave
 the server ONLY through these gated responses — and edits under
 members:edit. Mutations are idempotent via the Idempotency-Key
-middleware (gate 1.4); request bodies reject unknown fields
+middleware (concurrency safety); request bodies reject unknown fields
 (extra="forbid").
 
 The profile payload arrives as an opaque object and is validated
 SERVER-SIDE against the member row's type (the type is never
 caller-supplied); a wrong-type or malformed payload surfaces as 422
 with the sanitized category only — submitted KYC values are never
-echoed (gate 1.6).
+echoed (least disclosure).
 
 Document uploads are deliberately absent: binary content is deferred
 behind the storage decision recorded in ADR-0003; these routes manage
 the checklist metadata (type, status, expiry). Every checklist read is
-audited in-transaction (P13 blocker f precedent).
+audited in-transaction (blocker f precedent).
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ class DocumentCreateBody(BaseModel):
 
 class DocumentUpdateBody(BaseModel):
     """Omitted fields keep their stored values. expires_at follows
-    exclude-unset semantics (review K2): omitted keeps the current
+    exclude-unset semantics: omitted keeps the current
     expiry, an EXPLICIT null clears a wrongly-entered date."""
 
     model_config = ConfigDict(extra="forbid")
@@ -163,7 +163,7 @@ async def create_profile(
 
 @router.get("/{member_id}/profile")
 async def get_profile(member_id: uuid.UUID, ctx: ViewCtx) -> ProfileOut:
-    """Profile read; every access writes an audit row (review K1)."""
+    """Profile read; every access writes an audit row."""
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         record = await kyc_service.read_profile(session, ctx.tenant_id, ctx.user_id, member_id)
@@ -245,7 +245,7 @@ async def update_document(
             document_id,
             version=body.version,
             status=body.status,
-            # Omitted vs explicit null (review K2): only a field the
+            # Omitted vs explicit null: only a field the
             # caller actually sent reaches the service.
             expires_at=(
                 body.expires_at if "expires_at" in body.model_fields_set else kyc_service.UNSET

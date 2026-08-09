@@ -1,7 +1,7 @@
-"""Deposit interest domain: quarter periods and accrual math (P11).
+"""Deposit interest domain: quarter periods and accrual math.
 
 Pure functions only — no I/O. Money rounding comes from
-genesis.domain.money (gate 1.1: reuse-first). The quarterly job accrues
+genesis.domain.money (reuse-first). The quarterly job accrues
 simple interest on the account balance for the last completed calendar
 quarter: amount = balance * annual_rate_pct / 100 / 4, rounded to cents
 per account before any summation (cent-exact aggregates).

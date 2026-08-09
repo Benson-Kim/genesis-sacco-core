@@ -1,9 +1,7 @@
 "use client";
 
 /**
- * Share-transfers console (issue #31 batch 10, ledger (l)/(m) — the
- * !77 human-authorized maker-checker rework of the batch-6 (e)
- * console). Consumes EXACTLY the reworked contract:
+ * Share-transfers console (the human-authorized maker-checker rework of the (e) console). Consumes EXACTLY the reworked contract:
  *
  * - MAKER phase `POST /members/{member_id}/share-transfers`
  *   (members:approve): creates a PENDING workflow record bound to the
@@ -17,7 +15,7 @@
  * Security posture (the corrections precedent):
  * - Route guard is members:view (RequireModule); the request form
  *   mounts ONLY with members:approve — pure UX; the server enforces
- *   every call (gate 1.6, deny by default). Checker affordances live
+ *   every call (least disclosure, deny by default). Checker affordances live
  *   in the drawer behind MakerCheckerPanel (structural SoD withhold).
  * - MONEY (blocker (a)): the amount is the operation's SUBJECT — the
  *   typed decimal STRING end-to-end, never a float. Every rendered
@@ -76,11 +74,11 @@ export function ShareTransfersScreen() {
   const [requested, setRequested] = useState<ShareTransferRecord | null>(null);
   const [openTransferId, setOpenTransferId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3): bumped on
+  // Freshness component for the idempotency key: bumped on
   // every explicit post-conflict reload — a re-entered identical
   // request after a 409 is a NEW intent with a NEW key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
-  // Per-success intent counter (the T2 lesson): a SECOND request of
+  // Per-success intent counter (the lesson): a SECOND request of
   // the same amount between the same members is legitimate and is a
   // NEW intent — never served the first request's stored response.
   const [intentSeq, setIntentSeq] = useState(0);
@@ -175,7 +173,7 @@ export function ShareTransfersScreen() {
     {
       key: "maker",
       header: "Maker",
-      // Bare staff UUID under least disclosure (!70 short-id render);
+      // Bare staff UUID under least disclosure (short-id render);
       // a NULL maker is honest pre-workflow history, never invented.
       render: (row) =>
         row.created_by !== null ? (
@@ -194,7 +192,7 @@ export function ShareTransfersScreen() {
   ];
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): the conflicted attempt recorded
+    // Explicit reload flow: the conflicted attempt recorded
     // NOTHING (server-verified under the full lock set); the operator
     // re-checks the member's shares and re-enters. The stale intent is
     // NEVER replayed: its key rotates via the epoch.
@@ -237,13 +235,13 @@ export function ShareTransfersScreen() {
         <Card className={grid.wide}>
           <div className={styles.cardTitle}>Share transfers — maker-checker</div>
           <div className={styles.cardBody}>
-            Moving share capital between members takes FOUR EYES (issue #31
-            (l), human-authorized): a maker requests and the system freezes
+            Moving share capital between members takes FOUR EYES
+            (human-authorized): a maker requests and the system freezes
             the giver&apos;s balance; a DIFFERENT checker approves from the
             register below — the server re-verifies the frozen snapshot
             under the full lock set and refuses if anything moved, posting
             nothing. Both members are notified when a transfer posts. The
-            register lists unfinished business first (issue #31 (m)); every
+            register lists unfinished business first; every
             figure is the server&apos;s, verbatim.
           </div>
         </Card>
@@ -252,7 +250,7 @@ export function ShareTransfersScreen() {
       <Card>
         {notice !== "" && <Banner>{notice}</Banner>}
 
-        {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+        {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
         <ConflictBanner error={request.error} onReload={reloadAfterConflict} />
         {request.isError && !conflict && !renderedInline && (
           <ErrorBanner error={request.error} />

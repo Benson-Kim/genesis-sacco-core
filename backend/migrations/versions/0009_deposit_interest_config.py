@@ -1,4 +1,4 @@
-"""deposit-interest configuration + full accrual-scan index (P11 review)
+"""deposit-interest configuration + full accrual-scan index (review)
 
 Revision ID: 0009
 Revises: 0008
@@ -23,7 +23,7 @@ Additive only (expand phase):
 
 No index is needed for the GET /transactions ref filter: the 0001
 UNIQUE (tenant_id, txn_ref) constraint on transactions already backs
-`txn_ref = :ref` lookups (review finding 12 verified, not added).
+`txn_ref =:ref` lookups (review finding 12 verified, not added).
 """
 
 from alembic import op

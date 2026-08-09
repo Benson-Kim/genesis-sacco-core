@@ -1,4 +1,4 @@
-"""reports & exports: export jobs, artifacts, report-query indexes (P13)
+"""reports & exports: export jobs, artifacts, report-query indexes
 
 Revision ID: 0013
 Revises: 0012
@@ -8,26 +8,26 @@ Additive only (expand phase):
 
   * exports — one row per requested export job. The scope (report,
     filters, column allow-list, as-of instant) is resolved and frozen
-    SERVER-SIDE at request time (P13 blocker a/e): the worker renders
+    SERVER-SIDE at request time (blocker a/e): the worker renders
     exactly what the requesting user was entitled to see at that
     moment, never what a later caller asks for. status is the claim
     the job runner takes FOR UPDATE SKIP LOCKED inside its single
     rendering transaction, so an aborted job rolls back to
-    'requested' with zero partial state (P13 blocker i).
+    'requested' with zero partial state (blocker i).
 
   * export_artifacts — the rendered CSV + PDF for one export.
     UNIQUE (export_id) makes "exactly one artifact per export" a
-    DATABASE invariant, so the idempotency proof (P13 blocker g) is
+    DATABASE invariant, so the idempotency proof (blocker g) is
     enforced, not just tested. Download tokens are independent random
-    values (never enumerable ids, P13 blocker e) with their own UNIQUE
+    values (never enumerable ids, blocker e) with their own UNIQUE
     indexes serving the download lookup; expires_at bounds the
     download window.
 
-  * idx_exports_requested — the job runner's claim scan (partial:
-    only unprocessed rows, gate 1.3).
+  * idx_exports_requested — the job runner's claim scan (partial: only unprocessed rows,
+  scalability).
   * idx_txns_type_occurred — disbursement & collections report:
-    keyset pages over (tenant, type, occurred_at, id) (gate 1.3,
-    shipped with the query that needs it).
+    keyset pages over (tenant, type, occurred_at, id) (scalability, shipped with the query that
+    needs it).
   * idx_loans_disbursed — NPL-trend monthly reconstruction scans
     loans by disbursement date (partial: only disbursed loans).
 

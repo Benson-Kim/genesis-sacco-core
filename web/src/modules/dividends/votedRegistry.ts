@@ -12,13 +12,13 @@
  *
  * Scope and honesty: per-tab, in-memory — it cannot know votes cast by
  * another operator or in another tab; for those the server's 409
- * remains the enforcer (gate 1.6). Session-scoped per W58-2:
+ * remains the enforcer (least disclosure). Session-scoped per W58-2:
  * registered below, so both teardown paths clear it and the next
  * operator's tab never inherits a previous operator's spent votes.
  *
- * RESOLVED (issue #30 finding S3): the S3 disposition assigned the
- * `createSessionScopedRegistry` consolidation to the first #31 batch
- * landing after both in-flight batches — batch 3 delivered it; this
+ * RESOLVED: the S3 disposition assigned the
+ * `createSessionScopedRegistry` consolidation to the first batch
+ * landing after both in-flight batches — delivered it; this
  * wrapper now consumes the shared primitive.
  *
  * Storage: the shared createSessionScopedRegistry primitive — teardown

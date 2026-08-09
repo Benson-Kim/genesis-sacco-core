@@ -1,17 +1,17 @@
 "use client";
 
 /**
- * Dormancy worklist (#31 ledger (f)) — the console surface for the
- * P13.13 dormancy state.
+ * Dormancy worklist — the console surface for the
+ *  dormancy state.
  *
- * DISCOVERY HONESTY (recorded on #31): the EXISTING member register
+ * DISCOVERY HONESTY (recorded on): the EXISTING member register
  * contract already serves this worklist truthfully — `GET
  * /members?status=dormant` is the P8 status filter over the SERVER's
  * dormancy verdicts (the nightly job derives inactivity from the
  * ledger under row locks). NO contract change was needed and none was
  * made; no per-member "last activity" fact exists on the as-built
  * read contract, so none is rendered and activity is NEVER derived
- * client-side (v1.1 rule 2 honesty over decoration).
+ * client-side (honesty over decoration).
  *
  * - The worklist is the FLAT register read (identity facts; the
  *   aggregates expand is deliberately not opted into — a dormancy
@@ -19,10 +19,9 @@
  *   structurally).
  * - `POST /members/jobs/dormancy` (members:edit — the job rewrites
  *   member status rows) surfaces behind a typed confirmation with
- *   verbatim result counts (the batch-4 backfill precedent); the
- *   affordance is NOT rendered without the grant (pure UX — the
- *   server enforces regardless, gate 1.6).
- * - Keyset pagination only (opaque cursors — gate 1.3); every
+ *   verbatim result counts (the backfill precedent); the
+ *   affordance is NOT rendered without the grant (pure UX — the server enforces regardless, least disclosure).
+ * - Keyset pagination only (opaque cursors — scalability); every
  *   rendered string is attacker-influenced data rendered exclusively
  *   through React text interpolation.
  */
@@ -38,7 +37,7 @@ import { fetchMembersPage, type MemberListFilters } from "../api";
 import { STATUS_LABELS, type Member } from "../schemas";
 import styles from "./Members.module.css";
 
-// Drawer-level code splitting (P15 Phase B speed): the dialog chunk
+// Drawer-level code splitting (speed): the dialog chunk
 // loads on first open, not with the worklist route.
 const DormancyRunDialog = dynamic(
     () => import("./DormancyRunDialog").then((m) => m.DormancyRunDialog),

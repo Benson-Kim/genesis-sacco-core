@@ -1,8 +1,8 @@
 /*
- * Accounting-periods module styles (issue #31 batch 4). Tokens only
- * (gate 1.1); page-level GRIDS come from the shared
+ * Accounting-periods module styles. Tokens only
+ * (reuse-first); page-level GRIDS come from the shared
  * modules/layout/grid.module.css — no private page grid lives here
- * (P15 blocker (f)).
+ * (blocker (f)).
  */
 
 .toolbar {
@@ -97,7 +97,7 @@
     margin-bottom: 8px;
 }
 
-/* A5 period-context note: close-state next to the figures operators
+/* Period-context note: close-state next to the figures operators
  * read (transactions register, reports). Informational styling only —
  * never success/error semantics. */
 .contextNote {

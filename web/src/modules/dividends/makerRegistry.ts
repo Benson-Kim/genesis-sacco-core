@@ -1,13 +1,11 @@
 /**
- * Per-tab dividend-declarer registry (issue #31 batch 2 — separation
- * of duties, UX side; the exits/applications makerRegistry precedent).
+ * Per-tab dividend-declarer registry (separation of duties, UX side; the exits/applications makerRegistry precedent).
  *
- * DEMOTED TO A FALLBACK (issue #31 ledger (a).4 — the human-authorized
- * read-contract expansion): DeclarationOut now exposes `requested_by`
+ * DEMOTED TO A FALLBACK (the human-authorized read-contract expansion): DeclarationOut now exposes `requested_by`
  * (the migration-0020 column the server's declarer-cannot-vote /
  * declarer-cannot-distribute 403s already enforce) as the bare
  * nullable staff UUID — SERVER TRUTH, and it SUPERSEDES this per-tab
- * witness everywhere (the exits !66/0036 precedent). This registry is
+ * witness everywhere (the exits /0036 precedent). This registry is
  * consulted ONLY when the server record is unattributed
  * (requested_by === null — e.g. a system-actor declaration): for
  * those rows the tab's own witness is still honest signal; nothing is
@@ -18,13 +16,13 @@
  * for those the maker is UNKNOWN (a distinct sentinel that never
  * equals a real user id, so MakerCheckerPanel's self-check simply
  * cannot match). The ENFORCED invariants are server-side regardless
- * (gate 1.6): both self-acts 403 on the persisted requested_by, and
+ * (least disclosure): both self-acts 403 on the persisted requested_by, and
  * the decision needs the configured quorum (the P9 machinery).
  *
- * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
+ * Storage: the shared createSessionScopedRegistry
  * primitive — teardown on BOTH session-death paths (the query-path 401
  * dual-cache teardown and explicit sign-out) is wired by construction
- * (W58-2, the !60 F2 class). This wrapper keeps the module's exported
+ * (W58-2, the F2 class). This wrapper keeps the module's exported
  * vocabulary byte-compatible.
  */
 import { createSessionScopedRegistry } from "@/modules/auth/createSessionScopedRegistry";

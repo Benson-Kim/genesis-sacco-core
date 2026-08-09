@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * Recovery-receipt dialog (P15 batch 1 — the issue-#21 money-in path
- * against a POSTED write-off's surviving claim): `POST
+ * Recovery-receipt dialog (the issue- money-in path against a POSTED write-off's surviving claim): `POST
  * /corrections/write-offs/{id}/recoveries` (corrections:create, RC-
  * ref) — never a resurrection of the loan.
  *
  * - The dialog fetches the write-off FRESH (record class, staleTime 0)
  *   and offers the action ONLY while the status is `posted` — the UI
- *   never offers what the API forbids (gate 1.6).
+ *   never offers what the API forbids (least disclosure).
  * - MONEY (blocker (a)): the amount is the typed decimal STRING
  *   end-to-end — the cash physically received, the ONE caller-known
  *   figure on this module. The claim figures (recovered total,
@@ -66,9 +65,9 @@ export function RecoveryReceiptDialog({
   const [confirmEntry, setConfirmEntry] = useState<ReceiptAmountEntry | null>(null);
   const [result, setResult] = useState<RecoveryReceiptResult | null>(null);
   const [notice, setNotice] = useState<string>("");
-  // Freshness component for the idempotency key (!60 F3).
+  // Freshness component for the idempotency key.
   const [reloadEpoch, setReloadEpoch] = useState(0);
-  // Per-receipt intent counter (the T2 lesson): partial recoveries
+  // Per-receipt intent counter (the lesson): partial recoveries
   // legitimately repeat — bumped on every SUCCESS so an identical
   // second receipt is a NEW intent with a NEW key.
   const [intentSeq, setIntentSeq] = useState(0);
@@ -82,7 +81,7 @@ export function RecoveryReceiptDialog({
   });
 
   const record = useMutation({
-    // STRUCTURAL freshness guard (F-M1): the money write refuses to
+    // STRUCTURAL freshness guard: the money write refuses to
     // fire without the loaded fresh record.
     mutationFn: (entry: ReceiptAmountEntry) => {
       const fresh = detail.data;
@@ -152,7 +151,7 @@ export function RecoveryReceiptDialog({
   const recordable = writeOff.status === "posted";
 
   function reloadAfterConflict() {
-    // Explicit reload flow (!60 F5): refetch the claim (another
+    // Explicit reload flow: refetch the claim (another
     // receipt landed underneath, or the amount exceeds the outstanding
     // claim); the failed receipt is NEVER replayed.
     void queryClient.refetchQueries({ queryKey: ["corrections", "write-off", writeOffId] });
@@ -215,7 +214,7 @@ export function RecoveryReceiptDialog({
         <Kv label="Pinned record version">{writeOff.version}</Kv>
       </div>
 
-      {/* One copy of the 409 reload-and-re-enter flow (gate 1.1). */}
+      {/* One copy of the 409 reload-and-re-enter flow (reuse-first). */}
       <ConflictBanner error={record.error} onReload={reloadAfterConflict} />
       {record.isError && !conflict && !renderedInline && <ErrorBanner error={record.error} />}
 

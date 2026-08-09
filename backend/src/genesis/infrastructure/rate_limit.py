@@ -1,4 +1,4 @@
-"""Fixed-window rate limiting for auth-sensitive endpoints (gate 1.6).
+"""Fixed-window rate limiting for auth-sensitive endpoints (least disclosure).
 
 Uses Redis when configured so limits hold across instances; falls back to
 an in-process window for single-instance and test environments.

@@ -1,5 +1,4 @@
-/* Visually hidden until keyboard focus lands on it (issue #8: focus is
-   always visible; targets are 44px+). Tokens only. */
+/* Visually hidden until keyboard focus lands on it (focus is always visible; targets are 44px+). Tokens only. */
 .skip {
   position: absolute;
   left: -9999px;

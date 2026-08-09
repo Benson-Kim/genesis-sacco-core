@@ -1,11 +1,11 @@
-"""claim-cap trigger locking probe: parent FOR UPDATE (!51 review N1)
+"""claim-cap trigger locking probe: parent FOR UPDATE
 
 Revision ID: 0034
 Revises: 0033
 Create Date: 2026-08-02
 
-Successor revision to 0030 backing the !51 maintainer-review N1
-follow-up (carried onto !52 as its F1, dispositioned to this micro-MR).
+Successor revision to 0030 backing the maintainer-
+follow-up (carried onto as its F1, dispositioned to this micro-MR).
 Strictly ADDITIVE defence-in-depth — no gate, oracle or guard is
 weakened, and NO money moves.
 
@@ -16,7 +16,7 @@ serialised on the ``loan_write_offs`` row FOR UPDATE it takes first,
 but two CONCURRENT DIRECT-SQL receipt inserts could each pass the cap
 check against snapshots that exclude each other — the backstop only
 stopped single-statement overshoot. This revision regenerates the
-trigger function so the parent lookup is ``SELECT ... FOR UPDATE``:
+trigger function so the parent lookup is ``SELECT... FOR UPDATE``:
 
   * a DIRECT-SQL inserter now serialises on the claim anchor — the
     second insert blocks until the first commits, its subsequent SUM
@@ -28,10 +28,9 @@ trigger function so the parent lookup is ``SELECT ... FOR UPDATE``:
     lands; fails with this FOR UPDATE removed).
   * the SERVICE path pays NOTHING: it already holds that exact row
     lock from its own anchor-first chain, and re-acquisition inside
-    the same transaction is free (a self-owned lock creates no wait
-    edge — the lock-order.md section 4 self-owned-lock argument; the
-    section 8 no-locking-probe note recorded for 0030 is deliberately
-    reversed for the WOFF anchor in the same MR, rule 11).
+    the same transaction is free (a self-owned lock creates no wait edge — the lock-order.md section
+    4 self-owned-lock argument; the section 8 no-locking-probe note recorded for 0030 is
+    deliberately reversed for the WOFF anchor in the same MR, the diagram-drift rule).
 
 The explicit tenant predicate on the parent lookup stays (the 0014
 rationale: tenant-safe even under a privileged role), and every other

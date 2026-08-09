@@ -584,7 +584,7 @@ test("WRITE-OFF SoD (registry fallback — the !70 pattern, honestly): the witne
   mountScreen();
   await openWriteOffDetail(user);
   expect(
-    await screen.findByText(/not on the record .*follow-up recorded on issue #31/),
+    await screen.findByText(/not on the record .*does not attribute the requester/),
   ).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Vote approve" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Vote reject" })).toBeInTheDocument();

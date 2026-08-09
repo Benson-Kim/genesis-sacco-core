@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Parameters tab (P15 Settings): global money parameters — minimum
+ * Parameters tab: global money parameters — minimum
  * share capital, registration fee, minimum monthly contribution,
  * maximum member exposure, dormancy period, financial year end, exit
  * notice period and exit fee.
  *
  * WYSIWYG per-tab write with the loaded `version`; blank clears a key.
  * Amounts are decimal STRINGS validated by shape only and submitted
- * verbatim (P15 blocker (a)).
+ * verbatim (no client-side money math).
  */
 import { useState, type FormEvent } from "react";
 import { Card } from "@genesis/design-system";
@@ -29,7 +29,10 @@ import styles from "./Settings.module.css";
 
 const AMOUNT_MSG = "Amount like 15000 or 15000.50 (max 2dp)";
 
-export function ParametersPanel({ settings }: Readonly<{ settings: Settings }>) {
+export function ParametersPanel({
+  settings,
+  editing,
+}: Readonly<{ settings: Settings; editing: boolean }>) {
   const permissions = usePermissions();
   const mayEdit = can(permissions.data, "settings", "edit");
   const flow = useSettingsSaveFlow("parameters");
@@ -246,7 +249,7 @@ export function ParametersPanel({ settings }: Readonly<{ settings: Settings }>) 
         </div>
         <SettingsSaveControls
           flow={flow}
-          mayEdit={mayEdit}
+          mayEdit={mayEdit && editing}
           buttonLabel="Save parameters"
           confirmTitle="Apply parameters"
           confirmPhrase="parameters"

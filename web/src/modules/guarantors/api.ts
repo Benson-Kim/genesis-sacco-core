@@ -1,13 +1,12 @@
 /**
- * Guarantors API layer (P15 module 5 — P9 pledging + P13.14
- * release/substitution) over the GENERATED client.
+ * Guarantors API layer (module 5 — P9 pledging + release/substitution) over the GENERATED client.
  *
  * - The contract exposes NO guarantee list/read endpoint: GuaranteeOut
  *   exists only as a WRITE response (pledge/consent/release/substitute).
  *   Nothing here fabricates a read path; the screen's session panel and
  *   the honest-limitations register cover the gap.
  * - Every mutation takes a caller-supplied Idempotency-Key following the
- *   stability/rotation contract (gate 1.4). Consent, release and
+ *   stability/rotation contract (concurrency safety). Consent, release and
  *   substitution send the `version` the record was witnessed with — a
  *   stale act surfaces as 409 (never a silent overwrite) and is NEVER
  *   replayed. The pledge is an unversioned CREATE anchored on the
@@ -15,12 +14,12 @@
  *   row lock + the guarantor's deposit-account lock, so a moved stage or
  *   exhausted capacity ALSO surfaces as 409 from exactly one attempt.
  * - Ids travel as path parameters serialized by the generated client;
- *   tokens/PII never enter URLs (gate 1.6, tested).
+ *   tokens/PII never enter URLs (least disclosure, tested).
  * - MONEY (blocker (a)): the pledge/substitution amount is a decimal
  *   STRING on the wire; every response figure is a server-computed
  *   decimal string asserted by the Zod boundary (numbers are REJECTED).
  *   Guarantor capacity is never computed here — the server enforces it
- *   under lock and the P13.9 aggregate reports it.
+ *   under lock and the aggregate reports it.
  */
 import { toApiError } from "@genesis/api-client";
 import { api } from "@/lib/api";
@@ -60,10 +59,7 @@ export async function pledgeGuarantee(
 
 /**
  * Record the staff-attested consent OVERRIDE: pledged -> active
- * (P14.5: member_identity:approve — consent is the MEMBER principal's
- * act on the /member surface; this staff path is an explicit attested
- * override and MUST cite its evidence via `consent_reference`, written
- * as an audited fact). The `version` pins the optimistic lock — a
+ * (member_identity:approve — consent is the MEMBER principal's act on the /member surface; this staff path is an explicit attested override and MUST cite its evidence via `consent_reference`, written as an audited fact). The `version` pins the optimistic lock — a
  * consent racing another act surfaces as 409.
  */
 export async function consentGuarantee(
@@ -82,7 +78,7 @@ export async function consentGuarantee(
 }
 
 /**
- * Release one guarantee per the P13.14 rules (prototype "Release").
+ * Release one guarantee per the rules (prototype "Release").
  * NO amounts, ever: the released amount comes from the guarantee row;
  * the body carries the optimistic-lock `version` only. An active
  * guarantee behind a DISBURSED loan is never bare-released (409) — the
@@ -104,8 +100,7 @@ export async function releaseGuarantee(
 }
 
 /**
- * Atomic swap for a disbursed loan's collateral (P13.14,
- * applications:edit): releases the guarantee and creates the
+ * Atomic swap for a disbursed loan's collateral (applications:edit): releases the guarantee and creates the
  * replacement CONSENTED pledge in ONE server transaction. The
  * replacement amount is sent only when the operator typed one (a blank
  * lets the server derive it from the guarantee row); consent is a
