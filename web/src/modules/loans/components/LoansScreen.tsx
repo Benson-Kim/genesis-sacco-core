@@ -225,18 +225,25 @@ export function LoansScreen() {
     {
       key: "member",
       header: "Member",
-      render: (loan) => (
-        // The list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record (precedent).
-        <span className={styles.mono} title={loan.member_id}>
-          {loan.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (loan) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        loan.member_no !== null ? (
+          <span title={loan.member_id}>
+            {loan.member_no} — {loan.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={loan.member_id}>
+            {loan.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "product",
       header: "Product",
-      render: (loan) => <span className={styles.muted}>{productName(loan.product_id)}</span>,
+      render: (loan) => (
+        <span className={styles.muted}>{loan.product_name ?? productName(loan.product_id)}</span>
+      ),
     },
     {
       key: "balance",
@@ -274,16 +281,23 @@ export function LoansScreen() {
     {
       key: "member",
       header: "Member",
-      render: (app) => (
-        <span className={styles.mono} title={app.member_id}>
-          {app.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (app) =>
+        app.member_no !== null ? (
+          <span title={app.member_id}>
+            {app.member_no} — {app.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={app.member_id}>
+            {app.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "product",
       header: "Product",
-      render: (app) => <span className={styles.muted}>{productName(app.product_id)}</span>,
+      render: (app) => (
+        <span className={styles.muted}>{app.product_name ?? productName(app.product_id)}</span>
+      ),
     },
     {
       key: "amount",

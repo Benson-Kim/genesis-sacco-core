@@ -79,6 +79,12 @@ export const loanSchema = z.object({
   disbursed_at: isoTimestampSchema.nullable(),
   closed_at: isoTimestampSchema.nullable(),
   version: z.number().int(),
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
+  product_name: z.string().nullable(),
 });
 
 export type Loan = z.infer<typeof loanSchema>;
