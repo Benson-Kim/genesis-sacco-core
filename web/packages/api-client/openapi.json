@@ -2557,7 +2557,7 @@
       },
       "ExportFiltersBody": {
         "additionalProperties": false,
-        "description": "The only caller-suppliable scope (blocker a): ids, dates, and \u2014\nfor the transactions-ledger register (#35 item 5, expand-only) \u2014\nthe register page's own declared filters, pinned to the code-owned\nvocabularies (TxnType/Channel/Side) and bounded operator text.",
+        "description": "The only caller-suppliable scope (blocker a): ids, dates, and \u2014\nfor the transactions-ledger register (expand-only) \u2014\nthe register page's own declared filters, pinned to the code-owned\nvocabularies (TxnType/Channel/Side) and bounded operator text.",
         "properties": {
           "channel": {
             "anyOf": [
