@@ -12,12 +12,36 @@
   gap: var(--space-md);
 }
 
-/* Half-width card inside.cards4. */
+.cards3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+}
+
+/* Quarter-width card inside .cards4. */
+.quarter {
+  grid-column: span 1;
+}
+
+.third {
+  grid-column: span 1;
+}
+
+.twoThirds {
+  grid-column: span 2;
+}
+
+/* Half-width card inside .cards4. */
 .half {
   grid-column: span 2;
 }
 
-/* Full-width card inside.cards4. */
+/* 3 Quarter-width card inside .cards4. */
+.threeQuarter {
+  grid-column: span 3;
+}
+
+/* Full-width card inside .cards4. */
 .wide {
   grid-column: 1 / -1;
 }

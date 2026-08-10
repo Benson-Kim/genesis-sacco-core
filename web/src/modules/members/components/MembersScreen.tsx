@@ -123,21 +123,15 @@ const COLUMNS: Column<MemberDetail>[] = [
     },
     {
         key: "shares",
-        header: "Share capital",
+        header: "Shares",
         align: "right",
         render: (member) => member.aggregates.shares_total,
     },
     {
         key: "loans",
-        header: "Loans outstanding",
+        header: "Loan",
         align: "right",
         render: (member) => member.aggregates.loans_outstanding,
-    },
-    {
-        key: "guarantees",
-        header: "Guarantees pledged",
-        align: "right",
-        render: (member) => member.aggregates.guarantees_pledged,
     },
     {
         key: "status",

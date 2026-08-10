@@ -42,10 +42,16 @@ export const STATIC_SECURITY_HEADERS: readonly SecurityHeader[] = [
 ] as const;
 
 export function buildContentSecurityPolicy(nonce: string): string {
+  // Next.js Fast Refresh uses eval() for HMR in development; without
+  // 'unsafe-eval' the runtime module cannot initialise and React never
+  // hydrates, so form onSubmit handlers never fire.
+  const unsafeEval =
+    process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
   return [
     "default-src 'self'",
-    // Nonce + strict-dynamic; no 'unsafe-inline', no 'unsafe-eval'.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    // Nonce + strict-dynamic; no 'unsafe-inline'. 'unsafe-eval' is
+    // development-only (see above) and absent in production builds.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${unsafeEval}`,
     // Next.js-imposed exception (styles only) — see module docblock.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
