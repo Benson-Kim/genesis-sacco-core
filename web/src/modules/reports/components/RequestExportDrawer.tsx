@@ -39,6 +39,7 @@ import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fetchMembersPage } from "@/modules/members/api";
 import type { Member } from "@/modules/members/schemas";
+import { CHANNELS, SIDES, TXN_TYPES } from "@/modules/transactions/schemas";
 import { fetchDeclarationsPage, fetchExitsPage, requestExport } from "../api";
 import { recordWitnessedExport } from "../exportRegistry";
 import {
@@ -252,12 +253,99 @@ function UuidField({
   );
 }
 
+/** Code-owned vocabulary select for the transactions-ledger register
+ * filters (#35 item 5) — the option list mirrors the contract enums;
+ * the server re-pins the vocabulary regardless (unknown value: 422). */
+function VocabSelectField({
+  id,
+  label,
+  options,
+  value,
+  error,
+  disabled,
+  onChange,
+}: Readonly<{
+  id: string;
+  label: string;
+  options: readonly string[];
+  value: string;
+  error?: string;
+  disabled: boolean;
+  onChange: (next: string) => void;
+}>) {
+  return (
+    <FormField id={id} label={label} error={error}>
+      {(control) => (
+        <select
+          {...control}
+          className={styles.input}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+        >
+          <option value="">All</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      )}
+    </FormField>
+  );
+}
+
+/** Bounded operator-text filter (ref / search) for the ledger export. */
+function BoundedTextField({
+  id,
+  label,
+  maxLength,
+  value,
+  error,
+  disabled,
+  onChange,
+}: Readonly<{
+  id: string;
+  label: string;
+  maxLength: number;
+  value: string;
+  error?: string;
+  disabled: boolean;
+  onChange: (next: string) => void;
+}>) {
+  return (
+    <FormField id={id} label={label} error={error}>
+      {(control) => (
+        <input
+          {...control}
+          className={styles.input}
+          maxLength={maxLength}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+        />
+      )}
+    </FormField>
+  );
+}
+
 export function RequestExportDrawer({
   report,
   onClose,
-}: Readonly<{ report: ReportName; onClose: () => void }>) {
+  initial,
+}: Readonly<{
+  report: ReportName;
+  onClose: () => void;
+  /** Register-page handoff (#35 item 5): the page's ACTIVE filters
+   * pre-fill the draft so the export scope matches what the operator
+   * is looking at; still editable, still server-validated. */
+  initial?: Partial<ExportFilterDraft>;
+}>) {
   const permissions = usePermissions();
-  const [draft, setDraft] = useState<ExportFilterDraft>(EMPTY_FILTER_DRAFT);
+  const [draft, setDraft] = useState<ExportFilterDraft>(() => ({
+    ...EMPTY_FILTER_DRAFT,
+    ...initial,
+  }));
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [result, setResult] = useState<ExportOut | null>(null);
   // Freshness component (F3 /): after an acknowledged
@@ -389,7 +477,7 @@ export function RequestExportDrawer({
                 // A NEW intent: the entry clears; an identical re-request
                 // still rotates its key via the intent counter (T2).
                 setResult(null);
-                setDraft(EMPTY_FILTER_DRAFT);
+                setDraft({ ...EMPTY_FILTER_DRAFT, ...initial });
                 setClientErrors({});
                 request.reset();
               }}
@@ -473,6 +561,61 @@ export function RequestExportDrawer({
               />
             ))}
 
+          {offers("txn_type") && (
+            <VocabSelectField
+              id="exp-txn-type"
+              label="Type"
+              options={TXN_TYPES}
+              value={draft.txn_type}
+              error={fieldErrors["txn_type"]}
+              disabled={request.isPending}
+              onChange={(value) => setFilter("txn_type", value)}
+            />
+          )}
+          {offers("channel") && (
+            <VocabSelectField
+              id="exp-channel"
+              label="Channel"
+              options={CHANNELS}
+              value={draft.channel}
+              error={fieldErrors["channel"]}
+              disabled={request.isPending}
+              onChange={(value) => setFilter("channel", value)}
+            />
+          )}
+          {offers("direction") && (
+            <VocabSelectField
+              id="exp-direction"
+              label="Direction"
+              options={SIDES}
+              value={draft.direction}
+              error={fieldErrors["direction"]}
+              disabled={request.isPending}
+              onChange={(value) => setFilter("direction", value)}
+            />
+          )}
+          {offers("ref") && (
+            <BoundedTextField
+              id="exp-ref"
+              label="Reference"
+              maxLength={32}
+              value={draft.ref}
+              error={fieldErrors["ref"]}
+              disabled={request.isPending}
+              onChange={(value) => setFilter("ref", value)}
+            />
+          )}
+          {offers("search") && (
+            <BoundedTextField
+              id="exp-search"
+              label="Search"
+              maxLength={64}
+              value={draft.search}
+              error={fieldErrors["search"]}
+              disabled={request.isPending}
+              onChange={(value) => setFilter("search", value)}
+            />
+          )}
           {offers("date_from") && (
             <FormField id="exp-from" label="From date" error={fieldErrors["date_from"]}>
               {(control) => (
