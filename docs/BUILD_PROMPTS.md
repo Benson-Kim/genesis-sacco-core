@@ -1208,8 +1208,19 @@ HARDENED (v1.2) — merge blockers:
     - `KeysetTable` + `useKeysetList` (`@/modules/table/*`): keyset
       `{items, next_cursor}` ONLY (gate 1.3 — no offset pagination),
       keyboard-activatable row drill-down, focusable labelled scroll
-      region for narrow viewports; pages are 20 rows with explicit
-      Load more (no virtualization at this page size).
+      region for narrow viewports. Paging UI: the shared
+      `KeysetPaginator` + `useKeysetPagination`
+      (`@/modules/table/KeysetPaginator`) — page-slices the rows the
+      infinite query has accumulated (10/20/50 per page), auto-fetches
+      forward via the opaque cursor (never parsed client-side) and
+      shows honest `n+` page counts while the server reports more;
+      screens not yet swept keep the explicit Load more footer (no
+      virtualization at these page sizes).
+    - `FilterControl` (`@genesis/design-system`): the ONLY list filter
+      primitive — declared code-owned vocabularies, segment button
+      group (aria-pressed) at ≤4 options / labelled select at ≥5,
+      persistent visible labels, optional advisory count badges;
+      no hand-rolled filter markup in module screens.
     - `FormField` + `form-errors.ts` (`@/modules/forms/*`) for EVERY
       form field: persistent label, aria-describedby/aria-invalid
       wiring, inline errors merging client Zod issues with server 422

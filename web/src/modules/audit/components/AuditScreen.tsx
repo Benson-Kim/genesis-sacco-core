@@ -20,6 +20,7 @@ import { useState, type FormEvent } from "react";
 import { Banner, Button, Card, Kv, Modal, Pill } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { fmtDateTime, isUuid, prettyJson } from "@/lib/format";
 import { fetchAuditPage } from "../api";
 import { EMPTY_AUDIT_FILTERS, type AuditEntry, type AuditFilters } from "../schemas";
@@ -31,10 +32,11 @@ export function AuditScreen() {
   const [filters, setFilters] = useState<AuditFilters>(EMPTY_AUDIT_FILTERS);
   const [filterError, setFilterError] = useState("");
   const [selected, setSelected] = useState<AuditEntry | null>(null);
+  const pagination = useKeysetPagination();
 
   const list = useKeysetList<AuditEntry>({
-    queryKey: ["audit", "list", filters],
-    fetchPage: (cursor) => fetchAuditPage(filters, cursor),
+    queryKey: ["audit", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchAuditPage(filters, cursor, pagination.pageSize),
   });
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
@@ -45,6 +47,7 @@ export function AuditScreen() {
       return;
     }
     setFilterError("");
+    pagination.setPageIndex(0);
     setFilters({
       entity: draft.entity.trim(),
       action: draft.action.trim(),
@@ -56,6 +59,7 @@ export function AuditScreen() {
 
   function clearFilters() {
     setFilterError("");
+    pagination.setPageIndex(0);
     setDraft(EMPTY_AUDIT_FILTERS);
     setFilters(EMPTY_AUDIT_FILTERS);
   }
@@ -203,6 +207,13 @@ export function AuditScreen() {
         rowKey={(entry) => String(entry.id)}
         emptyMessage="No audit entries match the current filters."
         onRowClick={(entry) => setSelected(entry)}
+        pagination={{
+          pageIndex: pagination.pageIndex,
+          pageSize: pagination.pageSize,
+          onPageChange: pagination.setPageIndex,
+          onPageSizeChange: pagination.setPageSize,
+          rowLabel: "audit entries",
+        }}
       />
       {selected !== null && (
         <AuditEntryDrawer entry={selected} onClose={() => setSelected(null)} />

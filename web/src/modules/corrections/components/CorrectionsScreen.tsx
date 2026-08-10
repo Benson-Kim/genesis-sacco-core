@@ -29,6 +29,7 @@ import dynamic from "next/dynamic";
 import { Button, Card } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { FormField } from "@/modules/forms/FormField";
@@ -87,15 +88,15 @@ export function CorrectionsScreen() {
   // The two registers: server-ordered
   // keyset pages (pending-first / live-first) — never re-sorted or
   // filtered locally.
+  const adjustmentsPagination = useKeysetPagination();
   const adjustments = useKeysetList<AdjustmentRecord>({
-    queryKey: ["corrections", "adjustments-register"],
-    fetchPage: (cursor) => fetchAdjustmentsPage(cursor),
-
+    queryKey: ["corrections", "adjustments-register", adjustmentsPagination.pageSize],
+    fetchPage: (cursor) => fetchAdjustmentsPage(cursor, adjustmentsPagination.pageSize),
   });
+  const writeOffsPagination = useKeysetPagination();
   const writeOffs = useKeysetList<WriteOffRecord>({
-    queryKey: ["corrections", "write-offs-register"],
-    fetchPage: (cursor) => fetchWriteOffsPage(cursor),
-
+    queryKey: ["corrections", "write-offs-register", writeOffsPagination.pageSize],
+    fetchPage: (cursor) => fetchWriteOffsPage(cursor, writeOffsPagination.pageSize),
   });
 
   const adjustmentColumns: Column<AdjustmentRecord>[] = [
@@ -374,6 +375,13 @@ export function CorrectionsScreen() {
           rowKey={(row) => row.id}
           emptyMessage="No repayment adjustments yet — nothing awaits a checker."
           onRowClick={(row) => setDrawer({ mode: "adjustment-detail", adjustmentId: row.id })}
+          pagination={{
+            pageIndex: adjustmentsPagination.pageIndex,
+            pageSize: adjustmentsPagination.pageSize,
+            onPageChange: adjustmentsPagination.setPageIndex,
+            onPageSizeChange: adjustmentsPagination.setPageSize,
+            rowLabel: "adjustments",
+          }}
         />
       </Card>
 
@@ -391,6 +399,13 @@ export function CorrectionsScreen() {
           rowKey={(row) => row.id}
           emptyMessage="No write-offs yet — nothing awaits the committee."
           onRowClick={(row) => setDrawer({ mode: "write-off-detail", writeOffId: row.id })}
+          pagination={{
+            pageIndex: writeOffsPagination.pageIndex,
+            pageSize: writeOffsPagination.pageSize,
+            onPageChange: writeOffsPagination.setPageIndex,
+            onPageSizeChange: writeOffsPagination.setPageSize,
+            rowLabel: "write-offs",
+          }}
         />
       </Card>
 

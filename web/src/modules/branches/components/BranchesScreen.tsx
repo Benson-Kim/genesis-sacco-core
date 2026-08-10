@@ -29,6 +29,7 @@ import dynamic from "next/dynamic";
 import { Button, Card } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime } from "@/lib/format";
@@ -60,9 +61,10 @@ export function BranchesScreen() {
   const permissions = usePermissions();
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
+  const pagination = useKeysetPagination();
   const list = useKeysetList<BranchRecord>({
-    queryKey: ["branches", "list"],
-    fetchPage: (cursor) => fetchBranchesPage(cursor),
+    queryKey: ["branches", "list", pagination.pageSize],
+    fetchPage: (cursor) => fetchBranchesPage(cursor, pagination.pageSize),
   });
 
   const mayCreate = can(permissions.data, "settings", "create");
@@ -124,6 +126,13 @@ export function BranchesScreen() {
           rowKey={(branch) => branch.id}
           emptyMessage="No branches registered yet."
           onRowClick={(branch) => setDrawer({ mode: "detail", branchId: branch.id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "branches",
+          }}
         />
       </Card>
 

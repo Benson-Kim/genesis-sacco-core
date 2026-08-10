@@ -63,12 +63,13 @@ export async function fetchMembersPage(
 export async function fetchMembersPageWithAggregates(
     filters: MemberListFilters,
     cursor: string | null,
+    limit: number = MEMBERS_PAGE_SIZE,
 ): Promise<KeysetPage<MemberDetail>> {
     const { data, error, response } = await api.GET("/members", {
         params: {
             query: {
                 cursor: cursor ?? undefined,
-                limit: MEMBERS_PAGE_SIZE,
+                limit,
                 status: filters.status === "" ? undefined : filters.status,
                 type: filters.type === "" ? undefined : filters.type,
                 include: "aggregates",

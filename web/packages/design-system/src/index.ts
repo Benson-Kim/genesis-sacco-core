@@ -24,9 +24,9 @@ export { Banner } from "./components/Banner";
 export { Button } from "./components/Button";
 export { Card } from "./components/Card";
 export { ConfirmDangerModal } from "./components/ConfirmDangerModal";
-export { Field } from "./components/Field";
+export { FilterControl } from "./components/FilterControl";
+export type { FilterControlProps, FilterOption } from "./components/FilterControl";
 export { Kv } from "./components/Kv";
 export { Modal } from "./components/Modal";
 export { Pill } from "./components/Pill";
 export { Stat } from "./components/Stat";
-
