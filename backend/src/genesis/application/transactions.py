@@ -52,9 +52,25 @@ from genesis.errors import (
 #: taken from this mapping (never from user input) before interpolation.
 _ACCOUNT_TABLES = {"deposit": "deposit_accounts", "share": "share_accounts"}
 
+#: Columns are table-qualified because the list statement joins the
+#: members registry (alias mm) for display labels; the two label
+#: columns ride the same PK-served join.
 _TXN_COLS = (
-    "id, txn_ref, member_id, type, amount, channel, occurred_at, "
-    "reversal_of_id, created_by, external_ref"
+    "transactions.id, transactions.txn_ref, transactions.member_id, "
+    "transactions.type, transactions.amount, transactions.channel, "
+    "transactions.occurred_at, transactions.reversal_of_id, "
+    "transactions.created_by, transactions.external_ref, "
+    "mm.member_no, mm.name"
+)
+
+#: Display-label join for the list statement: rides the members
+#: PRIMARY KEY per page row (max 100) plus the explicit tenant
+#: predicate — index-served, no new index. LEFT JOIN keeps system
+#: postings (member_id IS NULL) on the page. Module-level so the
+#: EXPLAIN gate asserts the exact production fragment.
+TXN_LABEL_JOIN = (
+    "LEFT JOIN members mm ON mm.tenant_id = transactions.tenant_id "
+    "AND mm.id = transactions.member_id "
 )
 
 #: Cursor scope id: signed cursors are bound to this
@@ -93,6 +109,12 @@ class TransactionRecord:
     #: every system posting and every pre-0043 row — history is never
     #: backfilled with invented references.
     external_ref: str | None
+    #: Human display labels for the posting member, resolved
+    #: server-side in the SAME list statement (members PK join,
+    #: no per-row lookups). None is the honest state for system
+    #: postings that carry no member.
+    member_no: str | None
+    member_name: str | None
 
 
 async def _require_member(
@@ -360,6 +382,8 @@ def _row_to_txn(row: object) -> TransactionRecord:
         is_reversal=is_reversal,
         created_by=uuid.UUID(str(row[8])) if row[8] is not None else None,  # type: ignore[index]
         external_ref=str(row[9]) if row[9] is not None else None,  # type: ignore[index]
+        member_no=str(row[10]) if row[10] is not None else None,  # type: ignore[index]
+        member_name=str(row[11]) if row[11] is not None else None,  # type: ignore[index]
     )
 
 
@@ -422,8 +446,10 @@ def _direction_clause(direction: Side, params: dict[str, object]) -> str:
         params[key] = value
         flipped_keys.append(f":{key}")
     return (
-        f"((type IN ({', '.join(same_keys)}) AND reversal_of_id IS NULL) "
-        f"OR (type IN ({', '.join(flipped_keys)}) AND reversal_of_id IS NOT NULL))"
+        f"((transactions.type IN ({', '.join(same_keys)}) "
+        "AND reversal_of_id IS NULL) "
+        f"OR (transactions.type IN ({', '.join(flipped_keys)}) "
+        "AND reversal_of_id IS NOT NULL))"
     )
 
 
@@ -450,14 +476,15 @@ async def list_transactions(
     """
     limit = max(1, min(limit, 100))
     # Explicit tenant predicate on top of RLS (defence in depth, gate
-    # 1.6); also the leading column of both keyset indexes.
-    clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
+    # 1.6); also the leading column of both keyset indexes. Qualified
+    # because the label join brings a second tenant_id into scope.
+    clauses: list[str] = ["transactions.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if member_id is not None:
         clauses.append("member_id = CAST(:mid AS uuid)")
         params["mid"] = str(member_id)
     if txn_type is not None:
-        clauses.append("type = :type")
+        clauses.append("transactions.type = :type")
         params["type"] = txn_type.value
     if channel is not None:
         clauses.append("channel = :channel")
@@ -487,15 +514,16 @@ async def list_transactions(
             cursor, tenant_id=tenant_id, endpoint=TXN_LIST_SCOPE, entity="transaction"
         )
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="transaction")
-        clauses.append("(occurred_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append("(occurred_at, transactions.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
                 f"SELECT {_TXN_COLS} FROM transactions "  # noqa: S608
+                f"{TXN_LABEL_JOIN}"
                 f"{where}"
-                "ORDER BY occurred_at DESC, id DESC LIMIT :limit"
+                "ORDER BY occurred_at DESC, transactions.id DESC LIMIT :limit"
             ),
             params,
         )

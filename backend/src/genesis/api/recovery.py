@@ -133,6 +133,11 @@ class WorklistRowOut(BaseModel):
     opened_at: str
     first_assigned_at: str | None
     version: int
+    #: Human display labels: the delinquent member's number and
+    #: registered name, resolved server-side in the same worklist
+    #: statement; null only if a label row is absent.
+    member_no: str | None
+    member_name: str | None
 
 
 class WorklistOut(BaseModel):
@@ -184,6 +189,8 @@ def _row_out(row: WorklistRow) -> WorklistRowOut:
         opened_at=row.opened_at.isoformat(),
         first_assigned_at=row.first_assigned_at.isoformat() if row.first_assigned_at else None,
         version=row.version,
+        member_no=row.member_no,
+        member_name=row.member_name,
     )
 
 
