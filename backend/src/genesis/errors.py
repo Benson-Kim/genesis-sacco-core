@@ -55,6 +55,16 @@ class UnprocessableError(AppError):
     category = ErrorCategory.VALIDATION
 
 
+class PayloadSchemaError(UnprocessableError):
+    """An UnprocessableError whose sanitized message travels to the client
+    as the envelope's ``detail`` — mirroring the field-location surface of
+    FastAPI's structural 422. Raise sites own the least-disclosure
+    guarantee: the message names field LOCATIONS and error TYPES only,
+    never a submitted value. Every other error category (including plain
+    UnprocessableError) stays a category-only envelope.
+    """
+
+
 class InvariantViolationError(AppError):
     """Raised when a code-owned structural invariant breaks at read time —
     e.g. a response bounded 'by construction' exceeding its hard

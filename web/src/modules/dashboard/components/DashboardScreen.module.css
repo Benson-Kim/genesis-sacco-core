@@ -77,3 +77,74 @@
     font-size: 11px;
     color: var(--sub);
 }
+
+.heroKpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  background: var(--navy-soft, #e6edfb); /* confirm actual token name */
+  border-radius: 10px;
+}
+
+.heroKpiLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sub, #5c6579);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.heroKpiValue {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--navy, #0f2c6b);
+  font-variant-numeric: tabular-nums; /* digits line up if this value ever re-renders next to others */
+}
+
+.memberBarList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memberBarRow {
+  display: grid;
+  grid-template-columns: 72px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+}
+
+.memberBarLabel {
+  font-size: 13px;
+  color: var(--ink, #131a2b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memberBarTrack {
+  height: 10px;
+  background: var(--panel, #ebeef3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.memberBarFill {
+  height: 100%;
+  min-width: 3px; /* a true zero still shows a hairline, matching your "▏ 1" sketch rather than vanishing */
+  background: var(--gold, #2e90fa);
+  border-radius: 999px;
+}
+
+.memberBarValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink, #131a2b);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
