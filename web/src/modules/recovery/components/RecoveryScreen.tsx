@@ -145,11 +145,18 @@ export function RecoveryScreen() {
     {
       key: "member",
       header: "Member",
-      render: (row) => (
-        <span className={styles.mono} title={row.member_id}>
-          {row.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        row.member_no !== null ? (
+          <span title={row.member_id}>
+            {row.member_no} — {row.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.member_id}>
+            {row.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "assignee",

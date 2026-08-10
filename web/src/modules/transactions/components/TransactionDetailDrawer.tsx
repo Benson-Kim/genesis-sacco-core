@@ -11,10 +11,9 @@
  *   (blocker (a)). The list model carries no running balance and none
  *   is reconstructed here — balances are server facts that live on
  *   write responses and statements (honest limitation in the MR).
- * - The row carries `member_id` only (pattern (b)); the member name
- *   resolves via GET /members/{id}, gated on members:view
- *   (deny-by-default — a role without the grant fetches NOTHING and
- *   sees the opaque id).
+ * - The row carries its member display labels (number — name)
+ *   resolved server-side under the same permission that served the
+ *   row; this drawer fetches NOTHING to label it.
  * - Every rendered string (refs, member names) is attacker-influenced
  *   data; it renders exclusively through React text interpolation.
  */
@@ -25,7 +24,6 @@ import { can } from "@/modules/authz/schemas";
 import { ErrorBanner } from "@/modules/layout/ErrorBanner";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { fetchMember } from "@/modules/members/api";
 import { fetchTransactionLegs } from "../api";
 import { CHANNEL_LABELS, SIDE_LABELS, type Transaction } from "../schemas";
 import { directionPill, reversalPill, txnTypePill } from "./pills";
@@ -39,7 +37,6 @@ export function TransactionDetailDrawer({
   onClose: () => void;
 }>) {
   const permissions = usePermissions();
-  const mayViewMembers = can(permissions.data, "members", "view");
   const mayViewTransactions = can(permissions.data, "transactions", "view");
 
   // Double-entry legs drill-down: the append-only
@@ -55,17 +52,6 @@ export function TransactionDetailDrawer({
   });
 
   const memberId = txn.member_id;
-  const member = useQuery({
-    queryKey: ["members", "detail", memberId ?? "none"],
-    queryFn: () => {
-      if (memberId === null) return Promise.reject(new Error("no member on this row"));
-      return fetchMember(memberId);
-    },
-    // Deny-by-default: without members:view this drawer fetches NOTHING
-    // and renders the opaque id (least disclosure).
-    enabled: memberId !== null && mayViewMembers,
-    staleTime: STALE_TIME.record,
-  });
 
   return (
     <Modal title="Transaction detail" onClose={onClose}>
@@ -92,12 +78,14 @@ export function TransactionDetailDrawer({
         <Kv label="Channel">{CHANNEL_LABELS[txn.channel]}</Kv>
         <Kv label="Occurred">{fmtDateTime(txn.occurred_at)}</Kv>
         <Kv label="Member">
+          {/* Identifier doctrine: number — name from the row itself
+              (server-resolved); the uuid is machine identity only. */}
           {memberId === null ? (
             "— (tenant-level posting)"
-          ) : member.data !== undefined ? (
-            <>
-              {member.data.name} · {member.data.member_no}
-            </>
+          ) : txn.member_no !== null ? (
+            <span title={memberId}>
+              {txn.member_no} — {txn.member_name}
+            </span>
           ) : (
             <span className={styles.mono}>{memberId}</span>
           )}

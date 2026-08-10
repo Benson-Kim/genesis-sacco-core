@@ -225,10 +225,15 @@ export function TransactionsScreen() {
       key: "member",
       header: "Member",
       render: (txn) =>
-        // The P11 list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record.
+        // Identifier doctrine: rows label the member as number — name,
+        // resolved server-side on the row itself; the uuid stays the
+        // machine identity on the title attribute.
         txn.member_id === null ? (
           <span className={styles.muted}>—</span>
+        ) : txn.member_no !== null ? (
+          <span title={txn.member_id}>
+            {txn.member_no} — {txn.member_name}
+          </span>
         ) : (
           <span className={styles.mono} title={txn.member_id}>
             {txn.member_id.slice(0, 8)}

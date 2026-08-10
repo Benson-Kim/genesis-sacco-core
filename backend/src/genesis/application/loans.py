@@ -51,10 +51,26 @@ from genesis.domain.lending import (
 from genesis.domain.money import ZERO, to_cents
 from genesis.errors import ConflictError, InvalidInputError, NotFoundError
 
+#: Columns are table-qualified because the read statements join the
+#: members registry (alias mm) and the product catalogue (alias pp)
+#: for display labels; the three label columns ride PK-served joins.
 _LOAN_COLS = (
-    "id, application_id, member_id, product_id, principal, balance, rate_pct, "
-    "term_months, status, classification, days_past_due, provision_pct, "
-    "penalty_due, disbursed_at, closed_at, version"
+    "loans.id, loans.application_id, loans.member_id, loans.product_id, "
+    "loans.principal, loans.balance, loans.rate_pct, loans.term_months, "
+    "loans.status, loans.classification, loans.days_past_due, "
+    "loans.provision_pct, loans.penalty_due, loans.disbursed_at, "
+    "loans.closed_at, loans.version, mm.member_no, mm.name, pp.name"
+)
+
+#: Display-label joins for the read statements: each rides the joined
+#: table's PRIMARY KEY per page row plus the explicit tenant predicate
+#: (index-served, no new index). LEFT JOIN keeps the book honest if a
+#: label row is ever absent — a missing label must never drop a loan.
+_LOAN_LABEL_JOINS = (
+    "LEFT JOIN members mm ON mm.tenant_id = loans.tenant_id "
+    "AND mm.id = loans.member_id "
+    "LEFT JOIN loan_products pp ON pp.tenant_id = loans.tenant_id "
+    "AND pp.id = loans.product_id "
 )
 
 #: Cursor scope id: signed cursors are bound to this
@@ -80,6 +96,14 @@ class LoanRecord:
     disbursed_at: datetime | None
     closed_at: datetime | None
     version: int
+    #: Human display labels — the borrower's member number and
+    #: registered name plus the product name — resolved server-side in
+    #: the SAME read statement (PK joins, no per-row lookups). None is
+    #: the honest state only if a label row is absent; labels are
+    #: never invented client-side.
+    member_no: str | None
+    member_name: str | None
+    product_name: str | None
 
 
 @dataclass(frozen=True)
@@ -143,6 +167,9 @@ def _row_to_loan(row: Any) -> LoanRecord:
         disbursed_at=row[13],
         closed_at=row[14],
         version=int(row[15]),
+        member_no=str(row[16]) if row[16] is not None else None,
+        member_name=str(row[17]) if row[17] is not None else None,
+        product_name=str(row[18]) if row[18] is not None else None,
     )
 
 
@@ -153,7 +180,9 @@ async def get_loan(session: AsyncSession, tenant_id: uuid.UUID, loan_id: uuid.UU
             # on the money path (least disclosure).
             text(
                 f"SELECT {_LOAN_COLS} FROM loans "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"{_LOAN_LABEL_JOINS}"
+                "WHERE loans.id = CAST(:id AS uuid) "
+                "AND loans.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(loan_id), "tid": str(tenant_id)},
         )
@@ -180,10 +209,13 @@ async def list_loans(
     limit = max(1, min(limit, 100))
     # Explicit tenant predicate on top of RLS (defence in depth, gate
     # 1.6); also the leading column of idx_loans_created_keyset.
-    clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
+    # Qualified because the label joins bring further tenant_id
+    # columns into scope; the predicate stays the leading column of
+    # idx_loans_created_keyset.
+    clauses: list[str] = ["loans.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if status is not None:
-        clauses.append("status = :status")
+        clauses.append("loans.status = :status")
         params["status"] = status.value
     if classification is not None:
         clauses.append("classification = :cls")
@@ -193,15 +225,16 @@ async def list_loans(
         # the plaintext parse stays as defense-in-depth.
         inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=LOAN_BOOK_SCOPE, entity="loan")
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="loan")
-        clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append("(loans.created_at, loans.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
-                f"SELECT created_at, {_LOAN_COLS} FROM loans "  # noqa: S608
+                f"SELECT loans.created_at, {_LOAN_COLS} FROM loans "  # noqa: S608
+                f"{_LOAN_LABEL_JOINS}"
                 f"{where}"
-                "ORDER BY created_at DESC, id DESC LIMIT :limit"
+                "ORDER BY loans.created_at DESC, loans.id DESC LIMIT :limit"
             ),
             params,
         )

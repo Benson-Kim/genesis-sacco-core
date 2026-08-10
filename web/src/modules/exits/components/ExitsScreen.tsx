@@ -87,13 +87,18 @@ export function ExitsScreen() {
     {
       key: "member",
       header: "Member",
-      render: (exit) => (
-        // The list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record (precedent).
-        <span className={styles.mono} title={exit.member_id}>
-          {exit.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (exit) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        exit.member_no !== null ? (
+          <span title={exit.member_id}>
+            {exit.member_no} — {exit.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={exit.member_id}>
+            {exit.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "status",

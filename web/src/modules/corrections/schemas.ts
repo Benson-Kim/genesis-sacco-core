@@ -147,6 +147,12 @@ export const adjustmentSchema = z.object({
   /** Optimistic-lock version pinning the reject write (1.4). */
   version: z.number().int(),
   created_at: isoTimestampSchema,
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
+  original_txn_ref: z.string().nullable(),
 });
 
 export type AdjustmentRecord = z.infer<typeof adjustmentSchema>;
@@ -215,6 +221,11 @@ export const writeOffSchema = z.object({
   /** Optimistic-lock version pinning the void write (1.4). */
   version: z.number().int(),
   created_at: isoTimestampSchema,
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
 });
 
 export type WriteOffRecord = z.infer<typeof writeOffSchema>;

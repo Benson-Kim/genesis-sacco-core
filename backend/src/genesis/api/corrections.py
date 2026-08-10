@@ -117,6 +117,14 @@ class AdjustmentRecordOut(BaseModel):
     decided_at: str | None
     version: int
     created_at: str
+    #: Human display labels: the affected member's number and
+    #: registered name plus the original posting's reference, resolved
+    #: server-side in the same read statement; null on the posting
+    #: response shape (its locked read skips the label joins) — labels
+    #: are never invented.
+    member_no: str | None
+    member_name: str | None
+    original_txn_ref: str | None
 
 
 class AdjustmentListOut(BaseModel):
@@ -207,6 +215,12 @@ class WriteOffOut(BaseModel):
     transaction_id: str | None
     version: int
     created_at: str
+    #: Human display labels: the written-off member's number and
+    #: registered name, resolved server-side in the same read
+    #: statement; null on the posting response shape (its locked read
+    #: skips the label join) — labels are never invented.
+    member_no: str | None
+    member_name: str | None
 
 
 class WriteOffListOut(BaseModel):
@@ -296,6 +310,8 @@ def _write_off_out(record: corrections_service.WriteOffRecord) -> WriteOffOut:
         transaction_id=str(record.transaction_id) if record.transaction_id else None,
         version=record.version,
         created_at=record.created_at.isoformat(),
+        member_no=record.member_no,
+        member_name=record.member_name,
     )
 
 
@@ -331,6 +347,9 @@ def _adjustment_out(record: corrections_service.AdjustmentRecord) -> AdjustmentR
         decided_at=record.decided_at.isoformat() if record.decided_at else None,
         version=record.version,
         created_at=record.created_at.isoformat(),
+        member_no=record.member_no,
+        member_name=record.member_name,
+        original_txn_ref=record.original_txn_ref,
     )
 
 

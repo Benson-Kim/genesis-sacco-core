@@ -79,6 +79,8 @@ const worklistRowOut = {
   opened_at: "2026-08-01T09:00:00+00:00",
   first_assigned_at: null,
   version: 2,
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 const noteOut = {
@@ -421,6 +423,8 @@ test("LEAST DISCLOSURE (addendum A5): a money key smuggled onto a worklist row i
     "first_assigned_at",
     "loan_id",
     "member_id",
+    "member_name",
+    "member_no",
     "opened_at",
     "version",
   ]);

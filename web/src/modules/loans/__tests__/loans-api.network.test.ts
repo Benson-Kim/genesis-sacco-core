@@ -63,6 +63,9 @@ const loanOut = {
   disbursed_at: "2026-01-15T09:00:00Z",
   closed_at: null,
   version: 7,
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
+  product_name: "Development Loan",
 };
 
 const scheduleRowOut = {
