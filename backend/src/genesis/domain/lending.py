@@ -336,3 +336,19 @@ def format_loan_ref(seq: int) -> str:
     if seq <= 0:
         raise ValueError("loan reference sequence must be positive")
     return f"{LOAN_REF_PREFIX}{seq:04d}"
+
+
+def override_refusal_transition(current: ApplicationStage) -> ApplicationStage:
+    """The SINGLE gatekeeper for the supervisor override (#35 item 8).
+
+    Deliberately OUTSIDE the normal _ALLOWED machine: REJECTED is (and
+    stays) terminal for every ordinary caller — only the separately
+    permissioned supervisor override may overturn a refusal, and only
+    to APPROVED. Any other current stage refuses loudly: an override
+    of a live (non-refused) application is a rejected design.
+    """
+    if current is not ApplicationStage.REJECTED:
+        raise InvalidTransitionError(
+            f"override applies to rejected applications, not {current.value}"
+        )
+    return ApplicationStage.APPROVED

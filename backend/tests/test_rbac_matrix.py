@@ -36,10 +36,12 @@ def test_matrix_shape() -> None:
     # (Senior Credit Officer, SENIOR_TIERS).
     assert len(matrix) == 8
     for role in ROLE_NAMES:
-        # 9 modules: the 7 prototype modules + the dedicated P13.15
+        # 10 modules: the 7 prototype modules + the dedicated P13.15
         # corrections module (A3 maker-checker) + the dedicated P14.5
-        # member_identity module (identity-of-record powers).
-        assert len(matrix[role]) == 9
+        # member_identity module (identity-of-record powers) + the
+        # dedicated #35-item-8 application_overrides module
+        # (supervisor override power).
+        assert len(matrix[role]) == 10
         for module in Module:
             assert set(matrix[role][module]) == set(Action)
 
@@ -159,6 +161,10 @@ def test_senior_tier_superset_and_widened_grants() -> None:
         (Module.APPLICATIONS, Action.APPROVE),
         (Module.LOAN_BOOK, Action.CREATE),
         (Module.LOAN_BOOK, Action.EDIT),
+        # #35 item 8: the supervisor override is a SENIOR-tier power
+        # the junior must never hold.
+        (Module.APPLICATION_OVERRIDES, Action.VIEW),
+        (Module.APPLICATION_OVERRIDES, Action.APPROVE),
     }
     # Narrow channels and admin modules stay fully denied.
     for module in (
@@ -168,6 +174,32 @@ def test_senior_tier_superset_and_widened_grants() -> None:
         Module.ACCESS_CONTROL,
     ):
         assert not any(senior_credit[module].values()), module
+
+
+def test_application_overrides_module_grants_are_narrow() -> None:
+    """#35 item 8: the override power is SUPERVISOR-tier only.
+
+    Deny-by-default proof: only the System Admin and the seeded senior
+    tier hold application_overrides:approve; the Branch Manager (line
+    management, not a SENIOR_TIERS credit supervisor), the Credit
+    Committee (the PEER body whose refusal the override overturns),
+    and every junior/operational role hold NOTHING. The Auditor keeps
+    view only (assurance reviews the trail, never acts — the
+    server-side ASSURANCE_ROLES guard backs this at the workflow).
+    Falsifiable: leaking the generic non-admin defaults into this
+    module hands the Branch Manager approve and fails here.
+    """
+    matrix = seed_matrix()
+    overrides = Module.APPLICATION_OVERRIDES
+    for holder in ("System Admin", "Senior Credit Officer"):
+        assert matrix[holder][overrides][Action.APPROVE] is True
+        assert matrix[holder][overrides][Action.VIEW] is True
+    auditor = matrix["Auditor"][overrides]
+    assert auditor[Action.VIEW] is True
+    assert auditor[Action.APPROVE] is False
+    denied = ("Branch Manager", "Credit Committee", "Loan Officer", "Teller", "Accountant")
+    for denied_role in denied:
+        assert not any(matrix[denied_role][overrides].values()), denied_role
 
 
 def test_every_operation_carries_the_authz_dependency() -> None:

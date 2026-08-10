@@ -167,6 +167,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/applications/{application_id}/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Override Application Refusal
+         * @description Supervisor override: overturn a refusal (application_overrides:approve).
+         */
+        post: operations["override_application_refusal_applications__application_id__override_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/applications/{application_id}/transition": {
         parameters: {
             query?: never;
@@ -3819,7 +3839,7 @@ export interface components {
          * Module
          * @enum {string}
          */
-        Module: "members" | "applications" | "loan_book" | "transactions" | "reports" | "settings" | "access_control" | "corrections" | "member_identity";
+        Module: "members" | "applications" | "loan_book" | "transactions" | "reports" | "settings" | "access_control" | "corrections" | "member_identity" | "application_overrides";
         /** ModulePermissionsOut */
         ModulePermissionsOut: {
             /** Can Approve */
@@ -3918,6 +3938,19 @@ export interface components {
             email?: string | null;
             /** Identifier */
             identifier?: string | null;
+        };
+        /**
+         * OverrideBody
+         * @description extra="forbid"; the reason is MANDATORY (an unexplained override
+         *     is a rejected design) and bounded (it lands verbatim on the audit
+         *     row). The version binds the override to the persisted decision
+         *     snapshot the supervisor actually reviewed (409 on drift).
+         */
+        OverrideBody: {
+            /** Reason */
+            reason: string;
+            /** Version */
+            version: number;
         };
         /**
          * Par30TrendPointOut
@@ -5221,6 +5254,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GuaranteeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    override_application_refusal_applications__application_id__override_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationOut"];
                 };
             };
             /** @description Validation Error */

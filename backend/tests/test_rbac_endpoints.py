@@ -130,9 +130,9 @@ def test_seed_is_idempotent() -> None:
             count = (await session.execute(text("SELECT count(*) FROM permissions"))).scalar_one()
         assert first == second
         # 8 roles (7 prototype + the seeded senior tier, #35 item 8)
-        # x 9 modules (7 prototype + the P13.15 corrections module +
-        # the P14.5 member_identity module) = 72 seeded permission
-        # rows.
-        assert int(count) == 72
+        # x 10 modules (7 prototype + the P13.15 corrections module +
+        # the P14.5 member_identity module + the #35-item-8
+        # application_overrides module) = 80 seeded permission rows.
+        assert int(count) == 80
 
     asyncio.run(run())

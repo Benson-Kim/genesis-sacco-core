@@ -51,6 +51,12 @@ _products_list = RequireAnyPermission(
 #: OVERRIDE carrying the dedicated narrow permission — never
 #: applications:edit (the substitution-consent lesson).
 _member_identity_approve = RequirePermission(Module.MEMBER_IDENTITY, Action.APPROVE)
+#: Supervisor override (#35 item 8): overturning a refusal carries the
+#: DEDICATED narrow permission (application_overrides:approve — the
+#: seeded supervisor tiers only), never generic applications:approve
+#: (which committee peers hold). Deny-by-default: the dependency
+#: refuses BEFORE the handler runs — a 403 leaves zero side effects.
+_apps_override = RequirePermission(Module.APPLICATION_OVERRIDES, Action.APPROVE)
 
 SettingsViewCtx = Annotated[AuthContext, Depends(_settings_view)]
 SettingsCreateCtx = Annotated[AuthContext, Depends(_settings_create)]
@@ -61,6 +67,7 @@ AppsEditCtx = Annotated[AuthContext, Depends(_apps_edit)]
 AppsApproveCtx = Annotated[AuthContext, Depends(_apps_approve)]
 ProductListCtx = Annotated[AuthContext, Depends(_products_list)]
 MemberIdentityApproveCtx = Annotated[AuthContext, Depends(_member_identity_approve)]
+AppsOverrideCtx = Annotated[AuthContext, Depends(_apps_override)]
 
 
 class ProductCreateBody(BaseModel):
@@ -182,6 +189,18 @@ class TransitionBody(BaseModel):
 
     version: int = Field(ge=1)
     target: ApplicationStage
+
+
+class OverrideBody(BaseModel):
+    """extra="forbid"; the reason is MANDATORY (an unexplained override
+    is a rejected design) and bounded (it lands verbatim on the audit
+    row). The version binds the override to the persisted decision
+    snapshot the supervisor actually reviewed (409 on drift)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class VoteBody(BaseModel):
@@ -423,6 +442,26 @@ async def transition_application(
             application_id,
             version=body.version,
             target=body.target,
+        )
+    return _application_out(record)
+
+
+@router.post("/applications/{application_id}/override")
+async def override_application_refusal(
+    application_id: uuid.UUID,
+    body: OverrideBody,
+    ctx: AppsOverrideCtx,
+) -> ApplicationOut:
+    """Supervisor override: overturn a refusal (application_overrides:approve)."""
+    factory = get_sessionmaker(get_settings().database_url)
+    async with tenant_session(factory, ctx.tenant_id) as session:
+        record = await applications_service.override_refusal(
+            session,
+            ctx.tenant_id,
+            ctx.user_id,
+            application_id,
+            version=body.version,
+            reason=body.reason,
         )
     return _application_out(record)
 
