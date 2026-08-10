@@ -98,7 +98,6 @@ export function MemberCreateDrawer({
             dismissOnOverlay={false}
         >
             <form onSubmit={submit} noValidate>
-<<<<<<< HEAD
                 <FormField id="member-type" label="Member type">
                     {(control) => (
                         <select
@@ -179,71 +178,6 @@ export function MemberCreateDrawer({
                         />
                     )}
                 </FormField>
-=======
-                <StepRail current={0} />
-                <FormField id="member-type" label="Member type">
-                    {(control) => (
-                        <select
-                            {...control}
-                            className={styles.select}
-                            value={type}
-                            onChange={(event) => setType(event.target.value)}
-                        >
-                            {MEMBER_TYPES.map((memberType) => (
-                                <option key={memberType} value={memberType}>
-                                    {TYPE_LABELS[memberType]}
-                                </option>
-                            ))}
-                        </select>
-                    )}
-                </FormField>
-                <FormField id="member-name" label="Full name">
-                    {(control) => (
-                        <input
-                            {...control}
-                            className={styles.input}
-                            maxLength={200}
-                            value={name}
-                            onChange={(event) => setName(event.target.value)}
-                        />
-                    )}
-                </FormField>
-                <FormField
-                    id="member-phone"
-                    label="Phone (optional)"
-                    error={phoneBlurError ?? undefined}
-                >
-                    {(control) => (
-                        <input
-                            {...control}
-                            className={styles.input}
-                            type="tel"
-                            inputMode="tel"
-                            maxLength={32}
-                            value={phone}
-                            onChange={(event) => {
-                                setPhone(event.target.value);
-                                if (phoneBlurError !== null) validatePhoneBlur(event.target.value);
-                            }}
-                            onBlur={(event) => validatePhoneBlur(event.target.value)}
-                        />
-                    )}
-                </FormField>
-                <FormField id="member-email" label="Email (optional)">
-                    {(control) => (
-                        <input
-                            {...control}
-                            className={styles.input}
-                            type="email"
-                            inputMode="email"
-                            maxLength={254}
-                            value={email}
-                            onChange={(event) => setEmail(event.target.value)}
-                        />
-                    )}
-                </FormField>
-                {formError !== null && <div role="alert">{formError}</div>}
->>>>>>> 257a9a74cc76b9dbea1f381967da14f3d87bfcf3
                 {create.isError && <ErrorBanner error={create.error} />}
                 <div className={styles.actions}>
                     <Button type="button" onClick={onClose} disabled={create.isPending}>
