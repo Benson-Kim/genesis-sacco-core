@@ -77,11 +77,36 @@ class Settings(BaseSettings):
     # by default; enabling requires an explicit DEV_OTP_DISPLAY env
     # value in a dev environment. The OTP is returned in the
     # /auth/otp/request response ONLY — it is never logged.
-    # REMOVAL NOTE: this flag and its api/auth.py consumer MUST be
-    # removed before staging.
+    # ENFORCED CONTROL (#35, supersedes the old "strip before
+    # staging" reminder): assert_dev_otp_display_dev_only below
+    # REFUSES BOOT when this flag is on in any non-development
+    # environment, so forgetting to strip it is impossible — the
+    # deployment fails loudly instead of leaking OTPs.
     dev_otp_display: bool = False
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def assert_dev_otp_display_dev_only(settings: Settings | None = None) -> None:
+    """Fail-closed BOOT guard (#35): the dev-mode OTP display must be
+    IMPOSSIBLE to activate outside development.
+
+    A truthy DEV_OTP_DISPLAY in any environment other than
+    "development" is a DEPLOYMENT error and aborts startup here —
+    never a silent OTP-disclosure surface in staging/production. This
+    converts the old "strip before staging" removal reminder into an
+    enforced control: the flag stays available to testers in dev and
+    is structurally incapable of reaching anything else. Called by
+    ``genesis.api.app.create_app`` before any router is wired (the
+    assert_cursor_signing_key_configured posture).
+    """
+    resolved = settings if settings is not None else get_settings()
+    if resolved.dev_otp_display and resolved.environment != "development":
+        raise RuntimeError(
+            "DEV_OTP_DISPLAY is enabled but ENVIRONMENT is "
+            f"'{resolved.environment}' — the dev-mode OTP display is "
+            "development-only and refuses to boot anywhere else"
+        )
