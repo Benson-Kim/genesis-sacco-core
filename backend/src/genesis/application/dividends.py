@@ -1788,12 +1788,46 @@ class ShareTransferRecord:
     #: server-side; the audit rows carry the exact figures). NULL only
     #: on pre-0040 single-phase history.
     from_balance_at_request: Decimal | None
+    #: Human display labels — both parties' member numbers and
+    #: registered names — resolved server-side in the SAME read
+    #: statement (two members PK joins). Default None: the locked
+    #: approval read deliberately skips the joins (an outer join under
+    #: FOR UPDATE is refused by the database, and the lock must stay
+    #: on the transfer row alone); labels are never invented.
+    from_member_no: str | None = None
+    from_member_name: str | None = None
+    to_member_no: str | None = None
+    to_member_name: str | None = None
 
 
 _TRANSFER_COLS = (
     "id, from_member_id, to_member_id, amount, status, "
     "out_transaction_id, in_transaction_id, created_by, approved_by, "
     "decided_at, version, created_at, from_balance_at_request"
+)
+
+#: Read-path column list: _TRANSFER_COLS table-qualified plus both
+#: parties' display labels. ONLY the un-locked reads use it — the
+#: approval's FOR UPDATE read keeps the join-free _TRANSFER_COLS.
+_TRANSFER_READ_COLS = (
+    "share_transfers.id, share_transfers.from_member_id, "
+    "share_transfers.to_member_id, share_transfers.amount, "
+    "share_transfers.status, share_transfers.out_transaction_id, "
+    "share_transfers.in_transaction_id, share_transfers.created_by, "
+    "share_transfers.approved_by, share_transfers.decided_at, "
+    "share_transfers.version, share_transfers.created_at, "
+    "share_transfers.from_balance_at_request, "
+    "mf.member_no, mf.name, mt.member_no, mt.name"
+)
+
+#: Display-label joins: each rides the members PRIMARY KEY per page
+#: row plus the explicit tenant predicate (index-served, no new
+#: index).
+_TRANSFER_LABEL_JOINS = (
+    "LEFT JOIN members mf ON mf.tenant_id = share_transfers.tenant_id "
+    "AND mf.id = share_transfers.from_member_id "
+    "LEFT JOIN members mt ON mt.tenant_id = share_transfers.tenant_id "
+    "AND mt.id = share_transfers.to_member_id "
 )
 
 
@@ -1812,6 +1846,12 @@ def _row_to_transfer(row: Any) -> ShareTransferRecord:
         version=int(row[10]),
         created_at=row[11],
         from_balance_at_request=Decimal(str(row[12])) if row[12] is not None else None,
+        # Label columns ride only the read-path statements; the locked
+        # approval read serves the 13-column join-free shape.
+        from_member_no=str(row[13]) if len(row) > 13 and row[13] is not None else None,
+        from_member_name=str(row[14]) if len(row) > 14 and row[14] is not None else None,
+        to_member_no=str(row[15]) if len(row) > 15 and row[15] is not None else None,
+        to_member_name=str(row[16]) if len(row) > 16 and row[16] is not None else None,
     )
 
 
@@ -2280,8 +2320,10 @@ async def get_share_transfer(
     row = (
         await session.execute(
             text(
-                f"SELECT {_TRANSFER_COLS} FROM share_transfers "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"SELECT {_TRANSFER_READ_COLS} FROM share_transfers "  # noqa: S608
+                f"{_TRANSFER_LABEL_JOINS}"
+                "WHERE share_transfers.id = CAST(:id AS uuid) "
+                "AND share_transfers.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(transfer_id), "tid": str(tenant_id)},
         )
@@ -2306,14 +2348,17 @@ def share_transfers_register_sql(*, with_cursor: bool) -> str:
     rule 6); explicit tenant predicate on top of forced RLS (rule 4).
     """
     cursor = (
-        "AND ((status = 'pending'), created_at, id) "
+        "AND ((share_transfers.status = 'pending'), share_transfers.created_at, "
+        "share_transfers.id) "
         "< (CAST(:c_flag AS boolean), CAST(:c_ts AS timestamptz), CAST(:c_id AS uuid)) "
     )
     return (
-        f"SELECT {_TRANSFER_COLS} FROM share_transfers "  # noqa: S608
-        "WHERE tenant_id = CAST(:tid AS uuid) "
+        f"SELECT {_TRANSFER_READ_COLS} FROM share_transfers "  # noqa: S608
+        f"{_TRANSFER_LABEL_JOINS}"
+        "WHERE share_transfers.tenant_id = CAST(:tid AS uuid) "
         f"{cursor if with_cursor else ''}"
-        "ORDER BY (status = 'pending') DESC, created_at DESC, id DESC "
+        "ORDER BY (share_transfers.status = 'pending') DESC, "
+        "share_transfers.created_at DESC, share_transfers.id DESC "
         "LIMIT :limit"
     )
 

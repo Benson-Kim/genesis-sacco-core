@@ -67,6 +67,10 @@ const PENDING_RECORD = {
   decided_at: null,
   version: 1,
   created_at: "2026-08-07T09:00:00Z",
+  from_member_no: "M-0001",
+  from_member_name: "Jane Wanjiku",
+  to_member_no: "M-0002",
+  to_member_name: "Peter Otieno",
 };
 
 /** Terminal history row served BEHIND the pending band — the server's
@@ -84,6 +88,10 @@ const POSTED_RECORD = {
   decided_at: "2026-08-06T12:00:00Z",
   version: 2,
   created_at: "2026-08-06T11:00:00Z",
+  from_member_no: "M-0001",
+  from_member_name: "Jane Wanjiku",
+  to_member_no: "M-0002",
+  to_member_name: "Peter Otieno",
 };
 
 /**

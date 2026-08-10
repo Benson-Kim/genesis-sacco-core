@@ -58,11 +58,13 @@ from genesis.domain.ledger import (
     ref_prefix,
 )
 from genesis.domain.lending import (
+    LOAN_REF_SEQ,
     ApplicationStage,
     InvalidTransitionError,
     RepaymentAllocation,
     ScheduledInstallment,
     build_schedule,
+    format_loan_ref,
     transition,
 )
 from genesis.domain.money import to_cents
@@ -128,6 +130,35 @@ async def _next_ref(
         raise RuntimeError("txn_ref_sequences upsert returned no row")
     seq: int = int(row[0])
     return f"{prefix}{seq:06d}"
+
+
+async def allocate_sequence(session: AsyncSession, tenant_id: uuid.UUID, seq_key: str) -> int:
+    """Race-safe per-tenant sequence claim (the P7 pattern, shared core).
+
+    pg_advisory_xact_lock serialises allocators per (tenant, seq_key);
+    the monotonic txn_ref_sequences upsert hands out the next value;
+    the caller's UNIQUE constraint is the final safety net. seq_key is
+    a code-owned constant (LOAN_REF_SEQ / EXIT_REF_SEQ — deliberately
+    distinct from every txn-ref display prefix so counters never
+    interleave), travelling as a bound parameter.
+    """
+    lock_key = _advisory_key(tenant_id, seq_key)
+    await session.execute(text(f"SELECT pg_advisory_xact_lock({_ADVISORY_NS}, {lock_key})"))
+    row = (
+        await session.execute(
+            text(
+                "INSERT INTO txn_ref_sequences (tenant_id, prefix, last_val) "
+                "VALUES (CAST(:tid AS uuid), :prefix, 1) "
+                "ON CONFLICT (tenant_id, prefix) DO UPDATE "
+                "SET last_val = txn_ref_sequences.last_val + 1 "
+                "RETURNING last_val"
+            ),
+            {"tid": str(tenant_id), "prefix": seq_key},
+        )
+    ).first()
+    if row is None:
+        raise RuntimeError(f"sequence upsert for {seq_key!r} returned no row")
+    return int(row[0])
 
 
 # ---------------------------------------------------------------------------
@@ -1037,6 +1068,9 @@ class DisbursementResult:
     txn_id: uuid.UUID
     txn_ref: str
     schedule: list[ScheduledInstallment]
+    #: Human loan reference (LN-XXXX, 0048) — minted race-safely in the
+    #: same transaction as the loan row.
+    loan_ref: str
 
 
 async def disburse_loan(
@@ -1220,17 +1254,24 @@ async def disburse_loan(
             f"stale version for loan application {application_id}; retry the disbursement"
         )
 
-    # Step 3: create loan record.
+    # Step 3: create loan record. The human reference (LN-XXXX, 0048)
+    # is minted through the shared P7 allocator in the SAME
+    # transaction: advisory lock + monotonic counter; the partial
+    # UNIQUE uq_loans_loan_ref is the final safety net. Lock order:
+    # the ADVR advisory tier is entered here after the application /
+    # deposit-account row locks — the same row->advisory direction as
+    # every posting chain (lock-order.md E15/E16); no new edge class.
     loan_id = uuid.uuid4()
+    loan_ref = format_loan_ref(await allocate_sequence(session, tenant_id, LOAN_REF_SEQ))
     await session.execute(
         text(
             "INSERT INTO loans "
             "(id, tenant_id, application_id, member_id, product_id, "
-            " principal, balance, rate_pct, term_months, disbursed_at) "
+            " principal, balance, rate_pct, term_months, disbursed_at, loan_ref) "
             "VALUES "
             "(CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:app AS uuid), "
             " CAST(:mid AS uuid), CAST(:pid AS uuid), "
-            " :principal, :balance, :rate, :term, :ts)"
+            " :principal, :balance, :rate, :term, :ts, :ref)"
         ),
         {
             "id": str(loan_id),
@@ -1243,6 +1284,7 @@ async def disburse_loan(
             "rate": str(rate_pct),
             "term": term_months,
             "ts": ts,
+            "ref": loan_ref,
         },
     )
 
@@ -1350,6 +1392,7 @@ async def disburse_loan(
         txn_id=result.txn_id,
         txn_ref=result.txn_ref,
         schedule=schedule,
+        loan_ref=loan_ref,
     )
 
 

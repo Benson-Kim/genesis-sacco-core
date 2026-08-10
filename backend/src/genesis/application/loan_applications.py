@@ -27,9 +27,15 @@ from genesis.application.pagination import (
     encode_cursor,
     parse_created_id_cursor,
 )
+from genesis.application.sod import require_distinct_non_assurance_checker
 from genesis.application.tenant_settings import committee_quorum, enforce_authority_band
 from genesis.domain.committee import Decision, Vote, decide
-from genesis.domain.lending import ApplicationStage, InvalidTransitionError, transition
+from genesis.domain.lending import (
+    ApplicationStage,
+    InvalidTransitionError,
+    override_refusal_transition,
+    transition,
+)
 from genesis.domain.members import MemberStatus, MoneyOperation, member_may
 from genesis.domain.money import ZERO, to_cents
 from genesis.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
@@ -44,9 +50,29 @@ API_TRANSITION_TARGETS = frozenset(
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 APPLICATIONS_LIST_SCOPE = "applications.list"
 
+#: Columns are table-qualified because the read statements join the
+#: members registry (alias mm) and the product catalogue (alias pp)
+#: for display labels; the three label columns ride PK-served joins.
 _COLS = (
-    "id, member_id, product_id, amount, term_months, rate_pct, purpose, stage, cover_pct, "
-    "created_by, recommended_by, version"
+    "loan_applications.id, loan_applications.member_id, "
+    "loan_applications.product_id, loan_applications.amount, "
+    "loan_applications.term_months, loan_applications.rate_pct, "
+    "loan_applications.purpose, loan_applications.stage, "
+    "loan_applications.cover_pct, loan_applications.created_by, "
+    "loan_applications.recommended_by, loan_applications.version, "
+    "mm.member_no, mm.name, pp.name"
+)
+
+#: Display-label joins for the read statements: each rides the joined
+#: table's PRIMARY KEY per page row plus the explicit tenant predicate
+#: (index-served, no new index). LEFT JOIN keeps the register honest
+#: if a label row is ever absent — a missing label must never drop an
+#: application from the register.
+_LABEL_JOINS = (
+    "LEFT JOIN members mm ON mm.tenant_id = loan_applications.tenant_id "
+    "AND mm.id = loan_applications.member_id "
+    "LEFT JOIN loan_products pp ON pp.tenant_id = loan_applications.tenant_id "
+    "AND pp.id = loan_applications.product_id "
 )
 
 #: cover_pct is stored as NUMERIC(6,2); values above this cap carry no
@@ -83,6 +109,14 @@ class ApplicationRecord:
     #: history was not unambiguous — attribution is never invented.
     recommended_by: uuid.UUID | None
     version: int
+    #: Human display labels — the applicant's member number and
+    #: registered name plus the product name — resolved server-side in
+    #: the SAME read statement (PK joins, no per-row lookups). None is
+    #: the honest state only if a label row is absent; labels are
+    #: never invented client-side.
+    member_no: str | None
+    member_name: str | None
+    product_name: str | None
 
 
 @dataclass(frozen=True)
@@ -107,6 +141,9 @@ def _row_to_application(row: Any) -> ApplicationRecord:
         created_by=uuid.UUID(str(row[9])) if row[9] is not None else None,
         recommended_by=uuid.UUID(str(row[10])) if row[10] is not None else None,
         version=int(row[11]),
+        member_no=str(row[12]) if row[12] is not None else None,
+        member_name=str(row[13]) if row[13] is not None else None,
+        product_name=str(row[14]) if row[14] is not None else None,
     )
 
 
@@ -244,7 +281,11 @@ async def create_application(
             # possible. Explicit tenant predicate on top of RLS
             # (defence in depth).
             text(
-                "SELECT status FROM members WHERE id = CAST(:m AS uuid) "
+                # member_no and name ride the same locked row so the
+                # create response carries the display labels without a
+                # second lookup.
+                "SELECT status, member_no, name FROM members "
+                "WHERE id = CAST(:m AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) FOR SHARE"
             ),
             {"m": str(member_id), "tid": str(tenant_id)},
@@ -343,6 +384,9 @@ async def create_application(
         # column is written only by the transition into committee.
         recommended_by=None,
         version=1,
+        member_no=str(member_row[1]),
+        member_name=str(member_row[2]),
+        product_name=product.name,
     )
 
 
@@ -355,7 +399,9 @@ async def get_application(
         await session.execute(
             text(
                 f"SELECT {_COLS} FROM loan_applications "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"{_LABEL_JOINS}"
+                "WHERE loan_applications.id = CAST(:id AS uuid) "
+                "AND loan_applications.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(application_id), "tid": str(tenant_id)},
         )
@@ -375,7 +421,10 @@ async def list_applications(
 ) -> tuple[list[ApplicationRecord], str | None]:
     """Keyset-paginated listing, newest first (scalability)."""
     limit = max(1, min(limit, 100))
-    clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
+    # Qualified because the label joins bring further tenant_id
+    # columns into scope; the predicate stays the leading column of
+    # the keyset index.
+    clauses: list[str] = ["loan_applications.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if stage is not None:
         clauses.append("stage = :stage")
@@ -387,15 +436,20 @@ async def list_applications(
             cursor, tenant_id=tenant_id, endpoint=APPLICATIONS_LIST_SCOPE, entity="application"
         )
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="application")
-        clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append(
+            "(loan_applications.created_at, loan_applications.id) < (:c_ts, CAST(:c_id AS uuid))"
+        )
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
-                f"SELECT created_at, {_COLS} FROM loan_applications "  # noqa: S608
+                f"SELECT loan_applications.created_at, {_COLS} "  # noqa: S608
+                "FROM loan_applications "
+                f"{_LABEL_JOINS}"
                 f"{where}"
-                "ORDER BY created_at DESC, id DESC LIMIT :limit"
+                "ORDER BY loan_applications.created_at DESC, "
+                "loan_applications.id DESC LIMIT :limit"
             ),
             params,
         )
@@ -684,6 +738,172 @@ async def cast_vote(
         decision=decision,
         stage=stage,
     )
+
+
+async def override_refusal(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    application_id: uuid.UUID,
+    *,
+    version: int,
+    reason: str,
+) -> ApplicationRecord:
+    """Supervisor override (#35 item 8, the authorized design): overturn
+    a subordinate's refusal on a loan application.
+
+    Separately permissioned (application_overrides:approve — the API
+    dependency has already refused non-holders BEFORE this runs, so a
+    403 leaves zero side effects). The workflow, in lock order:
+
+      1. Application row FOR UPDATE — the decision snapshot (stage +
+         version) is re-verified under this lock, so the override
+         binds to the PERSISTED refusal it was aimed at (no TOCTOU):
+         a stale version or a stage that already moved is a 409, and
+         a SECOND override of the same snapshot conflicts the same
+         way (the first bumped the version).
+      2. SoD: the overrider must differ from the MAKER (created_by)
+         and the RECOMMENDER (recommended_by); assurance roles are
+         excluded and unresolvable actors fail closed (the shared
+         require_distinct_non_assurance_checker guard).
+      3. Authority band: the override RATIFIES the amount, so it is
+         capped by the actor's tenant-configured band exactly like
+         every other ratifying act (enforce_authority_band, read
+         under the row lock).
+      4. The overridden actor id is resolved SERVER-SIDE from the
+         audit trail (the latest rejecting stage-write on this
+         application, idx_audit_entity-served) — never caller-
+         supplied, None for legacy rows (attribution is never
+         invented).
+      5. The stage moves REJECTED -> APPROVED through the dedicated
+         override_refusal_transition gatekeeper (the normal machine
+         keeps REJECTED terminal); the optimistic UPDATE re-checks
+         the version; a dedicated audit action
+         (application.override) carries before/after stage, the
+         mandatory reason and the overridden actor id, in the same
+         transaction; the outbox event follows.
+
+    Deliberately NOT resurrected: guarantee pledges released by the
+    refusal stay released (consent is never invented); the P7
+    disbursement gate re-verifies eligibility before any money moves.
+    """
+    cleaned_reason = reason.strip()
+    if not cleaned_reason:
+        raise InvalidInputError("an override requires a reason")
+    row = (
+        await session.execute(
+            text(
+                # Explicit tenant predicate on the row-lock read, on top
+                # of RLS (defence in depth).
+                "SELECT stage, version, amount, created_by, recommended_by "
+                "FROM loan_applications "
+                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
+            ),
+            {"id": str(application_id), "tid": str(tenant_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"loan application {application_id} not found")
+    current = ApplicationStage(str(row[0]))
+    try:
+        target = override_refusal_transition(current)
+    except InvalidTransitionError as exc:
+        raise ConflictError(str(exc)) from exc
+    if int(row[1]) != version:
+        # The snapshot moved since the caller read it (or was already
+        # overridden once) — bind-and-reverify says 409, never proceed.
+        raise ConflictError(f"stale version {version} for application {application_id}")
+    maker = uuid.UUID(str(row[3])) if row[3] is not None else None
+    recommender = uuid.UUID(str(row[4])) if row[4] is not None else None
+    if recommender is not None and actor_id == recommender:
+        raise ConflictError(
+            "the recommender of an application cannot override its refusal (segregation of duties)"
+        )
+    # Maker separation + assurance exclusion + fail-closed role
+    # resolution — the ONE shared SoD guard (reuse-first). A None
+    # maker (legacy/system row) never equals a real actor.
+    await require_distinct_non_assurance_checker(
+        session,
+        tenant_id,
+        actor_id,
+        maker if maker is not None else uuid.UUID(int=0),
+        subject="an application refusal",
+        subject_plural="application refusals",
+    )
+    # The override ratifies the amount: band-capped under the row lock.
+    await enforce_authority_band(session, tenant_id, actor_id, Decimal(str(row[2])))
+    # Overridden actor: the principal whose refusal is being
+    # overturned, resolved from the audit trail (idx_audit_entity).
+    overridden = (
+        await session.execute(
+            text(
+                "SELECT actor_id FROM audit_log "
+                "WHERE tenant_id = CAST(:tid AS uuid) AND entity = 'loan_applications' "
+                "AND entity_id = :eid "
+                "AND action IN ('application.stage', 'application.decided') "
+                "AND after->>'stage' = 'rejected' "
+                "ORDER BY at DESC, id DESC LIMIT 1"
+            ),
+            {"tid": str(tenant_id), "eid": str(application_id)},
+        )
+    ).first()
+    overridden_actor = (
+        uuid.UUID(str(overridden[0]))
+        if overridden is not None and overridden[0] is not None
+        else None
+    )
+    if overridden_actor is not None and overridden_actor == actor_id:
+        # SELF-override: the refusing principal cannot overturn their
+        # own refusal — an override is a SECOND pair of eyes by
+        # construction (segregation of duties).
+        raise ConflictError(
+            "the actor who refused an application cannot override that refusal "
+            "(segregation of duties)"
+        )
+    result = cast(
+        CursorResult[Any],
+        await session.execute(
+            text(
+                "UPDATE loan_applications SET stage = :st, "
+                "version = version + 1, updated_at = now() "
+                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
+                "AND version = :ver"
+            ),
+            {
+                "st": target.value,
+                "id": str(application_id),
+                "tid": str(tenant_id),
+                "ver": version,
+            },
+        ),
+    )
+    if result.rowcount != 1:
+        raise ConflictError(f"stale version {version} for application {application_id}")
+    await record_audit(
+        session,
+        tenant_id,
+        actor_id,
+        action="application.override",
+        entity="loan_applications",
+        entity_id=str(application_id),
+        before={"stage": current.value},
+        after={
+            "stage": target.value,
+            "reason": cleaned_reason,
+            "overridden_actor_id": str(overridden_actor) if overridden_actor else None,
+        },
+    )
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="loan.application_overridden",
+        payload={
+            "application_id": str(application_id),
+            "from": current.value,
+            "to": target.value,
+        },
+    )
+    return await get_application(session, tenant_id, application_id)
 
 
 async def recompute_cover(

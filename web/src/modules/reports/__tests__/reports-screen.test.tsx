@@ -175,6 +175,8 @@ beforeEach(() => {
         member_id: MEMBER_ID,
         status: "requested",
         created_at: "2026-07-01T09:00:00+00:00",
+        member_no: "M-0001",
+        member_name: "Jane Wanjiku",
       },
     ]),
   );
@@ -196,13 +198,14 @@ afterEach(() => {
   clearSession();
 });
 
-test("the catalogue offers EXACTLY the contract's 11 reports with their declared scopes — nothing invented, nothing dropped", async () => {
+test("the catalogue offers EXACTLY the contract's 12 reports with their declared scopes — nothing invented, nothing dropped", async () => {
   mountScreen();
   expect(await screen.findByText("Member statement")).toBeInTheDocument();
   expect(screen.getByText("Trial balance")).toBeInTheDocument();
   expect(screen.getByText("Loan book — classification & provisions")).toBeInTheDocument();
+  expect(screen.getByText("Transactions ledger")).toBeInTheDocument();
   expect(screen.getByText("SASRA return (skeleton)")).toBeInTheDocument();
-  expect(screen.getAllByRole("button", { name: "Request export…" })).toHaveLength(11);
+  expect(screen.getAllByRole("button", { name: "Request export…" })).toHaveLength(12);
   // The session panel is honest about its per-tab scope.
   expect(screen.getByText(/no export list endpoint/)).toBeInTheDocument();
   expect(screen.getByText(/No exports requested in this session yet/)).toBeInTheDocument();

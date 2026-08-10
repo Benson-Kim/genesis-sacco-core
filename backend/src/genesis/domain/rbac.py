@@ -35,6 +35,14 @@ class Module(enum.StrEnum):
     # never generic members:edit. Deliberately NARROW grants (see
     # _MEMBER_IDENTITY_GRANTS), the _CORRECTIONS_GRANTS precedent.
     MEMBER_IDENTITY = "member_identity"
+    # supervisor override (#35 item 8, the authorized design): the
+    # power to overturn a subordinate's refusal on a loan application
+    # carries its OWN permission strings — never generic
+    # applications:approve (which committee peers hold). Deliberately
+    # NARROW grants (see _APPLICATION_OVERRIDE_GRANTS): supervisor
+    # tiers only. No console screen — like member_identity it gates a
+    # workflow action, so the web MODULES mirror deliberately omits it.
+    APPLICATION_OVERRIDES = "application_overrides"
 
 
 class Action(enum.StrEnum):
@@ -133,6 +141,25 @@ _MEMBER_IDENTITY_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
     AUDITOR: (True, False, False, False),
 }
 
+#: explicit, narrow grants for the application_overrides module —
+#: (view, create, edit, approve) per role. The override
+#: (application_overrides:approve) is a SUPERVISORY power: only the
+#: seeded senior tier (SENIOR_TIERS keys) and the System Admin hold
+#: it — audited choice (#35 item 8 §5.9): the Branch Manager is a
+#: line-management role, NOT a SENIOR_TIERS supervisor of the credit
+#: workflow, and the Credit Committee is the PEER body whose refusal
+#: the override overturns, so neither may hold it. The Auditor
+#: reviews the trail (view only; ASSURANCE_ROLES also excludes acting
+#: server-side). Roles absent here hold NOTHING (deny by default).
+_APPLICATION_OVERRIDE_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
+    # System Admin keeps the root convention (all four actions true on
+    # every module — the matrix-shape invariant); only :approve is
+    # consumed by the override endpoint.
+    SYSTEM_ADMIN: (True, True, True, True),
+    SENIOR_CREDIT_OFFICER: (True, False, False, True),
+    AUDITOR: (True, False, False, False),
+}
+
 
 def _grants(role: str, module: Module) -> dict[Action, bool]:
     view = create = edit = approve = False
@@ -140,6 +167,10 @@ def _grants(role: str, module: Module) -> dict[Action, bool]:
         view, create, edit, approve = _CORRECTIONS_GRANTS.get(role, (False, False, False, False))
     elif module is Module.MEMBER_IDENTITY:
         view, create, edit, approve = _MEMBER_IDENTITY_GRANTS.get(
+            role, (False, False, False, False)
+        )
+    elif module is Module.APPLICATION_OVERRIDES:
+        view, create, edit, approve = _APPLICATION_OVERRIDE_GRANTS.get(
             role, (False, False, False, False)
         )
     elif role == SYSTEM_ADMIN:

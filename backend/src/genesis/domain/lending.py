@@ -321,3 +321,34 @@ def transition(current: ApplicationStage, target: ApplicationStage) -> Applicati
     if target not in _ALLOWED[current]:
         raise InvalidTransitionError(f"{current.value} -> {target.value}")
     return target
+
+
+#: Human loan reference display prefix (the member-number format
+#: discipline). NOT the allocator's sequence key — 'LN-' is already
+#: the loan-disbursement txn-ref counter key, so the loan_ref sequence
+#: uses its own key (LOAN_REF_SEQ) to keep the counters independent.
+LOAN_REF_PREFIX = "LN-"
+LOAN_REF_SEQ = "loan_ref"
+
+
+def format_loan_ref(seq: int) -> str:
+    """LN-XXXX human loan reference; grows past four digits without collision."""
+    if seq <= 0:
+        raise ValueError("loan reference sequence must be positive")
+    return f"{LOAN_REF_PREFIX}{seq:04d}"
+
+
+def override_refusal_transition(current: ApplicationStage) -> ApplicationStage:
+    """The SINGLE gatekeeper for the supervisor override (#35 item 8).
+
+    Deliberately OUTSIDE the normal _ALLOWED machine: REJECTED is (and
+    stays) terminal for every ordinary caller — only the separately
+    permissioned supervisor override may overturn a refusal, and only
+    to APPROVED. Any other current stage refuses loudly: an override
+    of a live (non-refused) application is a rejected design.
+    """
+    if current is not ApplicationStage.REJECTED:
+        raise InvalidTransitionError(
+            f"override applies to rejected applications, not {current.value}"
+        )
+    return ApplicationStage.APPROVED

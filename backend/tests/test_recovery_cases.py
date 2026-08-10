@@ -655,13 +655,15 @@ def test_worklist_keyset_order_and_least_disclosure() -> None:
             assert page2["next_cursor"] is None
 
             # Least disclosure (A5): workflow fields + dpd +
-            # classification pill only — NO balance/penalty/provision
-            # figures in any worklist row.
+            # classification pill + the member display labels only —
+            # NO balance, penalty or provision figures in any row.
             row_keys = set(page1["items"][0])
             assert row_keys == {
                 "case_id",
                 "loan_id",
                 "member_id",
+                "member_no",
+                "member_name",
                 "days_past_due",
                 "classification",
                 "assignee_id",

@@ -119,6 +119,9 @@ function baseLoan(overrides: Partial<Loan> = {}): Loan {
     disbursed_at: "2026-01-15T09:00:00Z",
     closed_at: null,
     version: 7,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
+    product_name: "Development Loan",
     ...overrides,
   };
 }
@@ -162,6 +165,9 @@ function approvedApplication(overrides: Partial<Application> = {}): Application 
     recommended_by: null,
     max_eligible: "300000.00",
     version: 5,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
+    product_name: "Development Loan",
     ...overrides,
   };
 }
@@ -276,6 +282,9 @@ afterEach(() => {
 
 test("hostile product name renders as inert TEXT; register + summary money renders VERBATIM through fmtKes (named XSS threat + blocker (a))", async () => {
   mockedApps.fetchProducts.mockResolvedValue([{ ...PRODUCT, name: HOSTILE_NAME }]);
+  mocked.fetchLoansPage.mockResolvedValue(
+    page([baseLoan({ product_name: HOSTILE_NAME })]),
+  );
   const { container } = mountScreen();
 
   // The payload is visible as literal text…
@@ -296,16 +305,22 @@ test("hostile product name renders as inert TEXT; register + summary money rende
   expect(screen.getByText("20.25% of book")).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    baseLoan({ id: `cccccccc-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchLoansPage
-    .mockResolvedValueOnce(page([baseLoan()], "opaque-cursor-§1"))
+    .mockResolvedValueOnce(page(fullPage, "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([baseLoan({ id: "dddddddd-1111-2222-3333-444444444444" })]));
   // Keep the queue's own Load more out of the register assertion.
   mockedApps.fetchApplicationsPage.mockResolvedValue(page([]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchLoansPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchLoansPage.mock.calls[0]?.[1]).toBeNull();
@@ -322,14 +337,17 @@ test("status + classification filters drive the SERVER query — the client neve
     expect(mocked.fetchLoansPage).toHaveBeenCalledWith(
       { status: "written_off", classification: "" },
       null,
+      10,
     ),
   );
 
-  await user.click(screen.getByRole("button", { name: "Doubtful" }));
+  // Five declared classifications → the shared filter renders its select variant.
+  await user.selectOptions(screen.getByLabelText("Classification"), "doubtful");
   await waitFor(() =>
     expect(mocked.fetchLoansPage).toHaveBeenCalledWith(
       { status: "written_off", classification: "doubtful" },
       null,
+      10,
     ),
   );
 });

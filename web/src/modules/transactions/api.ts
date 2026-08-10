@@ -73,12 +73,13 @@ export const EMPTY_TXN_FILTERS: TxnListFilters = {
 export async function fetchTransactionsPage(
   filters: TxnListFilters,
   cursor: string | null,
+  limit: number = TXNS_PAGE_SIZE,
 ): Promise<KeysetPage<Transaction>> {
   const { data, error, response } = await api.GET("/transactions", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: TXNS_PAGE_SIZE,
+        limit,
         member_id: filters.member_id === "" ? undefined : filters.member_id,
         type: filters.type === "" ? undefined : filters.type,
         channel: filters.channel === "" ? undefined : filters.channel,

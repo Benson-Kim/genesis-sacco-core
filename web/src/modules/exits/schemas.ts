@@ -89,6 +89,11 @@ export const exitSchema = z.object({
   /** Optimistic-lock version pinning void/settlement writes (1.4). */
   version: z.number().int(),
   created_at: timestampSchema,
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
 });
 
 export type ExitRecord = z.infer<typeof exitSchema>;

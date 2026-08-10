@@ -43,6 +43,13 @@ jest.mock("@/modules/members/api", () => ({
   fetchMember: jest.fn(),
 }));
 
+// The stage-filter count badges ride the dashboard pipeline slice —
+// advisory only. Stubbed with no data so the register suites stay
+// hermetic (no composite fetch) and filter names stay stable.
+jest.mock("@/modules/dashboard/components/DashboardScreen", () => ({
+  useDashboardSummary: jest.fn(() => ({ data: undefined })),
+}));
+
 jest.mock("@/modules/authz/usePermissions", () => ({
   usePermissions: jest.fn(),
 }));
@@ -95,6 +102,9 @@ function baseApplication(overrides: Partial<Application> = {}): Application {
     recommended_by: null,
     max_eligible: "300000.00",
     version: 3,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
+    product_name: "Development Loan",
     ...overrides,
   };
 }
@@ -203,18 +213,24 @@ test("hostile purpose renders as inert TEXT; money figures render VERBATIM throu
 
   // Decimal strings render byte-identically inside the KES format —
   // falsifiable: a numeric round-trip would drop the trailing ".10".
-  expect(screen.getByText("KES 250,000.10")).toBeInTheDocument();
+  expect(screen.getByText("250,000.10")).toBeInTheDocument();
   expect(screen.getByText("120.00%")).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    baseApplication({ id: `aaaaaaaa-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchApplicationsPage
-    .mockResolvedValueOnce(page([baseApplication()], "opaque-cursor-§1"))
+    .mockResolvedValueOnce(page(fullPage, "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([baseApplication({ id: "bbbbbbbb-1111-2222-3333-444444444444" })]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchApplicationsPage).toHaveBeenCalledTimes(2));
   // First page: null cursor; second: the opaque server cursor untouched.
@@ -226,13 +242,15 @@ test("stage filter drives the SERVER query — the client never filters locally"
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 250,000.10");
-  await user.click(screen.getByRole("button", { name: "Committee" }));
+  await screen.findByText("250,000.10");
+  // Six declared stages → the shared filter renders its select variant.
+  await user.selectOptions(screen.getByLabelText("Stage"), "committee");
 
   await waitFor(() =>
     expect(mocked.fetchApplicationsPage).toHaveBeenCalledWith(
       { stage: "committee" },
       null,
+      10,
     ),
   );
 });
@@ -242,11 +260,11 @@ test("UI affordances follow the matrix: view-only role sees NO intake button and
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 250,000.10");
+  await screen.findByText("250,000.10");
   expect(screen.queryByRole("button", { name: "+ New application" })).toBeNull();
 
   // Drill into the detail drawer: no stage-move affordances mount.
-  await user.click(screen.getByText("KES 250,000.10"));
+  await user.click(screen.getByText("250,000.10"));
   await screen.findByText("Record version");
   expect(screen.queryByText("Officer action")).toBeNull();
   expect(screen.queryByRole("button", { name: /Move to appraisal/ })).toBeNull();
@@ -326,7 +344,7 @@ test("stale stage move: 409 shows the explicit reload flow with EXACTLY ONE writ
   mocked.transitionApplication.mockRejectedValue(new ApiError(409, "conflict", "corr-stale"));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await user.click(await screen.findByRole("button", { name: "Move to appraisal" }));
 
   expect(await screen.findByText(/Your change was NOT applied/)).toBeInTheDocument();
@@ -357,7 +375,7 @@ test("terminal reject flows through the typed confirmation: NO write until the b
   mocked.transitionApplication.mockResolvedValue(baseApplication({ stage: "rejected", version: 4 }));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await user.click(await screen.findByRole("button", { name: "Reject…" }));
 
   const dialog = await screen.findByRole("dialog", { name: "Reject application" });
@@ -383,7 +401,7 @@ test("idempotency keys: stable across retries of an identical move, rotated when
     .mockResolvedValue(baseApplication({ stage: "appraisal", version: 4 }));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await user.click(await screen.findByRole("button", { name: "Move to appraisal" }));
   await waitFor(() => expect(mocked.transitionApplication).toHaveBeenCalledTimes(1));
 
@@ -406,7 +424,7 @@ test("least-disclosure: a 403 renders the sanitized banner only, no reload affor
   mocked.transitionApplication.mockRejectedValue(new ApiError(403, "forbidden", "corr-f"));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await user.click(await screen.findByRole("button", { name: "Move to appraisal" }));
 
   expect(await screen.findByText(/Not permitted\./)).toBeInTheDocument();
@@ -443,7 +461,7 @@ test("attribution (issue #30 / !66 follow-up): the detail drawer renders created
   mocked.fetchApplication.mockResolvedValue(baseApplication({ created_by: CREATOR_ID }));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await screen.findByText("Record version");
   // Short-id convention: the 8-char prefix renders; the full UUID rides
   // the title attribute (same treatment as every other opaque id).
@@ -463,7 +481,7 @@ test("attribution NULL leg (FM-B): an unattributed record renders the honest aff
   mocked.fetchApplication.mockResolvedValue(baseApplication({ created_by: null }));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await screen.findByText("Record version");
   expect(screen.getByText("— (unattributed)")).toBeInTheDocument();
 });
@@ -474,7 +492,7 @@ test("attribution XSS inertness: a hostile created_by string renders as inert TE
   mocked.fetchApplication.mockResolvedValue(baseApplication({ created_by: HOSTILE_CREATOR }));
   const { container } = mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await screen.findByText("Record version");
   // The sliced 8-char prefix ("<img src") renders as literal text…
   expect(screen.getByTitle(HOSTILE_CREATOR)).toHaveTextContent("<img src");
@@ -491,7 +509,7 @@ test("recommender attribution (issue #30 close-out, 0037): the detail drawer ren
   );
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await screen.findByText("Record version");
   // Short-id convention: the 8-char prefix renders; the full UUID rides
   // the title attribute (same treatment as created_by).
@@ -509,7 +527,7 @@ test("recommender NULL leg (FM-B): a not-yet-referred / unattributed record rend
   mocked.fetchApplication.mockResolvedValue(baseApplication({ recommended_by: null }));
   mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await screen.findByText("Record version");
   expect(screen.getByText("— (not referred / unattributed)")).toBeInTheDocument();
 });
@@ -522,7 +540,7 @@ test("recommender XSS inertness: a hostile recommended_by string renders as iner
   );
   const { container } = mountScreen();
 
-  await user.click(await screen.findByText("KES 250,000.10"));
+  await user.click(await screen.findByText("250,000.10"));
   await screen.findByText("Record version");
   // The sliced 8-char prefix ("<img src") renders as literal text…
   expect(screen.getByTitle(HOSTILE_RECOMMENDER)).toHaveTextContent("<img src");

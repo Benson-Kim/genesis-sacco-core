@@ -116,6 +116,13 @@ export const transactionSchema = z.object({
    * interest, dormancy — and pre-0036 rows without unambiguous audit
    * history; FM-B: an actor is never invented). */
   created_by: z.string().nullable(),
+  /** Human display labels (identifier doctrine): the posting member's
+   * number and registered name, resolved SERVER-side in the same list
+   * statement — this client never fetches a directory record to label
+   * a row. NULLABLE, never optional: null is the honest state for
+   * system postings that carry no member. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
   /** External receipt reference (migration 0043) —
    * NULLABLE, never optional: the operator-entered M-Pesa code / bank
    * slip ref on external-channel teller postings; null is the honest

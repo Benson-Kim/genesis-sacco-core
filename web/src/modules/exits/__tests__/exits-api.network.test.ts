@@ -67,6 +67,8 @@ const exitOut = {
   settlement_txn_id: null,
   version: 1,
   created_at: "2026-08-01T09:00:00+00:00",
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 function json(status: number, body: unknown): Response {

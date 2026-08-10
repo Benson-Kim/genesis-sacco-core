@@ -50,12 +50,13 @@ export interface LoanListFilters {
 export async function fetchLoansPage(
   filters: LoanListFilters,
   cursor: string | null,
+  limit: number = LOANS_PAGE_SIZE,
 ): Promise<KeysetPage<Loan>> {
   const { data, error, response } = await api.GET("/loans", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: LOANS_PAGE_SIZE,
+        limit,
         status: filters.status === "" ? undefined : filters.status,
         classification: filters.classification === "" ? undefined : filters.classification,
       },

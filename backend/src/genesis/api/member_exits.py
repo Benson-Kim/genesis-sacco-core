@@ -119,6 +119,16 @@ class ExitOut(BaseModel):
     settlement_txn_id: str | None
     version: int
     created_at: str
+    #: Human display labels: the exiting member's number and
+    #: registered name, resolved server-side in the same read
+    #: statement. null on the settlement-response shape (its locked
+    #: read deliberately skips the label join) — labels are never
+    #: invented.
+    member_no: str | None
+    member_name: str | None
+    #: Human exit reference (EX-XXXX, 0048) — the operator-facing
+    #: identifier; null only for rows written before the backfill.
+    exit_ref: str | None
 
 
 class ExitListResponse(BaseModel):
@@ -165,6 +175,9 @@ class SettlementOut(BaseModel):
 
 class ExitStatementOut(BaseModel):
     exit_id: str
+    #: Human exit reference (EX-XXXX, 0048); null only for statements
+    #: of rows written before the backfill.
+    exit_ref: str | None
     member_id: str
     member_no: str
     member_name: str
@@ -209,6 +222,9 @@ def _out(record: exits_service.ExitRecord) -> ExitOut:
         ),
         version=record.version,
         created_at=record.created_at.isoformat(),
+        member_no=record.member_no,
+        member_name=record.member_name,
+        exit_ref=record.exit_ref,
     )
 
 
@@ -334,6 +350,7 @@ async def get_exit_statement(exit_id: uuid.UUID, ctx: ViewCtx) -> ExitStatementO
         doc = await exits_service.exit_statement(session, ctx.tenant_id, exit_id)
     return ExitStatementOut(
         exit_id=str(doc.exit_id),
+        exit_ref=doc.exit_ref,
         member_id=str(doc.member_id),
         member_no=doc.member_no,
         member_name=doc.member_name,

@@ -26,15 +26,17 @@
  */
 import { useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
+import { Button, Card, FilterControl } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { FormField } from "@/modules/forms/FormField";
 import { fetchMembersPage } from "@/modules/members/api";
 import type { Member } from "@/modules/members/schemas";
+import type { ExportFilterDraft } from "@/modules/reports/schemas";
 import { EMPTY_TXN_FILTERS, fetchTransactionsPage, type TxnListFilters } from "../api";
 import {
   CHANNELS,
@@ -63,12 +65,46 @@ const InterestRunDialog = dynamic(
   () => import("./InterestRunDialog").then((m) => m.InterestRunDialog),
   { ssr: false },
 );
+const RequestExportDrawer = dynamic(
+  () =>
+    import("@/modules/reports/components/RequestExportDrawer").then(
+      (m) => m.RequestExportDrawer,
+    ),
+  { ssr: false },
+);
 
 type DrawerState =
   | null
   | { mode: "detail"; txn: Transaction }
   | { mode: "post" }
-  | { mode: "interest" };
+  | { mode: "interest" }
+  | { mode: "export" };
+
+/**
+ * The register page's ACTIVE filters as the export drawer's pre-fill
+ * (#35 item 5): a pure key rename (type -> txn_type; the rest map
+ * 1:1), empty strings dropped — the SAME values the list request is
+ * currently using, so the export scope matches the visible register.
+ * Hand-computable: {type:"deposit", channel:"mpesa"} becomes
+ * {txn_type:"deposit", channel:"mpesa"}.
+ */
+export function exportDraftFromFilters(filters: TxnListFilters): Partial<ExportFilterDraft> {
+  const entries: [keyof ExportFilterDraft, string][] = [
+    ["member_id", filters.member_id],
+    ["txn_type", filters.type],
+    ["channel", filters.channel],
+    ["direction", filters.direction],
+    ["ref", filters.ref],
+    ["search", filters.search],
+    ["date_from", filters.date_from],
+    ["date_to", filters.date_to],
+  ];
+  const draft: Partial<ExportFilterDraft> = {};
+  for (const [key, value] of entries) {
+    if (value !== "") draft[key] = value;
+  }
+  return draft;
+}
 
 /**
  * Member filter — a separate component so its keyset hook mounts ONLY
@@ -121,7 +157,14 @@ function MemberFilter({
 
 export function TransactionsScreen() {
   const permissions = usePermissions();
-  const [filters, setFilters] = useState<TxnListFilters>(EMPTY_TXN_FILTERS);
+  const [filters, setFiltersRaw] = useState<TxnListFilters>(EMPTY_TXN_FILTERS);
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  const setFilters: typeof setFiltersRaw = (action) => {
+    setFiltersRaw(action);
+    pagination.setPageIndex(0);
+  };
   // Text/date filters stage locally and apply on submit (one server
   // round-trip per applied filter set, not per keystroke).
   const [refDraft, setRefDraft] = useState("");
@@ -139,8 +182,9 @@ export function TransactionsScreen() {
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   const list = useKeysetList<Transaction>({
-    queryKey: ["transactions", "list", filters],
-    fetchPage: (cursor) => fetchTransactionsPage(filters, cursor),
+    queryKey: ["transactions", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) =>
+      fetchTransactionsPage(filters, cursor, pagination.pageSize),
   });
 
   const mayViewMembers = can(permissions.data, "members", "view");
@@ -149,6 +193,9 @@ export function TransactionsScreen() {
   // affordance is hidden, not disabled.
   const mayPost = can(permissions.data, "transactions", "create") && mayViewMembers;
   const mayRunInterest = can(permissions.data, "transactions", "edit");
+  // The export affordance mirrors the server gate (POST /exports is
+  // reports:view) — hidden, not disabled, for unentitled roles.
+  const mayExport = can(permissions.data, "reports", "view");
 
   function applyDrafts(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -225,10 +272,15 @@ export function TransactionsScreen() {
       key: "member",
       header: "Member",
       render: (txn) =>
-        // The P11 list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record.
+        // Identifier doctrine: rows label the member as number — name,
+        // resolved server-side on the row itself; the uuid stays the
+        // machine identity on the title attribute.
         txn.member_id === null ? (
           <span className={styles.muted}>—</span>
+        ) : txn.member_no !== null ? (
+          <span title={txn.member_id}>
+            {txn.member_no} — {txn.member_name}
+          </span>
         ) : (
           <span className={styles.mono} title={txn.member_id}>
             {txn.member_id.slice(0, 8)}
@@ -276,77 +328,56 @@ export function TransactionsScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <FormField id="txn-filter-type" label="Type">
-            {(control) => (
-              <select
-                {...control}
-                className={`${styles.select} ${styles.filterControl}`}
-                value={filters.type}
-                onChange={(event) =>
-                  setFilters((current) => ({
-                    ...current,
-                    type: event.target.value as TxnListFilters["type"],
-                  }))
-                }
-              >
-                <option value="">All types</option>
-                {TXN_TYPES.map((option) => (
-                  <option key={option} value={option}>
-                    {TXN_TYPE_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-          <FormField id="txn-filter-channel" label="Channel">
-            {(control) => (
-              <select
-                {...control}
-                className={`${styles.select} ${styles.filterControl}`}
-                value={filters.channel}
-                onChange={(event) =>
-                  setFilters((current) => ({
-                    ...current,
-                    channel: event.target.value as TxnListFilters["channel"],
-                  }))
-                }
-              >
-                <option value="">All channels</option>
-                {CHANNELS.map((option) => (
-                  <option key={option} value={option}>
-                    {CHANNEL_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Direction</span>
-            <div className={styles.segment} role="group" aria-label="Direction">
-              <button
-                type="button"
-                className={styles.segmentButton}
-                aria-pressed={filters.direction === ""}
-                onClick={() => setFilters((current) => ({ ...current, direction: "" }))}
-              >
-                All
-              </button>
-              {SIDES.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={styles.segmentButton}
-                  aria-pressed={filters.direction === option}
-                  onClick={() => setFilters((current) => ({ ...current, direction: option }))}
-                >
-                  {SIDE_LABELS[option]}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FilterControl
+            id="txn-filter-type"
+            label="Type"
+            value={filters.type}
+            onChange={(next) =>
+              setFilters((current) => ({
+                ...current,
+                type: next as TxnListFilters["type"],
+              }))
+            }
+            options={TXN_TYPES.map((option) => ({
+              value: option,
+              label: TXN_TYPE_LABELS[option],
+            }))}
+            allLabel="All types"
+          />
+          <FilterControl
+            id="txn-filter-channel"
+            label="Channel"
+            value={filters.channel}
+            onChange={(next) =>
+              setFilters((current) => ({
+                ...current,
+                channel: next as TxnListFilters["channel"],
+              }))
+            }
+            options={CHANNELS.map((option) => ({
+              value: option,
+              label: CHANNEL_LABELS[option],
+            }))}
+            allLabel="All channels"
+          />
+          <FilterControl
+            id="txn-filter-direction"
+            label="Direction"
+            value={filters.direction}
+            onChange={(next) =>
+              setFilters((current) => ({
+                ...current,
+                direction: next as TxnListFilters["direction"],
+              }))
+            }
+            options={SIDES.map((option) => ({
+              value: option,
+              label: SIDE_LABELS[option],
+            }))}
+          />
           {mayViewMembers && (
             <MemberFilter
               value={filters.member_id}
@@ -355,30 +386,20 @@ export function TransactionsScreen() {
               }
             />
           )}
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Date</span>
-            <div className={styles.segment} role="group" aria-label="Date preset">
-              {(
-                [
-                  ["", "All"],
-                  ["today", "Today"],
-                  ["7d", "Last 7 days"],
-                  ["30d", "Last 30 days"],
-                  ["custom", "Custom range"],
-                ] as const
-              ).map(([preset, label]) => (
-                <button
-                  key={label}
-                  type="button"
-                  className={styles.segmentButton}
-                  aria-pressed={datePreset === preset}
-                  onClick={() => applyDatePreset(preset)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FilterControl
+            id="txn-filter-date-preset"
+            label="Date"
+            value={datePreset}
+            onChange={(next) => applyDatePreset(next)}
+            options={(
+              [
+                ["today", "Today"],
+                ["7d", "Last 7 days"],
+                ["30d", "Last 30 days"],
+                ["custom", "Custom range"],
+              ] as const
+            ).map(([preset, label]) => ({ value: preset, label }))}
+          />
           <form className={styles.filters} onSubmit={applyDrafts} noValidate>
             <FormField id="txn-filter-search" label="Search (ref or member)">
               {(control) => (
@@ -435,6 +456,11 @@ export function TransactionsScreen() {
           </form>
         </div>
         <div className={styles.toolbarActions}>
+          {mayExport && (
+            <Button type="button" onClick={() => setDrawer({ mode: "export" })}>
+              Export
+            </Button>
+          )}
           {mayRunInterest && (
             <Button type="button" onClick={() => setDrawer({ mode: "interest" })}>
               Run deposit interest
@@ -466,6 +492,13 @@ export function TransactionsScreen() {
           rowKey={(txn) => txn.id}
           emptyMessage="No transactions match this filter."
           onRowClick={(txn) => setDrawer({ mode: "detail", txn })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "transactions",
+          }}
         />
       </Card>
 
@@ -478,6 +511,13 @@ export function TransactionsScreen() {
       {drawer !== null && drawer.mode === "interest" && (
         <InterestRunDialog onClose={() => setDrawer(null)} />
       )}
-    </div>
+      {drawer !== null && drawer.mode === "export" && (
+        <RequestExportDrawer
+          report="transactions_ledger"
+          initial={exportDraftFromFilters(filters)}
+          onClose={() => setDrawer(null)}
+        />
+      )}
+    </Card>
   );
 }

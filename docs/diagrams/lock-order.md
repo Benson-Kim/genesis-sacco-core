@@ -97,7 +97,7 @@ flowchart TD
 
     subgraph T6["Tier 6 — per-tenant advisory locks (always last)"]
         ADVP["pg_advisory_xact_lock_shared(period barrier)<br/>exclusive in close_period"]
-        ADVR["pg_advisory_xact_lock(ref generator)<br/>+ txn_ref_sequences upsert<br/>(txn refs; member numbering)"]
+        ADVR["pg_advisory_xact_lock(ref generator)<br/>+ txn_ref_sequences upsert<br/>(txn refs; member numbering;<br/>loan/exit human refs 0048)"]
     end
 
     EXIT -->|E1| MSELF
@@ -171,7 +171,7 @@ citation.
 | E13 | members (self) → share_accounts (self) | FS/FU → FU | `application/dividends.py:transfer_shares` (both members `sorted()` L1365, then both share accounts in the same member-id order L1384); `application/transactions.py:record_share_topup` (member FOR SHARE guard → share account, single member) — the deposit tier is skipped, which is always safe (§4) | P11/!30 |
 | E14 | share_accounts (self) → loans (self, id order) | FU → FU | `application/member_exits.py:_compute_under_locks` → `_active_loan_payoffs` (`ORDER BY id FOR UPDATE` L259) | P12 |
 | E15 | last row lock of any posting chain → advisory period barrier (shared) | row → advisory | `application/ledger.py:_post` → `accounting_periods.py:assert_open_period` (`pg_advisory_xact_lock_shared` L110) — called by EVERY posting: deposits/withdrawals/top-ups, disbursement, repayment, exit set-off, deposit interest, dividends/rebates, share transfer, reversal, P13.15 misc fees / adjustment reversals / write-off postings, issue-#21 recovery receipts | issue #12 |
-| E16 | advisory period barrier → advisory ref generator | advisory → advisory | `application/ledger.py:_post` (barrier first, then `_next_ref` `pg_advisory_xact_lock` L108 + `txn_ref_sequences` upsert). Member numbering (`members.py:_next_member_no` L91) takes ADVR with **no** row locks held | P7 |
+| E16 | advisory period barrier → advisory ref generator | advisory → advisory | `application/ledger.py:_post` (barrier first, then `_next_ref` `pg_advisory_xact_lock` L108 + `txn_ref_sequences` upsert). Member numbering (`members.py:_next_member_no` L91) takes ADVR with **no** row locks held; loan/exit human-reference minting (0048: `ledger.py:disburse_loan` via `allocate_sequence`, `member_exits.py:request_exit`) takes ADVR after its row locks — the same row → advisory direction as every posting chain | P7 |
 | E17 | users (admin set, id order) → users (target) | FU → FU | `application/users.py:change_user_status` / `assign_role` / `update_user` (`_lock_admin_set` L467 → `_lock_user_row` L483) | P13.5 |
 | E18 | users → otp_challenges | FU → FU | `application/auth.py:verify_otp` (user L179 → newest challenge L191); suspension voids challenges (row writes) under the same user lock (`users.py:_void_pending_otp_challenges`) | P13.5 |
 | E19 | users → refresh_tokens | FU → FU | `application/auth.py:rotate_refresh_token` (unlocked peek → user L255 → token L270); suspension revokes families under the user lock (`users.py:_revoke_refresh_families`) | P13.5 |

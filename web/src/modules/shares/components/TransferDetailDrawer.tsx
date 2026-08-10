@@ -259,10 +259,24 @@ export function TransferDetailDrawer({
           <span className={styles.mono}>{record.id}</span>
         </Kv>
         <Kv label="From member">
-          <ShortId id={record.from_member_id} />
+          {/* Identifier doctrine: number — name, resolved server-side
+              on the record; the uuid stays machine identity. */}
+          {record.from_member_no !== null ? (
+            <span title={record.from_member_id}>
+              {record.from_member_no} — {record.from_member_name}
+            </span>
+          ) : (
+            <ShortId id={record.from_member_id} />
+          )}
         </Kv>
         <Kv label="To member">
-          <ShortId id={record.to_member_id} />
+          {record.to_member_no !== null ? (
+            <span title={record.to_member_id}>
+              {record.to_member_no} — {record.to_member_name}
+            </span>
+          ) : (
+            <ShortId id={record.to_member_id} />
+          )}
         </Kv>
         <Kv label="Amount">
           <span className={styles.amountCell}>{fmtKes(record.amount)}</span>
@@ -407,9 +421,9 @@ export function TransferDetailDrawer({
           >
             <div className={styles.formNote}>
               Pending transfer of {fmtKes(record.amount)} from member{" "}
-              {record.from_member_id.slice(0, 8)} to member{" "}
-              {record.to_member_id.slice(0, 8)} (server snapshot, re-verified
-              component-by-component at approval).
+              {record.from_member_no ?? record.from_member_id.slice(0, 8)} to member{" "}
+              {record.to_member_no ?? record.to_member_id.slice(0, 8)} (server snapshot,
+              re-verified component-by-component at approval).
             </div>
           </MakerCheckerPanel>
         </>
@@ -428,8 +442,8 @@ export function TransferDetailDrawer({
         >
           <Banner>
             This moves {fmtKes(record.amount)} of share capital from member{" "}
-            {record.from_member_id.slice(0, 8)} to member{" "}
-            {record.to_member_id.slice(0, 8)} — both ledger legs post
+            {record.from_member_no ?? record.from_member_id.slice(0, 8)} to member{" "}
+            {record.to_member_no ?? record.to_member_id.slice(0, 8)} — both ledger legs post
             atomically and BOTH members are notified. The server re-verifies
             the persisted snapshot under the full lock set — any drift is a
             conflict with NOTHING posted. The wire body is empty by

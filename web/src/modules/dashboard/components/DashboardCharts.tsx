@@ -109,10 +109,6 @@ export function FlowsBarChart({ flows }: Readonly<{ flows: FlowsChart }>) {
                 <span className={styles.legendItem}>
                     <span className={`${styles.legendSwatch} ${styles.swatchNavy}`} /> Disbursed
                 </span>
-                <span className={styles.scaleNote}>
-                    Bar scale: 0 – {fmtKes(flows.axis_max)} (server-computed; reversal-only
-                    months clamp to zero — the signed truth is in the table)
-                </span>
             </div>
         </div>
     );

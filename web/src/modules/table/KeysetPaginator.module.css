@@ -1,0 +1,152 @@
+/*
+ * KeysetPaginator — footer for cursor-paginated tables.
+ * Tokens only; no ad-hoc hex values.
+ */
+
+.paginator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    padding: var(--space-xs) var(--space-md);
+    border-top: 1px solid var(--panel);
+    background: var(--card);
+    min-height: 44px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Left — "Show n per page" size picker                                */
+/* ------------------------------------------------------------------ */
+
+.sizeLabel {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--fs-meta);
+    color: var(--sub);
+    white-space: nowrap;
+    cursor: default;
+}
+
+/* ------------------------------------------------------------------ */
+/* Right — prev / page indicator / next                                */
+/* ------------------------------------------------------------------ */
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xxs);
+}
+
+/* Text + arrow button — wider than the old icon-only button */
+.navBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xxs);
+    height: 32px;
+    padding: 0 var(--space-sm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--navy);
+    font: inherit;
+    font-size: var(--fs-meta);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+        background var(--duration-fast) ease,
+        border-color var(--duration-fast) ease,
+        color var(--duration-fast) ease;
+}
+
+.navBtn:hover:not(:disabled) {
+    background: var(--navySoft);
+    border-color: var(--navy);
+}
+
+.navBtn:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: 2px;
+}
+
+.navBtn:disabled {
+    color: var(--line);
+    border-color: var(--panel);
+    cursor: not-allowed;
+}
+
+/* The ‹ / › glyph — slightly larger than the label text */
+.arrow {
+    font-size: 1.1rem;
+    line-height: 1;
+    font-weight: 400;
+}
+
+.pageIndicator {
+    font-size: var(--fs-meta);
+    color: var(--sub);
+    white-space: nowrap;
+    padding: 0 var(--space-xs);
+    min-width: 6rem;
+    text-align: center;
+}
+
+.pageIndicator strong {
+    color: var(--ink);
+    font-weight: 700;
+}
+
+.sizePicker {
+    height: 28px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-meta);
+    padding: 0 1.75rem 0 var(--space-xs);
+    appearance: none;
+    cursor: pointer;
+    /* CSS chevron via background-image — inline SVG, no external asset */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%233A383F' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    transition: border-color var(--duration-fast) ease;
+}
+
+.sizePicker:hover {
+    border-color: var(--sub);
+}
+
+.sizePicker:focus-visible {
+    outline: none;
+    border-color: var(--navy);
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared muted text                                                   */
+/* ------------------------------------------------------------------ */
+
+.muted {
+    color: var(--sub);
+}
+
+/* ------------------------------------------------------------------ */
+/* Forced-colors (Windows High Contrast Mode)                         */
+/* ------------------------------------------------------------------ */
+
+@media (forced-colors: active) {
+    .navBtn,
+    .sizePicker {
+        border-color: ButtonText;
+        forced-color-adjust: auto;
+    }
+
+    .sizePicker {
+        background-image: none;
+        padding-inline-end: var(--space-xs);
+        appearance: auto;
+    }
+}

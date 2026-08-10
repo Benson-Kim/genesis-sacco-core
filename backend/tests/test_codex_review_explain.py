@@ -35,7 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db_helpers import factory, seed_user, unique_email
-from genesis.application.loan_applications import list_applications
+from genesis.application.loan_applications import _COLS, _LABEL_JOINS, list_applications
 from genesis.domain.lending import ApplicationStage
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -45,21 +45,21 @@ pytestmark = pytest.mark.skipif(
 
 OUT_PATH = Path(__file__).resolve().parents[1] / "perf" / "explain_codex_review.txt"
 
-_COLS = (
-    "id, member_id, product_id, amount, term_months, rate_pct, purpose, stage, cover_pct, version"
-)
-
-#: The exact statement shapes list_applications builds (values bound).
+#: The exact statement shapes list_applications builds (values bound):
+#: the module-level column list and display-label joins, so this gate
+#: keeps asserting the PRODUCTION statement as it evolves.
 STAGE_FILTERED_PAGE = f"""
-SELECT created_at, {_COLS} FROM loan_applications
-WHERE tenant_id = CAST(:tid AS uuid) AND stage = :stage
-ORDER BY created_at DESC, id DESC LIMIT :limit
+SELECT loan_applications.created_at, {_COLS} FROM loan_applications
+{_LABEL_JOINS}
+WHERE loan_applications.tenant_id = CAST(:tid AS uuid) AND stage = :stage
+ORDER BY loan_applications.created_at DESC, loan_applications.id DESC LIMIT :limit
 """  # noqa: S608 - static column list from code
 
 UNFILTERED_PAGE = f"""
-SELECT created_at, {_COLS} FROM loan_applications
-WHERE tenant_id = CAST(:tid AS uuid)
-ORDER BY created_at DESC, id DESC LIMIT :limit
+SELECT loan_applications.created_at, {_COLS} FROM loan_applications
+{_LABEL_JOINS}
+WHERE loan_applications.tenant_id = CAST(:tid AS uuid)
+ORDER BY loan_applications.created_at DESC, loan_applications.id DESC LIMIT :limit
 """  # noqa: S608 - static column list from code
 
 REPAYMENT_BY_TXN = """
@@ -157,11 +157,27 @@ def test_codex_review_queries_are_index_backed() -> None:
         assert "idx_applications_stage_keyset" in stage_plan
         assert "Sort" not in stage_plan
         assert "Seq Scan" not in stage_plan
+        # Display-label joins ride an INDEX-SERVED probe per page row.
+        # The stats-free CI planner picks arbitrarily among each
+        # dimension table's unique indexes (observed: members_pkey,
+        # 0018's uq_members_id_type, 0028's uq_members_tenant_id_id;
+        # loan_products_pkey, its tenant+name UNIQUE) — any of them is
+        # the index-served probe the gate fences. The falsifiable leg
+        # is the Seq Scan/Sort ban: drop the indexes and the plan goes
+        # red. The plan itself is the assertion message: the register's
+        # falsifiability evidence must never be elided on failure.
+        _member_probes = ("members_pkey", "uq_members_id_type", "uq_members_tenant_id_id")
+        _product_probes = ("loan_products_pkey", "loan_products_tenant_id_name_key")
+        assert any(ix in stage_plan for ix in _member_probes), stage_plan
+        assert any(ix in stage_plan for ix in _product_probes), stage_plan
         # 0006 must keep serving the unfiltered page (regression fence
         # against replacing it with the stage-shaped index).
         assert "idx_applications_created_keyset" in unfiltered_plan
         assert "Sort" not in unfiltered_plan
         assert "Seq Scan" not in unfiltered_plan
+        # Same index-served probe posture as the stage plan.
+        assert any(ix in unfiltered_plan for ix in _member_probes), unfiltered_plan
+        assert any(ix in unfiltered_plan for ix in _product_probes), unfiltered_plan
         # 0014: the reversal guard lookup is index-backed.
         assert "idx_repayments_transaction" in repayment_plan
         assert "Seq Scan" not in repayment_plan

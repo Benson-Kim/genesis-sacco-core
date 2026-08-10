@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,25 @@ class Settings(BaseSettings):
     jwt_signing_key: str = ""
     otp_pepper: str = ""
     auth_rate_limit_per_minute: int = 60
+    # Comma-separated list of browser origins allowed to call this API.
+    # Example: "http://localhost:3000,https://admin.example.com"
+    # Stored as a plain string so pydantic-settings does not attempt JSON
+    # parsing; cors_origins_list converts it to a list after validation.
+    cors_origins: str = ""
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _coerce_list(cls, v: object) -> str:
+        """Accept a pre-split list (e.g. from tests) and join it back to a string."""
+        if isinstance(v, list):
+            return ",".join(str(i) for i in v)
+        return str(v) if v is not None else ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Return origins as a list, filtering out any blank entries."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # Export configuration (P13): resolved exclusively server-side —
     # request bodies never carry formats, row limits, or storage
     # locations (least disclosure; the blocker-a precedent).
@@ -29,12 +49,7 @@ class Settings(BaseSettings):
     # (scalability). Hard caps live in application.dashboard.
     dashboard_series_months: int = 6
     dashboard_guarantor_cap: int = 20
-    # Idempotency replay retention (P13.17c / DSA-3): how long a
-    # claimed key replays its stored response. Server config ONLY
-    # (v1.1 rule 1) — no request carries it; the middleware sets
-    # expires_at from this value on every claim, and the value must
-    # match the 0029 column default's compatibility floor (24h) unless
-    # deliberately re-tuned per environment.
+    # Idempotency replay retention (P13.17c / DSA-3).
     idempotency_retention_hours: int = 24
     # Opaque keyset cursor signing:
     # environment-only HMAC secret (the jwt_signing_key pattern — no

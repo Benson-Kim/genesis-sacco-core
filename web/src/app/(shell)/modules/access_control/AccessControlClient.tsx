@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button } from "@genesis/design-system";
+import { Button, Card } from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import styles from "./access-control.module.css";
@@ -37,42 +37,42 @@ export function AccessControlClient() {
 
   return (
     <div className={styles.page}>
-      {/* Tab row with inline action button */}
-      <div className={styles.tabsRow}>
-        <div className={styles.tabs} role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "users"}
-            className={`${styles.tab}${tab === "users" ? ` ${styles.tabActive}` : ""}`}
-            onClick={() => setTab("users")}
-          >
-            Users
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "permissions"}
-            className={`${styles.tab}${tab === "permissions" ? ` ${styles.tabActive}` : ""}`}
-            onClick={() => setTab("permissions")}
-          >
-            Permissions
-          </button>
+        {/* Tab row with inline action button */}
+        <div className={styles.tabsRow}>
+          <div className={styles.tabs} role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "users"}
+              className={`${styles.tab}${tab === "users" ? ` ${styles.tabActive}` : ""}`}
+              onClick={() => setTab("users")}
+            >
+              Users
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "permissions"}
+              className={`${styles.tab}${tab === "permissions" ? ` ${styles.tabActive}` : ""}`}
+              onClick={() => setTab("permissions")}
+            >
+              Permissions
+            </button>
+          </div>
+
+          {mayCreate && (
+            <Button
+              variant="primary"
+              onClick={() => setTriggerCreate((n) => n + 1)}
+            >
+              + Add user
+            </Button>
+          )}
         </div>
 
-        {mayCreate && (
-          <Button
-            variant="primary"
-            onClick={() => setTriggerCreate((n) => n + 1)}
-          >
-            + Add user
-          </Button>
-        )}
-      </div>
-
-      {/* Panel  */}
-      {tab === "users" && <UsersScreen triggerCreate={triggerCreate} />}
-      {tab === "permissions" && <PermissionsScreen />}
+        {/* Panel  */}
+        {tab === "users" && <UsersScreen triggerCreate={triggerCreate} />}
+        {tab === "permissions" && <PermissionsScreen />}
     </div>
   );
 }

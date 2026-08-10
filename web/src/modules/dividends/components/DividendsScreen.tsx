@@ -29,6 +29,7 @@ import dynamic from "next/dynamic";
 import { Button, Card } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -62,9 +63,10 @@ export function DividendsScreen() {
   const permissions = usePermissions();
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
+  const pagination = useKeysetPagination();
   const list = useKeysetList<DeclarationRecord>({
-    queryKey: ["dividends", "list"],
-    fetchPage: (cursor) => fetchDeclarationsPage(cursor),
+    queryKey: ["dividends", "list", pagination.pageSize],
+    fetchPage: (cursor) => fetchDeclarationsPage(cursor, pagination.pageSize),
   });
 
   // Declaring is back-office ledger governance (the gate
@@ -187,6 +189,13 @@ export function DividendsScreen() {
           rowKey={(declaration) => declaration.id}
           emptyMessage="No dividend declarations yet."
           onRowClick={(declaration) => setDrawer({ mode: "detail", declarationId: declaration.id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "declarations",
+          }}
         />
       </Card>
 
