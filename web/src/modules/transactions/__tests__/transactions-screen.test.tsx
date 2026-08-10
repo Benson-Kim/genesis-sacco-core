@@ -43,6 +43,7 @@ jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
   fetchMember: jest.fn(),
   lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
 }));
 
 jest.mock("@/modules/authz/usePermissions", () => ({
@@ -1068,4 +1069,76 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
   const laterCall = mocked.fetchTransactionsPage.mock.calls.at(-1);
   expect(laterCall?.[0]).toMatchObject({ date_from: "", date_to: "" });
   expect(laterCall?.[1]).toBe("w1-cursor-p2");
+});
+
+
+// ---------------------------------------------------------------------------
+// #35 item 14 residual — posting lookup by NATIONAL ID number.
+// ---------------------------------------------------------------------------
+
+test("ID-number lookup on blur resolves number + name and the POST submits the resolved uuid (hand-computed)", async () => {
+  const user = userEvent.setup();
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
+  mountScreen();
+
+  await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
+  const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
+  await user.selectOptions(within(drawer).getByLabelText("Look up by"), "id_number");
+  await user.type(within(drawer).getByLabelText("National ID number"), "20735544");
+  await user.tab();
+
+  // The probe used the ID-number lookup — never the member_no one.
+  await waitFor(() =>
+    expect(mockedMembers.lookupMemberByIdNumber).toHaveBeenCalledWith("20735544"),
+  );
+  expect(mockedMembers.lookupMemberByNo).not.toHaveBeenCalled();
+  // Least disclosure: the resolved note renders name + number only.
+  await within(drawer).findByText(/Member verified: Jane Wanjiku · M-0001/);
+
+  await user.type(within(drawer).getByLabelText("Amount (KES)"), "5000.10");
+  await user.selectOptions(within(drawer).getByLabelText("Channel"), "mpesa");
+  await user.type(within(drawer).getByLabelText("External reference"), "SGH3KLM9QT");
+  await user.click(await confirmEntry(user, drawer));
+
+  await waitFor(() => expect(mocked.postMoneyWrite).toHaveBeenCalledTimes(1));
+  // Hand-computed: the POST carries the RESOLVED uuid (MEMBER_ID) —
+  // never the typed national ID. Falsifiable: submitting the raw
+  // input instead of lookup.data.id fails both asserts.
+  expect(mocked.postMoneyWrite.mock.calls[0]?.[1]).toBe(MEMBER_ID);
+  expect(JSON.stringify(mocked.postMoneyWrite.mock.calls[0])).not.toContain("20735544");
+});
+
+test("ID-number miss renders the honest not-found note WITHOUT echoing the probed ID (least disclosure)", async () => {
+  const user = userEvent.setup();
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(null);
+  mountScreen();
+
+  await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
+  const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
+  await user.selectOptions(within(drawer).getByLabelText("Look up by"), "id_number");
+  await user.type(within(drawer).getByLabelText("National ID number"), "99990000");
+  await user.tab();
+
+  const note = await within(drawer).findByText(/No member found with that ID number/);
+  expect(note.textContent).not.toContain("99990000");
+  // No resolution: the confirmation can never arm.
+  expect(within(drawer).queryByText(/Member verified:/)).not.toBeInTheDocument();
+});
+
+test("switching the identifier kind withdraws the typed value and any prior resolution", async () => {
+  const user = userEvent.setup();
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
+  mountScreen();
+
+  await user.click(await screen.findByRole("button", { name: "+ Post transaction" }));
+  const drawer = await screen.findByRole("dialog", { name: "Post transaction" });
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member verified:/);
+
+  await user.selectOptions(within(drawer).getByLabelText("Look up by"), "id_number");
+  // The prior member_no resolution is withdrawn: the money write can
+  // only target what the operator re-enters under the new kind.
+  expect(within(drawer).queryByText(/Member verified:/)).not.toBeInTheDocument();
+  expect(within(drawer).getByLabelText("National ID number")).toHaveValue("");
 });
