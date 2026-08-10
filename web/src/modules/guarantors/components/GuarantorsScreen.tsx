@@ -244,18 +244,25 @@ export function GuarantorsScreen() {
     {
       key: "member",
       header: "Borrower",
-      render: (app) => (
-        // The P9 list carries member_id only (no joined name) — the
-        // pledge drawer resolves the member record (precedent).
-        <span className={styles.mono} title={app.member_id}>
-          {app.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (app) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        app.member_no !== null ? (
+          <span title={app.member_id}>
+            {app.member_no} — {app.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={app.member_id}>
+            {app.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "product",
       header: "Product",
-      render: (app) => <span className={styles.muted}>{productName(app.product_id)}</span>,
+      render: (app) => (
+        <span className={styles.muted}>{app.product_name ?? productName(app.product_id)}</span>
+      ),
     },
     {
       key: "amount",

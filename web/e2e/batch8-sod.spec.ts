@@ -70,6 +70,8 @@ const REQUESTED_WRITE_OFF = {
   transaction_id: null,
   version: 2,
   created_at: "2026-08-01T09:00:00+00:00",
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 interface SodState {

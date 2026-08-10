@@ -125,6 +125,9 @@ function pendingAdjustment(overrides: Partial<AdjustmentRecord> = {}): Adjustmen
     decided_at: null,
     version: 3,
     created_at: "2026-08-01T09:00:00+00:00",
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
+    original_txn_ref: "RP-0100",
     ...overrides,
   };
 }
@@ -162,6 +165,8 @@ function requestedWriteOff(overrides: Partial<WriteOffRecord> = {}): WriteOffRec
     transaction_id: null,
     version: 2,
     created_at: "2026-08-01T09:00:00+00:00",
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
     ...overrides,
   };
 }

@@ -72,7 +72,12 @@ export function AuditScreen() {
       key: "actor",
       header: "Actor",
       render: (entry) => (
-        <span className={styles.cellSub}>{entry.actor_id ?? "system"}</span>
+        // Identifier doctrine: the staff name resolved server-side on
+        // this access-control-gated read; the uuid stays machine
+        // identity (title). "system" is the honest actorless state.
+        <span className={styles.cellSub} title={entry.actor_id ?? undefined}>
+          {entry.actor_name ?? entry.actor_id ?? "system"}
+        </span>
       ),
     },
     {
@@ -232,7 +237,11 @@ function AuditEntryDrawer({ entry, onClose }: { entry: AuditEntry; onClose: () =
         <Kv label="At" variant="quiet" valueClassName={styles.tnum}>
           {fmtDateTime(entry.at)}
         </Kv>
-        <Kv label="Actor" variant="quiet">{entry.actor_id ?? "system"}</Kv>
+        <Kv label="Actor" variant="quiet">
+          <span title={entry.actor_id ?? undefined}>
+            {entry.actor_name ?? entry.actor_id ?? "system"}
+          </span>
+        </Kv>
         <Kv label="Action" variant="quiet">{entry.action}</Kv>
         <Kv label="Entity" variant="quiet">{entry.entity}</Kv>
         <Kv label="Entity id" variant="quiet">{entry.entity_id}</Kv>

@@ -119,6 +119,12 @@ class AuditLogEntry:
     before: dict[str, Any] | None
     after: dict[str, Any] | None
     redacted: bool
+    #: Human display label for the acting staff principal, resolved
+    #: server-side in the SAME page statement (users PK join). This
+    #: read path is the staff-identity resolution surface by design
+    #: (it is gated by the access-control view grant). None for
+    #: system actors — labels are never invented.
+    actor_name: str | None
 
 
 @dataclass(frozen=True)
@@ -143,7 +149,10 @@ def audit_page_sql(
     static literals chosen in code; every value is a bound parameter,
     so string assembly is injection-safe (v1.1 rule 6).
     """
-    clauses = ["tenant_id = CAST(:tid AS uuid)"]
+    # Qualified: the display-label join brings a second tenant_id into
+    # scope; the predicate stays the leading column of the 0015
+    # indexes.
+    clauses = ["audit_log.tenant_id = CAST(:tid AS uuid)"]
     if with_entity:
         clauses.append("entity = :entity")
     if with_actor:
@@ -155,12 +164,20 @@ def audit_page_sql(
     if with_to:
         clauses.append("at < :d_to_excl")
     if with_cursor:
-        clauses.append("(at, id) < (:c_ts, :c_id)")
+        clauses.append("(at, audit_log.id) < (:c_ts, :c_id)")
     where = " AND ".join(clauses)
     return (
-        "SELECT id, at, actor_id, action, entity, entity_id, before, after "  # noqa: S608
-        f"FROM audit_log WHERE {where} "
-        "ORDER BY at DESC, id DESC LIMIT :limit"
+        "SELECT audit_log.id, at, actor_id, action, entity, entity_id, "  # noqa: S608
+        "before, after, uu.full_name "
+        "FROM audit_log "
+        # Display-label join: rides the users PRIMARY KEY per page row
+        # plus the explicit tenant predicate (index-served, no new
+        # index). LEFT JOIN keeps system rows (actor_id IS NULL) on
+        # the page.
+        "LEFT JOIN users uu ON uu.tenant_id = audit_log.tenant_id "
+        "AND uu.id = audit_log.actor_id "
+        f"WHERE {where} "
+        "ORDER BY at DESC, audit_log.id DESC LIMIT :limit"
     )
 
 
@@ -260,6 +277,7 @@ async def list_audit_log(
                 before=row[6] if disclose else None,
                 after=row[7] if disclose else None,
                 redacted=not disclose,
+                actor_name=str(row[8]) if row[8] is not None else None,
             )
         )
     next_cursor = None

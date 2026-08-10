@@ -74,6 +74,8 @@ const TXN: Transaction = {
   is_reversal: false,
   created_by: null,
   external_ref: null,
+  member_no: null,
+  member_name: null,
 };
 
 /** NON-ADDITIVE proof fixture: 1 DR balancing 2 CRs. Any client-side
