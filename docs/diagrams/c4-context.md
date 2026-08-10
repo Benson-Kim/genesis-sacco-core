@@ -48,12 +48,12 @@
   0042_phone_e164_backfill.py to main — the 0017/0041 precedent)
   ships in that MR (same-commit refresh per v1.2 rule 11 /
   spot-check check 5).
-  Migration head 0045 -> 0046 by the issue-#35 KYC-phone-E.164 MR:
-  0046_kyc_profile_phone_e164_backfill.py (data-only: the six
-  code-owned KYC profile phone paths backfilled to E.164, exact
-  inverse downgrade). Previously: head 0044 -> 0045 by the issue-#35
-  id-number-lookup MR: 0045_member_profiles_id_number_index.py
-  (expand-only: one partial
+   Migration head 0045 -> 0046 by the issue-#35 KYC-phone-E.164 MR:
+   0046_kyc_profile_phone_e164_backfill.py (data-only: the six
+   code-owned KYC profile phone paths backfilled to E.164, exact
+   inverse downgrade). Previously: head 0044 -> 0045 by the issue-#35
+   id-number-lookup MR: 0045_member_profiles_id_number_index.py
+   (expand-only: one partial
   jsonb expression index for the posting-drawer national-ID member
   lookup). Previously: head 0043 -> 0044 by the issue-#35
   sign-in-identifier MR: 0044_users_phone_signin_index.py

@@ -53,6 +53,8 @@ const DEBIT_TXN = {
   is_reversal: false,
   created_by: null,
   external_ref: null,
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 const CREDIT_TXN = {
@@ -67,6 +69,8 @@ const CREDIT_TXN = {
   is_reversal: false,
   created_by: null,
   external_ref: "SGH3KLM9QT",
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 const MEMBER_OUT = {

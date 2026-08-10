@@ -23,6 +23,11 @@ export const auditEntrySchema = z.object({
   before: z.unknown(),
   after: z.unknown(),
   redacted: z.boolean(),
+  /** Human display label for the acting staff principal, resolved
+   * SERVER-side on this access-control-gated read (the staff-identity
+   * resolution surface). NULLABLE, never optional: null is the honest
+   * state for system actors. */
+  actor_name: z.string().nullable(),
 });
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>;

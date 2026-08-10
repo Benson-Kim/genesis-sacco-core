@@ -2394,8 +2394,14 @@ export interface components {
             loan_status_at_request: string | null;
             /** Maker Id */
             maker_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Original Transaction Id */
             original_transaction_id: string;
+            /** Original Txn Ref */
+            original_txn_ref: string | null;
             /** Penalties */
             penalties: string;
             /** Principal */
@@ -2472,8 +2478,14 @@ export interface components {
             max_eligible?: string | null;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Product Id */
             product_id: string;
+            /** Product Name */
+            product_name: string | null;
             /** Purpose */
             purpose: string | null;
             /** Rate Pct */
@@ -2544,6 +2556,8 @@ export interface components {
             action: string;
             /** Actor Id */
             actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
             /** After */
             after: {
                 [key: string]: unknown;
@@ -3157,6 +3171,10 @@ export interface components {
             loan_balance: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Net Payable */
             net_payable: string;
             /** Reason */
@@ -3559,12 +3577,18 @@ export interface components {
             id: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Penalty Due */
             penalty_due: string;
             /** Principal */
             principal: string;
             /** Product Id */
             product_id: string;
+            /** Product Name */
+            product_name: string | null;
             /** Provision Pct */
             provision_pct: string;
             /** Rate Pct */
@@ -4456,6 +4480,10 @@ export interface components {
             decided_at: string | null;
             /** From Member Id */
             from_member_id: string;
+            /** From Member Name */
+            from_member_name: string | null;
+            /** From Member No */
+            from_member_no: string | null;
             /** Id */
             id: string;
             /** In Transaction Id */
@@ -4466,6 +4494,10 @@ export interface components {
             status: string;
             /** To Member Id */
             to_member_id: string;
+            /** To Member Name */
+            to_member_name: string | null;
+            /** To Member No */
+            to_member_no: string | null;
             /** Version */
             version: number;
         };
@@ -4572,6 +4604,10 @@ export interface components {
             is_reversal: boolean;
             /** Member Id */
             member_id: string | null;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Occurred At */
             occurred_at: string;
             /** Txn Ref */
@@ -4738,6 +4774,10 @@ export interface components {
             loan_id: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Opened At */
             opened_at: string;
             /** Version */
@@ -4771,6 +4811,10 @@ export interface components {
             loan_id: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Penalty Due */
             penalty_due: string;
             /** Posted At */

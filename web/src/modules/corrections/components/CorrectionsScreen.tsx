@@ -29,6 +29,7 @@ import dynamic from "next/dynamic";
 import { Button, Card } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { FormField } from "@/modules/forms/FormField";
@@ -87,15 +88,15 @@ export function CorrectionsScreen() {
   // The two registers: server-ordered
   // keyset pages (pending-first / live-first) — never re-sorted or
   // filtered locally.
+  const adjustmentsPagination = useKeysetPagination();
   const adjustments = useKeysetList<AdjustmentRecord>({
-    queryKey: ["corrections", "adjustments-register"],
-    fetchPage: (cursor) => fetchAdjustmentsPage(cursor),
-
+    queryKey: ["corrections", "adjustments-register", adjustmentsPagination.pageSize],
+    fetchPage: (cursor) => fetchAdjustmentsPage(cursor, adjustmentsPagination.pageSize),
   });
+  const writeOffsPagination = useKeysetPagination();
   const writeOffs = useKeysetList<WriteOffRecord>({
-    queryKey: ["corrections", "write-offs-register"],
-    fetchPage: (cursor) => fetchWriteOffsPage(cursor),
-
+    queryKey: ["corrections", "write-offs-register", writeOffsPagination.pageSize],
+    fetchPage: (cursor) => fetchWriteOffsPage(cursor, writeOffsPagination.pageSize),
   });
 
   const adjustmentColumns: Column<AdjustmentRecord>[] = [
@@ -115,13 +116,32 @@ export function CorrectionsScreen() {
       ),
     },
     {
-      key: "loan",
-      header: "Loan",
-      render: (row) => (
-        <span className={styles.mono} title={row.loan_id}>
-          {row.loan_id.slice(0, 8)}
-        </span>
-      ),
+      key: "member",
+      header: "Member",
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row (via the loan); the loan uuid stays on the title.
+        row.member_no !== null ? (
+          <span title={row.loan_id}>
+            {row.member_no} — {row.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.loan_id}>
+            {row.loan_id.slice(0, 8)}
+          </span>
+        ),
+    },
+    {
+      key: "original",
+      header: "Original posting",
+      render: (row) =>
+        row.original_txn_ref !== null ? (
+          <span className={styles.mono}>{row.original_txn_ref}</span>
+        ) : (
+          <span className={styles.mono} title={row.original_transaction_id}>
+            {row.original_transaction_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "amount",
@@ -176,11 +196,18 @@ export function CorrectionsScreen() {
     {
       key: "member",
       header: "Member",
-      render: (row) => (
-        <span className={styles.mono} title={row.member_id}>
-          {row.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        row.member_no !== null ? (
+          <span title={row.member_id}>
+            {row.member_no} — {row.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.member_id}>
+            {row.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "total",
@@ -348,6 +375,13 @@ export function CorrectionsScreen() {
           rowKey={(row) => row.id}
           emptyMessage="No repayment adjustments yet — nothing awaits a checker."
           onRowClick={(row) => setDrawer({ mode: "adjustment-detail", adjustmentId: row.id })}
+          pagination={{
+            pageIndex: adjustmentsPagination.pageIndex,
+            pageSize: adjustmentsPagination.pageSize,
+            onPageChange: adjustmentsPagination.setPageIndex,
+            onPageSizeChange: adjustmentsPagination.setPageSize,
+            rowLabel: "adjustments",
+          }}
         />
       </Card>
 
@@ -365,6 +399,13 @@ export function CorrectionsScreen() {
           rowKey={(row) => row.id}
           emptyMessage="No write-offs yet — nothing awaits the committee."
           onRowClick={(row) => setDrawer({ mode: "write-off-detail", writeOffId: row.id })}
+          pagination={{
+            pageIndex: writeOffsPagination.pageIndex,
+            pageSize: writeOffsPagination.pageSize,
+            onPageChange: writeOffsPagination.setPageIndex,
+            onPageSizeChange: writeOffsPagination.setPageSize,
+            rowLabel: "write-offs",
+          }}
         />
       </Card>
 

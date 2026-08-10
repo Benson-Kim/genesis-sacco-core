@@ -160,6 +160,11 @@ export const worklistRowSchema = z.object({
   opened_at: isoTimestampSchema,
   first_assigned_at: isoTimestampSchema.nullable(),
   version: z.number().int(),
+  /** Human display labels (identifier doctrine), resolved SERVER-side
+   * in the same read statement — this client never fetches a
+   * directory record to label a row. NULLABLE, never optional. */
+  member_no: z.string().nullable(),
+  member_name: z.string().nullable(),
 });
 
 export type WorklistRow = z.infer<typeof worklistRowSchema>;

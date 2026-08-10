@@ -198,6 +198,21 @@ on main is **0041**, re-verified against main's `migrations/versions/`
 at `cf1744e0`. No in-flight claim exists (the open !84, #31 batch 11,
 claims NO migration). The next free number is **0042**.
 
+Registry delta update (2026-08-09, the identifier-doctrine sync):
+**0042, 0043 and 0044 are on main** — 0042
+(`0042_phone_e164_backfill`, `down_revision = '0041'`) and 0043
+(`0043_external_txn_ref_and_search_index`, `down_revision = '0042'`)
+via the #35 remainder-round MR !88 (merged 2026-08-08, merge
+`ffa920c`, squash `937b460`) and 0044
+(`0044_users_phone_signin_index`, `down_revision = '0043'`) via the
+#35 sign-in-identifier MR !91 (merged 2026-08-09, merge `cc40b56`,
+squash `f489fcf`); alembic head on main is **0044**, re-verified
+against main's `migrations/versions/` at `257a9a7`. No in-flight
+claim exists (the open !11, P16 Flutter scaffold, ships NO migration;
+the #35 identifier-doctrine batch declares NO migration — its label
+joins ride existing PK/UNIQUE indexes, index audit recorded in that
+MR). The next free number is **0045**.
+
 ### Post-P13 hardening follow-up batch (issues #21/#24/#23) — status
 
 | Issue | Scope | Status |
@@ -1193,8 +1208,19 @@ HARDENED (v1.2) — merge blockers:
     - `KeysetTable` + `useKeysetList` (`@/modules/table/*`): keyset
       `{items, next_cursor}` ONLY (gate 1.3 — no offset pagination),
       keyboard-activatable row drill-down, focusable labelled scroll
-      region for narrow viewports; pages are 20 rows with explicit
-      Load more (no virtualization at this page size).
+      region for narrow viewports. Paging UI: the shared
+      `KeysetPaginator` + `useKeysetPagination`
+      (`@/modules/table/KeysetPaginator`) — page-slices the rows the
+      infinite query has accumulated (10/20/50 per page), auto-fetches
+      forward via the opaque cursor (never parsed client-side) and
+      shows honest `n+` page counts while the server reports more;
+      screens not yet swept keep the explicit Load more footer (no
+      virtualization at these page sizes).
+    - `FilterControl` (`@genesis/design-system`): the ONLY list filter
+      primitive — declared code-owned vocabularies, segment button
+      group (aria-pressed) at ≤4 options / labelled select at ≥5,
+      persistent visible labels, optional advisory count badges;
+      no hand-rolled filter markup in module screens.
     - `FormField` + `form-errors.ts` (`@/modules/forms/*`) for EVERY
       form field: persistent label, aria-describedby/aria-invalid
       wiring, inline errors merging client Zod issues with server 422

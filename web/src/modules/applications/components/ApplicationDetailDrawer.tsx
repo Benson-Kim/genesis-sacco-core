@@ -196,12 +196,16 @@ export function ApplicationDetailDrawer({
             <>
               {member.data.name} · {member.data.member_no}
             </>
+          ) : app.member_no !== null ? (
+            <span title={app.member_id}>
+              {app.member_no} — {app.member_name}
+            </span>
           ) : (
             <span className={styles.mono}>{app.member_id}</span>
           )}
         </Kv>
         <Kv label="Product">
-          {product !== undefined ? product.name : <span className={styles.mono}>{app.product_id}</span>}
+          {product?.name ?? app.product_name ?? <span className={styles.mono}>{app.product_id}</span>}
         </Kv>
         <Kv label="Amount">{fmtKes(app.amount)}</Kv>
         <Kv label="Term">{app.term_months} months</Kv>

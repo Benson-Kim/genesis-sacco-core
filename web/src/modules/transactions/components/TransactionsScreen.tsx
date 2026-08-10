@@ -26,9 +26,10 @@
  */
 import { useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
+import { Button, Card, FilterControl } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -121,7 +122,14 @@ function MemberFilter({
 
 export function TransactionsScreen() {
   const permissions = usePermissions();
-  const [filters, setFilters] = useState<TxnListFilters>(EMPTY_TXN_FILTERS);
+  const [filters, setFiltersRaw] = useState<TxnListFilters>(EMPTY_TXN_FILTERS);
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  const setFilters: typeof setFiltersRaw = (action) => {
+    setFiltersRaw(action);
+    pagination.setPageIndex(0);
+  };
   // Text/date filters stage locally and apply on submit (one server
   // round-trip per applied filter set, not per keystroke).
   const [refDraft, setRefDraft] = useState("");
@@ -139,8 +147,9 @@ export function TransactionsScreen() {
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   const list = useKeysetList<Transaction>({
-    queryKey: ["transactions", "list", filters],
-    fetchPage: (cursor) => fetchTransactionsPage(filters, cursor),
+    queryKey: ["transactions", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) =>
+      fetchTransactionsPage(filters, cursor, pagination.pageSize),
   });
 
   const mayViewMembers = can(permissions.data, "members", "view");
@@ -225,10 +234,15 @@ export function TransactionsScreen() {
       key: "member",
       header: "Member",
       render: (txn) =>
-        // The P11 list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record.
+        // Identifier doctrine: rows label the member as number — name,
+        // resolved server-side on the row itself; the uuid stays the
+        // machine identity on the title attribute.
         txn.member_id === null ? (
           <span className={styles.muted}>—</span>
+        ) : txn.member_no !== null ? (
+          <span title={txn.member_id}>
+            {txn.member_no} — {txn.member_name}
+          </span>
         ) : (
           <span className={styles.mono} title={txn.member_id}>
             {txn.member_id.slice(0, 8)}
@@ -276,77 +290,56 @@ export function TransactionsScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <FormField id="txn-filter-type" label="Type">
-            {(control) => (
-              <select
-                {...control}
-                className={`${styles.select} ${styles.filterControl}`}
-                value={filters.type}
-                onChange={(event) =>
-                  setFilters((current) => ({
-                    ...current,
-                    type: event.target.value as TxnListFilters["type"],
-                  }))
-                }
-              >
-                <option value="">All types</option>
-                {TXN_TYPES.map((option) => (
-                  <option key={option} value={option}>
-                    {TXN_TYPE_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-          <FormField id="txn-filter-channel" label="Channel">
-            {(control) => (
-              <select
-                {...control}
-                className={`${styles.select} ${styles.filterControl}`}
-                value={filters.channel}
-                onChange={(event) =>
-                  setFilters((current) => ({
-                    ...current,
-                    channel: event.target.value as TxnListFilters["channel"],
-                  }))
-                }
-              >
-                <option value="">All channels</option>
-                {CHANNELS.map((option) => (
-                  <option key={option} value={option}>
-                    {CHANNEL_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Direction</span>
-            <div className={styles.segment} role="group" aria-label="Direction">
-              <button
-                type="button"
-                className={styles.segmentButton}
-                aria-pressed={filters.direction === ""}
-                onClick={() => setFilters((current) => ({ ...current, direction: "" }))}
-              >
-                All
-              </button>
-              {SIDES.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={styles.segmentButton}
-                  aria-pressed={filters.direction === option}
-                  onClick={() => setFilters((current) => ({ ...current, direction: option }))}
-                >
-                  {SIDE_LABELS[option]}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FilterControl
+            id="txn-filter-type"
+            label="Type"
+            value={filters.type}
+            onChange={(next) =>
+              setFilters((current) => ({
+                ...current,
+                type: next as TxnListFilters["type"],
+              }))
+            }
+            options={TXN_TYPES.map((option) => ({
+              value: option,
+              label: TXN_TYPE_LABELS[option],
+            }))}
+            allLabel="All types"
+          />
+          <FilterControl
+            id="txn-filter-channel"
+            label="Channel"
+            value={filters.channel}
+            onChange={(next) =>
+              setFilters((current) => ({
+                ...current,
+                channel: next as TxnListFilters["channel"],
+              }))
+            }
+            options={CHANNELS.map((option) => ({
+              value: option,
+              label: CHANNEL_LABELS[option],
+            }))}
+            allLabel="All channels"
+          />
+          <FilterControl
+            id="txn-filter-direction"
+            label="Direction"
+            value={filters.direction}
+            onChange={(next) =>
+              setFilters((current) => ({
+                ...current,
+                direction: next as TxnListFilters["direction"],
+              }))
+            }
+            options={SIDES.map((option) => ({
+              value: option,
+              label: SIDE_LABELS[option],
+            }))}
+          />
           {mayViewMembers && (
             <MemberFilter
               value={filters.member_id}
@@ -355,30 +348,20 @@ export function TransactionsScreen() {
               }
             />
           )}
-          <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>Date</span>
-            <div className={styles.segment} role="group" aria-label="Date preset">
-              {(
-                [
-                  ["", "All"],
-                  ["today", "Today"],
-                  ["7d", "Last 7 days"],
-                  ["30d", "Last 30 days"],
-                  ["custom", "Custom range"],
-                ] as const
-              ).map(([preset, label]) => (
-                <button
-                  key={label}
-                  type="button"
-                  className={styles.segmentButton}
-                  aria-pressed={datePreset === preset}
-                  onClick={() => applyDatePreset(preset)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FilterControl
+            id="txn-filter-date-preset"
+            label="Date"
+            value={datePreset}
+            onChange={(next) => applyDatePreset(next)}
+            options={(
+              [
+                ["today", "Today"],
+                ["7d", "Last 7 days"],
+                ["30d", "Last 30 days"],
+                ["custom", "Custom range"],
+              ] as const
+            ).map(([preset, label]) => ({ value: preset, label }))}
+          />
           <form className={styles.filters} onSubmit={applyDrafts} noValidate>
             <FormField id="txn-filter-search" label="Search (ref or member)">
               {(control) => (
@@ -466,6 +449,13 @@ export function TransactionsScreen() {
           rowKey={(txn) => txn.id}
           emptyMessage="No transactions match this filter."
           onRowClick={(txn) => setDrawer({ mode: "detail", txn })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "transactions",
+          }}
         />
       </Card>
 
@@ -478,6 +468,6 @@ export function TransactionsScreen() {
       {drawer !== null && drawer.mode === "interest" && (
         <InterestRunDialog onClose={() => setDrawer(null)} />
       )}
-    </div>
+    </Card>
   );
 }

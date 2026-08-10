@@ -62,6 +62,10 @@ const recordOut = {
   decided_at: null,
   version: 1,
   created_at: "2026-08-07T09:00:00Z",
+  from_member_no: "M-0001",
+  from_member_name: "Jane Wanjiku",
+  to_member_no: "M-0002",
+  to_member_name: "Peter Otieno",
 };
 
 const approveOut = {

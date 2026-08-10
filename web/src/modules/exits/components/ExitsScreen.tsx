@@ -25,16 +25,17 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
+import { useQuery } from "@tanstack/react-query";
+import { Button, Card, FilterControl } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
-import { EMPTY_EXIT_FILTERS, fetchExitsPage, type ExitListFilters } from "../api";
+import { EMPTY_EXIT_FILTERS, fetchExitsPage, fetchExitStatusCounts, type ExitListFilters } from "../api";
 import { EXIT_STATUSES, EXIT_STATUS_LABELS, type ExitRecord } from "../schemas";
 import { exitStatusPill } from "./pills";
-import { FormField } from "@/modules/forms/FormField";
 import styles from "./Exits.module.css";
 
 // Drawer-level code splitting (speed): drawer chunks load
@@ -65,12 +66,34 @@ type DrawerState =
 
 export function ExitsScreen() {
   const permissions = usePermissions();
-  const [filters, setFilters] = useState<ExitListFilters>(EMPTY_EXIT_FILTERS);
+  const [filters, setFiltersRaw] = useState<ExitListFilters>(EMPTY_EXIT_FILTERS);
   const [drawer, setDrawer] = useState<DrawerState>(null);
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  function setFilters(next: ExitListFilters) {
+    setFiltersRaw(next);
+    pagination.setPageIndex(0);
+  }
+
+  // Advisory per-status counts — decorative badges only; null while loading.
+  const { data: statusCounts } = useQuery({
+    queryKey: ["exits", "status-counts"],
+    queryFn: fetchExitStatusCounts,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  // Total across all statuses — sum of per-status counts; null until loaded.
+  const allStatusCount = statusCounts
+    ? EXIT_STATUSES.reduce((sum, s) => sum + (statusCounts[s]?.count ?? 0), 0)
+    : null;
+  const allStatusCountMore = statusCounts
+    ? EXIT_STATUSES.some((s) => statusCounts[s]?.hasMore)
+    : false;
 
   const list = useKeysetList<ExitRecord>({
-    queryKey: ["exits", "list", filters],
-    fetchPage: (cursor) => fetchExitsPage(filters, cursor),
+    queryKey: ["exits", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchExitsPage(filters, cursor, pagination.pageSize),
   });
 
   // Creating an exit request is a member lifecycle change
@@ -87,13 +110,18 @@ export function ExitsScreen() {
     {
       key: "member",
       header: "Member",
-      render: (exit) => (
-        // The list carries member_id only (no joined name) — the
-        // detail drawer resolves the member record (precedent).
-        <span className={styles.mono} title={exit.member_id}>
-          {exit.member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (exit) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        exit.member_no !== null ? (
+          <span title={exit.member_id}>
+            {exit.member_no} — {exit.member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={exit.member_id}>
+            {exit.member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "status",
@@ -133,28 +161,27 @@ export function ExitsScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <FormField id="exit-filter-status" label="Status">
-            {(control) => (
-              <select
-                {...control}
-                className={`${styles.select} ${styles.filterControl}`}
-                value={filters.status}
-                onChange={(event) =>
-                  setFilters({ status: event.target.value as ExitListFilters["status"] })
-                }
-              >
-                <option value="">All statuses</option>
-                {EXIT_STATUSES.map((option) => (
-                  <option key={option} value={option}>
-                    {EXIT_STATUS_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
+          <FilterControl
+            id="exit-status-filter"
+            label="Status"
+            value={filters.status}
+            onChange={(next) => setFilters({ status: next as ExitListFilters["status"] })}
+            options={EXIT_STATUSES.map((s) => {
+              const entry = statusCounts?.[s];
+              return {
+                value: s,
+                label: EXIT_STATUS_LABELS[s],
+                count: entry?.count ?? null,
+                countMore: entry?.hasMore ?? false,
+              };
+            })}
+            allLabel="All statuses"
+            allCount={allStatusCount}
+            allCountMore={allStatusCountMore}
+          />
         </div>
         <div className={styles.toolbarActions}>
           {mayRequest && (
@@ -183,6 +210,13 @@ export function ExitsScreen() {
           rowKey={(exit) => exit.id}
           emptyMessage="No exit requests match this filter."
           onRowClick={(exit) => setDrawer({ mode: "detail", exitId: exit.id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "exit requests",
+          }}
         />
       </Card>
 
@@ -203,6 +237,6 @@ export function ExitsScreen() {
       {drawer !== null && drawer.mode === "statement" && (
         <ExitStatementDrawer exitId={drawer.exitId} onClose={() => setDrawer(null)} />
       )}
-    </div>
+    </Card>
   );
 }
