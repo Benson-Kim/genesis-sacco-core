@@ -237,6 +237,8 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
           Loan review —{" "}
           {member.data !== undefined ? (
             `${member.data.name} · ${member.data.member_no}`
+          ) : app.member_no !== null ? (
+            `${app.member_no} — ${app.member_name ?? ""}`
           ) : (
             <span className={styles.mono}>{app.member_id}</span>
           )}

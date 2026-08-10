@@ -227,6 +227,14 @@ class ShareTransferRecordOut(BaseModel):
     decided_at: str | None
     version: int
     created_at: str
+    #: Human display labels: both parties' member numbers and
+    #: registered names, resolved server-side in the same read
+    #: statement; null only if a label row is absent — labels are
+    #: never invented.
+    from_member_no: str | None
+    from_member_name: str | None
+    to_member_no: str | None
+    to_member_name: str | None
 
 
 class ShareTransferListOut(BaseModel):
@@ -248,6 +256,10 @@ def _transfer_record_out(record: dividends_service.ShareTransferRecord) -> Share
         decided_at=record.decided_at.isoformat() if record.decided_at else None,
         version=record.version,
         created_at=record.created_at.isoformat(),
+        from_member_no=record.from_member_no,
+        from_member_name=record.from_member_name,
+        to_member_no=record.to_member_no,
+        to_member_name=record.to_member_name,
     )
 
 

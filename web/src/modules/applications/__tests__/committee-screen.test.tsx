@@ -91,6 +91,9 @@ function committeeApp(overrides: Partial<Application> = {}): Application {
     recommended_by: null,
     max_eligible: null,
     version: 7,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
+    product_name: "Development Loan",
     ...overrides,
   };
 }

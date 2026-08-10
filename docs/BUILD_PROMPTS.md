@@ -198,6 +198,21 @@ on main is **0041**, re-verified against main's `migrations/versions/`
 at `cf1744e0`. No in-flight claim exists (the open !84, #31 batch 11,
 claims NO migration). The next free number is **0042**.
 
+Registry delta update (2026-08-09, the identifier-doctrine sync):
+**0042, 0043 and 0044 are on main** — 0042
+(`0042_phone_e164_backfill`, `down_revision = '0041'`) and 0043
+(`0043_external_txn_ref_and_search_index`, `down_revision = '0042'`)
+via the #35 remainder-round MR !88 (merged 2026-08-08, merge
+`ffa920c`, squash `937b460`) and 0044
+(`0044_users_phone_signin_index`, `down_revision = '0043'`) via the
+#35 sign-in-identifier MR !91 (merged 2026-08-09, merge `cc40b56`,
+squash `f489fcf`); alembic head on main is **0044**, re-verified
+against main's `migrations/versions/` at `257a9a7`. No in-flight
+claim exists (the open !11, P16 Flutter scaffold, ships NO migration;
+the #35 identifier-doctrine batch declares NO migration — its label
+joins ride existing PK/UNIQUE indexes, index audit recorded in that
+MR). The next free number is **0045**.
+
 ### Post-P13 hardening follow-up batch (issues #21/#24/#23) — status
 
 | Issue | Scope | Status |

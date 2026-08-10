@@ -69,6 +69,9 @@ const PENDING_ADJUSTMENT = {
   decided_at: null,
   version: 3,
   created_at: "2026-08-01T09:00:00+00:00",
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
+  original_txn_ref: "RP-0100",
 };
 
 const APPROVAL_RESULT = {

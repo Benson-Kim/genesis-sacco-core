@@ -111,19 +111,26 @@ export function ApplicationsScreen() {
       header: "Member",
       render: (app) => (
         <div>
-          {/* The P9 list carries member_id only (no joined name) — the
-              detail drawer resolves the member record. Follow-up scope:
-              a display name in the contract. */}
-          <span className={styles.mono} title={app.member_id}>
-            {app.member_id.slice(0, 8)}
-          </span>
+          {/* Identifier doctrine: number — name, resolved server-side
+              on the row; the uuid stays machine identity (title). */}
+          {app.member_no !== null ? (
+            <span title={app.member_id}>
+              {app.member_no} — {app.member_name}
+            </span>
+          ) : (
+            <span className={styles.mono} title={app.member_id}>
+              {app.member_id.slice(0, 8)}
+            </span>
+          )}
         </div>
       ),
     },
     {
       key: "product",
       header: "Product",
-      render: (app) => <span className={styles.muted}>{productName(app.product_id)}</span>,
+      render: (app) => (
+        <span className={styles.muted}>{app.product_name ?? productName(app.product_id)}</span>
+      ),
     },
     {
       key: "purpose",

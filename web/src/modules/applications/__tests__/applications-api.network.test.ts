@@ -56,6 +56,9 @@ const applicationOut = {
   recommended_by: RECOMMENDER_ID,
   max_eligible: "300000.00",
   version: 3,
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
+  product_name: "Development Loan",
 };
 
 const voteResultOut = { approvals: 2, rejections: 1, decision: null, stage: "committee" };

@@ -403,12 +403,23 @@ web:spec-drift:
     - python backend/scripts/export_openapi.py /tmp/openapi.json
     - |
       if ! diff -u web/packages/api-client/openapi.json /tmp/openapi.json; then
+        # Artifact the regenerated spec so a stale snapshot can be
+        # refreshed byte-exactly from this job (local generators do
+        # not exist in every environment; the artifact — never a
+        # hand edit — is the sanctioned update path).
+        cp /tmp/openapi.json openapi.regenerated.json
         echo "ERROR: web/packages/api-client/openapi.json is STALE relative to the backend."
         echo "Regenerate: (cd backend && python scripts/export_openapi.py ../web/packages/api-client/openapi.json)"
-        echo "then (cd web && npm run generate:api) and commit both."
+        echo "then (cd web && npm run generate:api) and commit both,"
+        echo "or take this job's openapi.regenerated.json artifact byte-for-byte."
         exit 1
       fi
     - echo "OK - committed OpenAPI snapshot matches the backend contract."
+  artifacts:
+    when: on_failure
+    paths:
+      - openapi.regenerated.json
+    expire_in: 3 days
 
 web:client-drift:
   extends: .web
@@ -417,7 +428,14 @@ web:client-drift:
   rules:
     - exists: ["web/packages/api-client/openapi.json"]
   script:
-    - npm run check:client-drift
+    # On drift, artifact the regenerated client so a stale snapshot
+    # can be refreshed byte-exactly from this job (the spec-drift
+    # artifact precedent — never a hand edit).
+    - |
+      if ! npm run check:client-drift; then
+        npx openapi-typescript packages/api-client/openapi.json -o ../schema.regenerated.d.ts >/dev/null
+        exit 1
+      fi
     # Falsifiability self-test (P14 EXIT): a deliberately staled generated
     # client must make the same check FAIL — proven on EVERY pipeline, not
     # once at bootstrap. Runs on a workspace copy; nothing is committed.
@@ -430,6 +448,11 @@ web:client-drift:
       fi
       cp /tmp/schema.orig.d.ts packages/api-client/src/generated/schema.d.ts
       echo "OK - drift check fails on a stale client"
+  artifacts:
+    when: on_failure
+    paths:
+      - schema.regenerated.d.ts
+    expire_in: 3 days
 
 # -----------------------------------------------------------------------------
 # Mobile — Flutter (member_app, admin_app, shared packages)

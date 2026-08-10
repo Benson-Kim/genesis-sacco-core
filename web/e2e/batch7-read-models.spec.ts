@@ -73,6 +73,8 @@ const TXN_OUT = {
   is_reversal: false,
   created_by: null,
   external_ref: null,
+  member_no: null,
+  member_name: null,
 };
 
 /** NON-ADDITIVE legs fixture: gross 200.00 / net 0.00 must NEVER
