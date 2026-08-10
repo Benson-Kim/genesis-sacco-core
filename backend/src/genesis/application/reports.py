@@ -507,7 +507,7 @@ def loan_book_page_sql(*, with_cursor: bool) -> str:
     return (
         "SELECT l.id, m.member_no, m.name, l.principal, l.balance, "  # noqa: S608
         "l.rate_pct, l.term_months, l.status, l.classification, "
-        "l.days_past_due, l.provision_pct, l.created_at "
+        "l.days_past_due, l.provision_pct, l.created_at, l.loan_ref "
         "FROM loans l "
         "JOIN members m ON m.id = l.member_id AND m.tenant_id = l.tenant_id "
         "WHERE l.tenant_id = CAST(:tid AS uuid) "
@@ -539,8 +539,12 @@ async def _build_loan_book(
         # Provision amount mirrors the prototype loan-book maths:
         # balance * provision_pct / 100, rounded to cents.
         provision = to_cents(balance * provision_pct / Decimal("100"))
+        # The printed surface carries the HUMAN reference (LN-XXXX,
+        # 0048); the raw uuid stays in the SELECT solely as the keyset
+        # cursor key and never reaches a cell. None (pre-backfill row
+        # read before 0048 applied) prints as an honest empty cell.
         return (
-            str(raw[0]),
+            str(raw[12]) if raw[12] is not None else None,
             str(raw[1]),
             str(raw[2]),
             Decimal(str(raw[3])),
@@ -715,8 +719,11 @@ async def _build_member_exit_statement(
     # The JSON statement service stays the canonical data source
     # the export renders the same document verbatim.
     doc = await exits_service.exit_statement(session, tenant_id, exit_id)
+    # The printed surface carries the HUMAN reference (EX-XXXX, 0048);
+    # the raw uuid never reaches a cell (None prints an honest empty
+    # cell for pre-backfill rows).
     row: tuple[Cell, ...] = (
-        str(doc.exit_id),
+        doc.exit_ref,
         doc.member_no,
         doc.member_name,
         doc.member_status,
@@ -1436,7 +1443,7 @@ REPORTS: dict[ReportName, ReportDefinition] = {
         name=ReportName.LOAN_BOOK,
         title="Loan book — classification & provisions",
         columns=(
-            ReportColumn("loan_id", "Loan"),
+            ReportColumn("loan_ref", "Loan Ref"),
             ReportColumn("member_no", "Member No"),
             ReportColumn("member_name", "Member", pii=True),
             ReportColumn("principal", "Principal"),
@@ -1505,7 +1512,7 @@ REPORTS: dict[ReportName, ReportDefinition] = {
         name=ReportName.MEMBER_EXIT_STATEMENT,
         title="Member exit statement",
         columns=(
-            ReportColumn("exit_id", "Exit"),
+            ReportColumn("exit_ref", "Exit Ref"),
             ReportColumn("member_no", "Member No"),
             ReportColumn("member_name", "Member", pii=True),
             ReportColumn("member_status", "Member Status"),

@@ -94,6 +94,9 @@ class LoanOut(BaseModel):
     member_no: str | None
     member_name: str | None
     product_name: str | None
+    #: Human loan reference (LN-XXXX, 0048) — the operator-facing
+    #: identifier; null only for rows written before the backfill.
+    loan_ref: str | None
 
 
 class LoanListResponse(BaseModel):
@@ -115,6 +118,8 @@ class DisbursementOut(BaseModel):
     txn_id: str
     txn_ref: str
     schedule: list[ScheduleRowOut]
+    #: Human loan reference (LN-XXXX, 0048), minted with the loan row.
+    loan_ref: str
 
 
 class RepaymentOut(BaseModel):
@@ -191,6 +196,7 @@ def _loan_out(loan: loans_service.LoanRecord) -> LoanOut:
         member_no=loan.member_no,
         member_name=loan.member_name,
         product_name=loan.product_name,
+        loan_ref=loan.loan_ref,
     )
 
 
@@ -211,6 +217,7 @@ async def disburse_application(
         txn_id=str(result.txn_id),
         txn_ref=result.txn_ref,
         schedule=[_schedule_out(row) for row in schedule],
+        loan_ref=result.loan_ref,
     )
 
 

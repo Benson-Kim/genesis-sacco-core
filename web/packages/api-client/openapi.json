@@ -1812,6 +1812,10 @@
             "title": "Loan Id",
             "type": "string"
           },
+          "loan_ref": {
+            "title": "Loan Ref",
+            "type": "string"
+          },
           "schedule": {
             "items": {
               "$ref": "#/components/schemas/ScheduleRowOut"
@@ -1832,7 +1836,8 @@
           "loan_id",
           "txn_id",
           "txn_ref",
-          "schedule"
+          "schedule",
+          "loan_ref"
         ],
         "title": "DisbursementOut",
         "type": "object"
@@ -2290,6 +2295,17 @@
             "title": "Deposits Amount",
             "type": "string"
           },
+          "exit_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Ref"
+          },
           "fees": {
             "title": "Fees",
             "type": "string"
@@ -2406,7 +2422,8 @@
           "version",
           "created_at",
           "member_no",
-          "member_name"
+          "member_name",
+          "exit_ref"
         ],
         "title": "ExitOut",
         "type": "object"
@@ -2463,6 +2480,17 @@
           "exit_id": {
             "title": "Exit Id",
             "type": "string"
+          },
+          "exit_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Ref"
           },
           "exit_status": {
             "title": "Exit Status",
@@ -2551,6 +2579,7 @@
         },
         "required": [
           "exit_id",
+          "exit_ref",
           "member_id",
           "member_no",
           "member_name",
@@ -3446,6 +3475,17 @@
             "title": "Id",
             "type": "string"
           },
+          "loan_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Ref"
+          },
           "member_id": {
             "title": "Member Id",
             "type": "string"
@@ -3535,7 +3575,8 @@
           "version",
           "member_no",
           "member_name",
-          "product_name"
+          "product_name",
+          "loan_ref"
         ],
         "title": "LoanOut",
         "type": "object"

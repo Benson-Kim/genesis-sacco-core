@@ -2976,6 +2976,8 @@ export interface components {
         DisbursementOut: {
             /** Loan Id */
             loan_id: string;
+            /** Loan Ref */
+            loan_ref: string;
             /** Schedule */
             schedule: components["schemas"]["ScheduleRowOut"][];
             /** Txn Id */
@@ -3163,6 +3165,8 @@ export interface components {
             decided_at: string | null;
             /** Deposits Amount */
             deposits_amount: string;
+            /** Exit Ref */
+            exit_ref: string | null;
             /** Fees */
             fees: string;
             /** Id */
@@ -3215,6 +3219,8 @@ export interface components {
             equity: string;
             /** Exit Id */
             exit_id: string;
+            /** Exit Ref */
+            exit_ref: string | null;
             /** Exit Status */
             exit_status: string;
             /** Fees */
@@ -3585,6 +3591,8 @@ export interface components {
             disbursed_at: string | null;
             /** Id */
             id: string;
+            /** Loan Ref */
+            loan_ref: string | null;
             /** Member Id */
             member_id: string;
             /** Member Name */

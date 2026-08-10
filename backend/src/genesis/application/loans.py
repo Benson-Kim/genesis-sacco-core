@@ -59,7 +59,8 @@ _LOAN_COLS = (
     "loans.principal, loans.balance, loans.rate_pct, loans.term_months, "
     "loans.status, loans.classification, loans.days_past_due, "
     "loans.provision_pct, loans.penalty_due, loans.disbursed_at, "
-    "loans.closed_at, loans.version, mm.member_no, mm.name, pp.name"
+    "loans.closed_at, loans.version, mm.member_no, mm.name, pp.name, "
+    "loans.loan_ref"
 )
 
 #: Display-label joins for the read statements: each rides the joined
@@ -104,6 +105,9 @@ class LoanRecord:
     member_no: str | None
     member_name: str | None
     product_name: str | None
+    #: Human loan reference (LN-XXXX, 0048) — minted at disbursement;
+    #: None only for rows written before the backfill.
+    loan_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +174,7 @@ def _row_to_loan(row: Any) -> LoanRecord:
         member_no=str(row[16]) if row[16] is not None else None,
         member_name=str(row[17]) if row[17] is not None else None,
         product_name=str(row[18]) if row[18] is not None else None,
+        loan_ref=str(row[19]) if row[19] is not None else None,
     )
 
 
