@@ -18,12 +18,13 @@ const auditPageSchema = keysetPageSchema(auditEntrySchema);
 export async function fetchAuditPage(
   filters: AuditFilters,
   cursor: string | null,
+  limit: number = AUDIT_PAGE_SIZE,
 ): Promise<KeysetPage<AuditEntry>> {
   const { data, error, response } = await api.GET("/audit-log", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: AUDIT_PAGE_SIZE,
+        limit,
         entity: filters.entity === "" ? undefined : filters.entity,
         actor_id: filters.actorId === "" ? undefined : filters.actorId,
         action: filters.action === "" ? undefined : filters.action,

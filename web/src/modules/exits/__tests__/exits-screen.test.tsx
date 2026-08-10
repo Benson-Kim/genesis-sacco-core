@@ -47,6 +47,7 @@ jest.mock("../api", () => {
   return {
     ...actual,
     fetchExitsPage: jest.fn(),
+    fetchExitStatusCounts: jest.fn(),
     fetchExit: jest.fn(),
     fetchExitEligibility: jest.fn(),
     createExitRequest: jest.fn(),
@@ -252,6 +253,14 @@ beforeEach(() => {
   clearVotedExits();
   grantPermissions(FULL_PERMS);
   mocked.fetchExitsPage.mockResolvedValue({ items: [requestedExit()], nextCursor: null });
+  // Advisory badge counts — decorative only; zeroed so filter names stay
+  // stable ("Approved", not "Approved 3") across the register suites.
+  mocked.fetchExitStatusCounts.mockResolvedValue({
+    requested: { count: 0, hasMore: false },
+    approved: { count: 0, hasMore: false },
+    settled: { count: 0, hasMore: false },
+    rejected: { count: 0, hasMore: false },
+  });
   mocked.fetchExit.mockResolvedValue(requestedExit());
   mocked.createExitRequest.mockResolvedValue(requestedExit());
   mocked.voteOnExit.mockResolvedValue(TALLY_OPEN);
@@ -306,21 +315,29 @@ test("register renders every settlement figure VERBATIM in its own labelled colu
   expect(screen.getByText(/totals are not computed in this screen/)).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM (gate 1.3); the status filter drives the SERVER query", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM (gate 1.3); the status filter drives the SERVER query", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    requestedExit({ id: `eeeeeeee-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchExitsPage
-    .mockResolvedValueOnce({ items: [requestedExit()], nextCursor: "opaque-cursor-§1" })
+    .mockResolvedValueOnce({ items: fullPage, nextCursor: "opaque-cursor-§1" })
     .mockResolvedValue({ items: [], nextCursor: null });
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
   await waitFor(() => expect(mocked.fetchExitsPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchExitsPage.mock.calls[0]?.[1]).toBeNull();
   expect(mocked.fetchExitsPage.mock.calls[1]?.[1]).toBe("opaque-cursor-§1");
 
-  await user.selectOptions(screen.getByLabelText("Status"), "approved");
+  // Status filter is the shared segment control (4 declared statuses):
+  // an aria-pressed button group, not a select.
+  await user.click(screen.getByRole("button", { name: "Approved" }));
   await waitFor(() =>
-    expect(mocked.fetchExitsPage).toHaveBeenCalledWith({ status: "approved" }, null),
+    expect(mocked.fetchExitsPage).toHaveBeenCalledWith({ status: "approved" }, null, 10),
   );
 });
 

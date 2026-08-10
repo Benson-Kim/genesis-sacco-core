@@ -308,14 +308,20 @@ test("hostile guarantor name renders as inert TEXT; aggregate money renders VERB
   expect(screen.getByText("KES 250,000.20")).toBeInTheDocument();
 });
 
-test("pledge queue: the stage filter drives the SERVER query over the PLEDGEABLE stages only; Load more follows the cursor VERBATIM (gate 1.3)", async () => {
+test("pledge queue: the stage filter drives the SERVER query over the PLEDGEABLE stages only; the paginator follows the cursor VERBATIM (gate 1.3)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    application({ id: `dddddddd-1111-2222-3333-4444444444${String(i).padStart(2, "0")}` }),
+  );
   mockedApps.fetchApplicationsPage
-    .mockResolvedValueOnce(page([application()], "opaque-cursor-§1"))
+    .mockResolvedValueOnce(page(fullPage, "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([application({ id: "dddddddd-1111-2222-3333-444444444444" })]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
   await waitFor(() => expect(mockedApps.fetchApplicationsPage).toHaveBeenCalledTimes(2));
   expect(mockedApps.fetchApplicationsPage.mock.calls[0]?.[0]).toEqual({ stage: "submitted" });
   expect(mockedApps.fetchApplicationsPage.mock.calls[0]?.[1]).toBeNull();
@@ -323,12 +329,12 @@ test("pledge queue: the stage filter drives the SERVER query over the PLEDGEABLE
 
   // Only the three pledgeable stages are offered — there is no filter
   // for approved/disbursed/rejected (the UI never offers what the API
-  // forbids) and no "all stages" escape hatch.
+  // forbids) and no "all stages" escape hatch (allOption={false}).
   const group = screen.getByRole("group", { name: "Application stage" });
   expect(within(group).getAllByRole("button")).toHaveLength(3);
   await user.click(within(group).getByRole("button", { name: "Appraisal" }));
   await waitFor(() =>
-    expect(mockedApps.fetchApplicationsPage).toHaveBeenCalledWith({ stage: "appraisal" }, null),
+    expect(mockedApps.fetchApplicationsPage).toHaveBeenCalledWith({ stage: "appraisal" }, null, 10),
   );
 });
 
