@@ -36,6 +36,7 @@ import { fmtDateTime, fmtKes } from "@/lib/format";
 import { FormField } from "@/modules/forms/FormField";
 import { fetchMembersPage } from "@/modules/members/api";
 import type { Member } from "@/modules/members/schemas";
+import type { ExportFilterDraft } from "@/modules/reports/schemas";
 import { EMPTY_TXN_FILTERS, fetchTransactionsPage, type TxnListFilters } from "../api";
 import {
   CHANNELS,
@@ -64,12 +65,46 @@ const InterestRunDialog = dynamic(
   () => import("./InterestRunDialog").then((m) => m.InterestRunDialog),
   { ssr: false },
 );
+const RequestExportDrawer = dynamic(
+  () =>
+    import("@/modules/reports/components/RequestExportDrawer").then(
+      (m) => m.RequestExportDrawer,
+    ),
+  { ssr: false },
+);
 
 type DrawerState =
   | null
   | { mode: "detail"; txn: Transaction }
   | { mode: "post" }
-  | { mode: "interest" };
+  | { mode: "interest" }
+  | { mode: "export" };
+
+/**
+ * The register page's ACTIVE filters as the export drawer's pre-fill
+ * (#35 item 5): a pure key rename (type -> txn_type; the rest map
+ * 1:1), empty strings dropped — the SAME values the list request is
+ * currently using, so the export scope matches the visible register.
+ * Hand-computable: {type:"deposit", channel:"mpesa"} becomes
+ * {txn_type:"deposit", channel:"mpesa"}.
+ */
+export function exportDraftFromFilters(filters: TxnListFilters): Partial<ExportFilterDraft> {
+  const entries: [keyof ExportFilterDraft, string][] = [
+    ["member_id", filters.member_id],
+    ["txn_type", filters.type],
+    ["channel", filters.channel],
+    ["direction", filters.direction],
+    ["ref", filters.ref],
+    ["search", filters.search],
+    ["date_from", filters.date_from],
+    ["date_to", filters.date_to],
+  ];
+  const draft: Partial<ExportFilterDraft> = {};
+  for (const [key, value] of entries) {
+    if (value !== "") draft[key] = value;
+  }
+  return draft;
+}
 
 /**
  * Member filter — a separate component so its keyset hook mounts ONLY
@@ -158,6 +193,9 @@ export function TransactionsScreen() {
   // affordance is hidden, not disabled.
   const mayPost = can(permissions.data, "transactions", "create") && mayViewMembers;
   const mayRunInterest = can(permissions.data, "transactions", "edit");
+  // The export affordance mirrors the server gate (POST /exports is
+  // reports:view) — hidden, not disabled, for unentitled roles.
+  const mayExport = can(permissions.data, "reports", "view");
 
   function applyDrafts(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -418,6 +456,11 @@ export function TransactionsScreen() {
           </form>
         </div>
         <div className={styles.toolbarActions}>
+          {mayExport && (
+            <Button type="button" onClick={() => setDrawer({ mode: "export" })}>
+              Export
+            </Button>
+          )}
           {mayRunInterest && (
             <Button type="button" onClick={() => setDrawer({ mode: "interest" })}>
               Run deposit interest
@@ -467,6 +510,13 @@ export function TransactionsScreen() {
       )}
       {drawer !== null && drawer.mode === "interest" && (
         <InterestRunDialog onClose={() => setDrawer(null)} />
+      )}
+      {drawer !== null && drawer.mode === "export" && (
+        <RequestExportDrawer
+          report="transactions_ledger"
+          initial={exportDraftFromFilters(filters)}
+          onClose={() => setDrawer(null)}
+        />
       )}
     </Card>
   );

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isoTimestampSchema } from "@/lib/schemas";
+import { CHANNELS, SIDES, TXN_TYPES } from "@/modules/transactions/schemas";
 
 /**
  * Zod-validated response boundary for the reports module (module 8 — the exports API). Shapes mirror the generated client types
@@ -30,6 +31,7 @@ export const REPORT_NAMES = [
   "dividend_rebate_schedule",
   "portfolio_at_risk_aging",
   "membership_register",
+  "transactions_ledger",
   "income_statement",
   "sasra_return",
 ] as const;
@@ -48,6 +50,7 @@ export const REPORT_LABELS: Record<ReportName, string> = {
   dividend_rebate_schedule: "Dividend & rebate schedule",
   portfolio_at_risk_aging: "Portfolio at risk — aging",
   membership_register: "Membership register",
+  transactions_ledger: "Transactions ledger",
   income_statement: "Income statement",
   sasra_return: "SASRA return (skeleton)",
 };
@@ -60,6 +63,13 @@ export const FILTER_KEYS = [
   "declaration_id",
   "date_from",
   "date_to",
+  // Transactions-ledger register scope (#35 item 5, expand-only):
+  // the register page's own declared filters ride the export request.
+  "txn_type",
+  "channel",
+  "direction",
+  "ref",
+  "search",
 ] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
@@ -89,6 +99,19 @@ export const REPORT_FILTERS: Record<
   },
   portfolio_at_risk_aging: { allowed: [], required: [] },
   membership_register: { allowed: [], required: [] },
+  transactions_ledger: {
+    allowed: [
+      "member_id",
+      "txn_type",
+      "channel",
+      "direction",
+      "ref",
+      "search",
+      "date_from",
+      "date_to",
+    ],
+    required: [],
+  },
   income_statement: { allowed: ["date_from", "date_to"], required: [] },
   sasra_return: { allowed: [], required: [] },
 };
@@ -132,6 +155,11 @@ export const EMPTY_FILTER_DRAFT: ExportFilterDraft = {
   declaration_id: "",
   date_from: "",
   date_to: "",
+  txn_type: "",
+  channel: "",
+  direction: "",
+  ref: "",
+  search: "",
 };
 
 export interface ExportEntry {
@@ -146,6 +174,11 @@ const FILTER_MESSAGES: Record<FilterKey, string> = {
   declaration_id: "Select or enter the dividend declaration (a UUID).",
   date_from: "Enter a real calendar date as YYYY-MM-DD.",
   date_to: "Enter a real calendar date as YYYY-MM-DD.",
+  txn_type: "Pick a transaction type from the list.",
+  channel: "Pick a channel from the list.",
+  direction: "Pick debit or credit.",
+  ref: "A reference is at most 32 characters.",
+  search: "Search text is at most 64 characters.",
 };
 
 /**
@@ -175,6 +208,28 @@ export function validateExportDraft(
       continue;
     }
     if ((key === "date_from" || key === "date_to") && !isCalendarDate(value)) {
+      errors[key] = FILTER_MESSAGES[key];
+      continue;
+    }
+    // Register vocabularies (code-owned mirrors; the server re-pins
+    // them via the typed contract regardless) and text bounds.
+    if (key === "txn_type" && !(TXN_TYPES as readonly string[]).includes(value)) {
+      errors[key] = FILTER_MESSAGES[key];
+      continue;
+    }
+    if (key === "channel" && !(CHANNELS as readonly string[]).includes(value)) {
+      errors[key] = FILTER_MESSAGES[key];
+      continue;
+    }
+    if (key === "direction" && !(SIDES as readonly string[]).includes(value)) {
+      errors[key] = FILTER_MESSAGES[key];
+      continue;
+    }
+    if (key === "ref" && value.length > 32) {
+      errors[key] = FILTER_MESSAGES[key];
+      continue;
+    }
+    if (key === "search" && value.length > 64) {
       errors[key] = FILTER_MESSAGES[key];
       continue;
     }

@@ -48,11 +48,17 @@ from genesis.application.portfolio_reconstruction import (
     reconstruct_month,
 )
 from genesis.application.portfolio_snapshots import SNAPSHOT_LOOKUP_SQL
+from genesis.application.transactions import (
+    TXN_SEARCH_CLAUSE,
+    _direction_clause,
+    _search_params,
+)
 from genesis.domain.documents import Cell
 from genesis.domain.ledger import (
     DEBIT_NORMAL_CLASSES,
     Account,
     AccountClass,
+    Channel,
     Side,
     TxnType,
     account_class,
@@ -83,6 +89,7 @@ class ReportName(enum.StrEnum):
     DIVIDEND_REBATE_SCHEDULE = "dividend_rebate_schedule"
     PORTFOLIO_AT_RISK_AGING = "portfolio_at_risk_aging"
     MEMBERSHIP_REGISTER = "membership_register"
+    TRANSACTIONS_LEDGER = "transactions_ledger"
     INCOME_STATEMENT = "income_statement"
     SASRA_RETURN = "sasra_return"
 
@@ -110,6 +117,18 @@ class ExportFilters:
     declaration_id: uuid.UUID | None = None
     date_from: date | None = None
     date_to: date | None = None
+    #: Transactions-ledger register scope (#35 item 5, expand-only):
+    #: the register page's declared filters ride the export request so
+    #: the artifact matches the filtered register. Values are the
+    #: code-owned vocabularies (TxnType/Channel/Side) or bounded
+    #: operator text (ref/search), validated in validate_filters at
+    #: request time and re-parsed by the build (a corrupted stored
+    #: value fails LOUDLY, never renders a wider scope).
+    txn_type: str | None = None
+    channel: str | None = None
+    direction: str | None = None
+    ref: str | None = None
+    search: str | None = None
 
     def provided_keys(self) -> frozenset[str]:
         return frozenset(
@@ -120,6 +139,11 @@ class ExportFilters:
                 ("declaration_id", self.declaration_id),
                 ("date_from", self.date_from),
                 ("date_to", self.date_to),
+                ("txn_type", self.txn_type),
+                ("channel", self.channel),
+                ("direction", self.direction),
+                ("ref", self.ref),
+                ("search", self.search),
             )
             if value is not None
         )
@@ -133,6 +157,11 @@ class ExportFilters:
                 ("declaration_id", self.declaration_id),
                 ("date_from", self.date_from),
                 ("date_to", self.date_to),
+                ("txn_type", self.txn_type),
+                ("channel", self.channel),
+                ("direction", self.direction),
+                ("ref", self.ref),
+                ("search", self.search),
             )
             if value is not None
         }
@@ -145,6 +174,11 @@ class ExportFilters:
             declaration_id=(uuid.UUID(raw["declaration_id"]) if "declaration_id" in raw else None),
             date_from=date.fromisoformat(raw["date_from"]) if "date_from" in raw else None,
             date_to=date.fromisoformat(raw["date_to"]) if "date_to" in raw else None,
+            txn_type=raw.get("txn_type"),
+            channel=raw.get("channel"),
+            direction=raw.get("direction"),
+            ref=raw.get("ref"),
+            search=raw.get("search"),
         )
 
 
@@ -173,11 +207,24 @@ class ReportDefinition:
         return tuple(column.key for column in self.columns)
 
 
+#: The register's expand-only filter keys. On reports that do not declare
+#: them they are refused as 422 — mirroring the extra="forbid" structural
+#: refusal these keys produced before they became typed body fields — so
+#: the expansion never widens any other report's accepted scope.
+_REGISTER_ONLY_KEYS = frozenset({"txn_type", "channel", "direction", "ref", "search"})
+
+
 def validate_filters(definition: ReportDefinition, filters: ExportFilters) -> None:
     """Reject scopes the report does not define (least surprise, least disclosure)."""
     provided = filters.provided_keys()
     unknown = provided - definition.allowed_filters
     if unknown:
+        register_only = unknown & _REGISTER_ONLY_KEYS
+        if register_only:
+            raise UnprocessableError(
+                f"filters not declared by {definition.name.value}: "
+                f"{', '.join(sorted(register_only))}"
+            )
         raise InvalidInputError(
             f"filters not supported by {definition.name.value}: {', '.join(sorted(unknown))}"
         )
@@ -192,6 +239,24 @@ def validate_filters(definition: ReportDefinition, filters: ExportFilters) -> No
         and filters.date_to < filters.date_from
     ):
         raise InvalidInputError("date_to must not precede date_from")
+    # Transactions-ledger vocabulary/bounds (code-owned; the API layer
+    # already pins these via typed fields — this is the service-level
+    # fence for direct callers). Least disclosure: the refusal names
+    # the key, never echoes the value.
+    for key, value, vocab in (
+        ("txn_type", filters.txn_type, TxnType),
+        ("channel", filters.channel, Channel),
+        ("direction", filters.direction, Side),
+    ):
+        if value is not None:
+            try:
+                vocab(value)
+            except ValueError as exc:
+                raise InvalidInputError(f"{key} is not a declared value") from exc
+    if filters.ref is not None and not 1 <= len(filters.ref) <= 32:
+        raise InvalidInputError("ref must be 1..32 characters")
+    if filters.search is not None and not 1 <= len(filters.search.strip()) <= 64:
+        raise InvalidInputError("search must be 1..64 characters")
 
 
 async def assert_scope_exists(
@@ -1047,6 +1112,133 @@ async def _build_membership_register(
 
 
 # ---------------------------------------------------------------------------
+# Transactions ledger register (#35 item 5 — export parity)
+# ---------------------------------------------------------------------------
+
+
+def _txn_ledger_filter_clauses(
+    filters: ExportFilters, params: dict[str, object]
+) -> tuple[str, ...]:
+    """WHERE fragments for the ledger register's declared filters.
+
+    The SAME code-owned pieces the register list uses (reuse-first,
+    the house doctrine 1.1): _direction_clause, TXN_SEARCH_CLAUSE and
+    _search_params from application/transactions, plus the register's
+    exact date semantics (inclusive end date via < date_to + 1 day) —
+    so the export provably matches the filtered register. Vocabulary
+    was validated at request time (validate_filters); a corrupted
+    stored value fails LOUDLY here (ValueError -> failed job), never
+    renders a wider scope. Every value is a bound parameter.
+    """
+    clauses: list[str] = []
+    if filters.member_id is not None:
+        clauses.append("member_id = CAST(:f_mid AS uuid)")
+        params["f_mid"] = str(filters.member_id)
+    if filters.txn_type is not None:
+        clauses.append("type = :f_type")
+        params["f_type"] = TxnType(filters.txn_type).value
+    if filters.channel is not None:
+        clauses.append("channel = :f_channel")
+        params["f_channel"] = Channel(filters.channel).value
+    if filters.direction is not None:
+        clauses.append(_direction_clause(Side(filters.direction), params))
+    if filters.ref is not None:
+        clauses.append("txn_ref = :f_ref")
+        params["f_ref"] = filters.ref
+    if filters.search is not None and filters.search.strip() != "":
+        clauses.append(TXN_SEARCH_CLAUSE)
+        params.update(_search_params(filters.search.strip()))
+    if filters.date_from is not None:
+        clauses.append("occurred_at >= :f_dfrom")
+        params["f_dfrom"] = filters.date_from
+    if filters.date_to is not None:
+        clauses.append("occurred_at < :f_dto")
+        params["f_dto"] = filters.date_to + timedelta(days=1)
+    return tuple(clauses)
+
+
+def transactions_ledger_page_sql(*, filter_clauses: tuple[str, ...], with_cursor: bool) -> str:
+    """Keyset page over the transactions register, newest first (scalability).
+
+    Served by idx_txns_occurred_keyset (tenant_id, occurred_at DESC,
+    id DESC; 0008) — the same walk the register list endpoint uses;
+    the declared filters ride as predicates on that walk exactly as
+    they do on GET /transactions (whose production clauses are
+    EXPLAIN-gated in tests/test_txn_search.py). The member display
+    labels (identifier doctrine: human numbers prominent, no uuid
+    columns) are correlated scalar subqueries probing members by
+    PRIMARY KEY per rendered row — no new index needed. Static
+    fragments chosen in code; all values are bound parameters.
+    """
+    cursor_clause = "AND (occurred_at, id) < (:c_ts, CAST(:c_id AS uuid)) " if with_cursor else ""
+    filter_sql = "".join(f"AND {clause} " for clause in filter_clauses)
+    return (
+        "SELECT id, txn_ref, external_ref, type, channel, amount, "  # noqa: S608
+        "occurred_at, reversal_of_id, "
+        "(SELECT m.member_no FROM members m "
+        "WHERE m.tenant_id = CAST(:tid AS uuid) AND m.id = transactions.member_id"
+        ") AS member_no, "
+        "(SELECT m.name FROM members m "
+        "WHERE m.tenant_id = CAST(:tid AS uuid) AND m.id = transactions.member_id"
+        ") AS member_name "
+        "FROM transactions "
+        "WHERE tenant_id = CAST(:tid AS uuid) AND occurred_at <= :as_of "
+        f"{filter_sql}"
+        f"{cursor_clause}"
+        "ORDER BY occurred_at DESC, id DESC LIMIT :limit"
+    )
+
+
+async def _build_transactions_ledger(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    filters: ExportFilters,
+    as_of: datetime,
+) -> ReportQuery:
+    """As-of semantics: postings up to the snapshot as-of, newest
+    first in (occurred_at, id) keyset order — the register's own
+    display order; the snapshot transaction guarantees one consistent
+    ledger page set (blocker h)."""
+    base_params: dict[str, object] = {"tid": str(tenant_id), "as_of": as_of}
+    filter_clauses = _txn_ledger_filter_clauses(filters, base_params)
+
+    async def fetch(cursor: ReportCursor | None, limit: int) -> list[Any]:
+        params: dict[str, object] = dict(base_params)
+        params["limit"] = limit
+        if cursor is not None:
+            params["c_ts"], params["c_id"] = cast(tuple[datetime, str], cursor)
+        page_sql = transactions_ledger_page_sql(
+            filter_clauses=filter_clauses, with_cursor=cursor is not None
+        )
+        result = await session.execute(text(page_sql), params)
+        return list(result.all())
+
+    def cursor_key(raw: Any) -> ReportCursor:
+        return (raw[6], str(raw[0]))
+
+    def to_cells(raw: Any) -> tuple[Cell, ...]:
+        # Direction is the register's member-facing DR/CR pill: the
+        # code-owned MEMBER_DIRECTION map with the reversal flip
+        # (domain/ledger.member_direction) — identical to the list
+        # endpoint's rendering, never a caller-shaped value.
+        txn_type = TxnType(str(raw[3]))
+        direction = member_direction(txn_type, is_reversal=raw[7] is not None)
+        return (
+            raw[6],
+            str(raw[1]),
+            str(raw[2]) if raw[2] is not None else None,
+            txn_type.value,
+            str(raw[4]),
+            direction.value,
+            raw[5],
+            str(raw[8]) if raw[8] is not None else None,
+            str(raw[9]) if raw[9] is not None else None,
+        )
+
+    return ReportQuery(fetch=fetch, cursor_key=cursor_key, to_cells=to_cells)
+
+
+# ---------------------------------------------------------------------------
 # Income statement
 # ---------------------------------------------------------------------------
 
@@ -1362,6 +1554,35 @@ REPORTS: dict[ReportName, ReportDefinition] = {
         allowed_filters=frozenset(),
         required_filters=frozenset(),
         build=_build_membership_register,
+    ),
+    ReportName.TRANSACTIONS_LEDGER: ReportDefinition(
+        name=ReportName.TRANSACTIONS_LEDGER,
+        title="Transactions ledger",
+        columns=(
+            ReportColumn("occurred_at", "Date"),
+            ReportColumn("txn_ref", "Ref"),
+            ReportColumn("external_ref", "External Ref"),
+            ReportColumn("type", "Type"),
+            ReportColumn("channel", "Channel"),
+            ReportColumn("direction", "Direction"),
+            ReportColumn("amount", "Amount"),
+            ReportColumn("member_no", "Member No"),
+            ReportColumn("member_name", "Member", pii=True),
+        ),
+        allowed_filters=frozenset(
+            {
+                "member_id",
+                "txn_type",
+                "channel",
+                "direction",
+                "ref",
+                "search",
+                "date_from",
+                "date_to",
+            }
+        ),
+        required_filters=frozenset(),
+        build=_build_transactions_ledger,
     ),
     ReportName.INCOME_STATEMENT: ReportDefinition(
         name=ReportName.INCOME_STATEMENT,
