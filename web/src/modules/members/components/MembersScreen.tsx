@@ -19,9 +19,10 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Banner, Button, Card, Pill } from "@genesis/design-system";
+import { Banner, Button, Card, FilterControl, Pill } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { initials } from "@/lib/format";
@@ -114,10 +115,6 @@ const COLUMNS: Column<MemberDetail>[] = [
             </div>
         ),
     },
-    // Advisory aggregates (review): SERVER decimal strings
-    // rendered VERBATIM — never summed, never derived, never
-    // re-formatted (the money rule; the same figures the KYC drawer
-    // shows on the detail read).
     {
         key: "deposits",
         header: "Deposits",
@@ -126,21 +123,15 @@ const COLUMNS: Column<MemberDetail>[] = [
     },
     {
         key: "shares",
-        header: "Share capital",
+        header: "Shares",
         align: "right",
         render: (member) => member.aggregates.shares_total,
     },
     {
         key: "loans",
-        header: "Loans outstanding",
+        header: "Loan",
         align: "right",
         render: (member) => member.aggregates.loans_outstanding,
-    },
-    {
-        key: "guarantees",
-        header: "Guarantees pledged",
-        align: "right",
-        render: (member) => member.aggregates.guarantees_pledged,
     },
     {
         key: "status",
@@ -150,51 +141,21 @@ const COLUMNS: Column<MemberDetail>[] = [
     },
 ];
 
-function SegmentedFilter<T extends string>({
-    label,
-    options,
-    labels,
-    value,
-    onChange,
-}: Readonly<{
-    label: string;
-    options: readonly T[];
-    labels: Record<T, string>;
-    value: T | "";
-    onChange: (next: T | "") => void;
-}>) {
-    return (
-        <div className={styles.filterGroup}>
-            <span className={styles.filterLabel}>{label}</span>
-            <div className={styles.segment} role="group" aria-label={label}>
-                <button
-                    type="button"
-                    className={styles.segmentButton}
-                    aria-pressed={value === ""}
-                    onClick={() => onChange("")}
-                >
-                    All
-                </button>
-                {options.map((option) => (
-                    <button
-                        key={option}
-                        type="button"
-                        className={styles.segmentButton}
-                        aria-pressed={value === option}
-                        onClick={() => onChange(option)}
-                    >
-                        {labels[option]}
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 export function MembersScreen() {
     const permissions = usePermissions();
-    const [status, setStatus] = useState<MemberStatus | "">("");
-    const [type, setType] = useState<MemberType | "">("");
+    const [status, setStatusRaw] = useState<MemberStatus | "">("");
+    const [type, setTypeRaw] = useState<MemberType | "">("");
+    const pagination = useKeysetPagination();
+
+    // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+    function setStatus(next: MemberStatus | "") {
+        setStatusRaw(next);
+        pagination.setPageIndex(0);
+    }
+    function setType(next: MemberType | "") {
+        setTypeRaw(next);
+        pagination.setPageIndex(0);
+    }
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [createdNo, setCreatedNo] = useState<string | null>(null);
     // Row drill-down (KYC drawer) and the wizard continuation.
@@ -203,29 +164,36 @@ export function MembersScreen() {
 
     const filters: MemberListFilters = { status, type };
     const list = useKeysetList<MemberDetail>({
-        queryKey: ["members", "list", filters],
-        fetchPage: (cursor) => fetchMembersPageWithAggregates(filters, cursor),
+        queryKey: ["members", "list", filters, pagination.pageSize],
+        fetchPage: (cursor) =>
+            fetchMembersPageWithAggregates(filters, cursor, pagination.pageSize),
     });
 
     const mayCreate = can(permissions.data, "members", "create");
 
     return (
-        <div>
+        <Card>
             <div className={styles.toolbar}>
                 <div className={styles.filters}>
-                    <SegmentedFilter
+                    <FilterControl
+                        id="member-status-filter"
                         label="Status"
-                        options={MEMBER_STATUSES}
-                        labels={STATUS_LABELS}
                         value={status}
                         onChange={setStatus}
+                        options={MEMBER_STATUSES.map((s) => ({
+                            value: s,
+                            label: STATUS_LABELS[s],
+                        }))}
                     />
-                    <SegmentedFilter
+                    <FilterControl
+                        id="member-type-filter"
                         label="Type"
-                        options={MEMBER_TYPES}
-                        labels={TYPE_LABELS}
                         value={type}
                         onChange={setType}
+                        options={MEMBER_TYPES.map((t) => ({
+                            value: t,
+                            label: TYPE_LABELS[t],
+                        }))}
                     />
                 </div>
                 {mayCreate && (
@@ -244,6 +212,13 @@ export function MembersScreen() {
                     rowKey={(member) => member.id}
                     emptyMessage="No members match these filters."
                     onRowClick={(member) => setKycMember(member)}
+                    pagination={{
+                        pageIndex: pagination.pageIndex,
+                        pageSize: pagination.pageSize,
+                        onPageChange: pagination.setPageIndex,
+                        onPageSizeChange: pagination.setPageSize,
+                        rowLabel: "members",
+                    }}
                 />
             </Card>
             {drawerOpen && (
@@ -272,7 +247,7 @@ export function MembersScreen() {
             {wizardMember !== null && (
                 <KycWizard member={wizardMember} onClose={() => setWizardMember(null)} />
             )}
-        </div>
+        </Card>
     );
 }
 

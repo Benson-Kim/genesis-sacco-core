@@ -1523,6 +1523,13 @@ export interface paths {
          *     lookup): expand-only EXACT-match filter served by the 0001 UNIQUE
          *     (tenant_id, member_no) key. An unknown number is an EMPTY page,
          *     never a 404 — no existence oracle beyond the members:view grant.
+         *
+         *     id_number (expand-only): EXACT-match
+         *     national-ID lookup through the person KYC profile, served by the
+         *     0045 partial expression index (shipped with this query). An
+         *     EXCLUSIVE identity probe: combining it with any other filter,
+         *     cursor or the aggregates expand is a 422 (one declared meaning,
+         *     no ambiguous merged scopes). Unknown ID: EMPTY page, never 404.
          */
         get: operations["list_members_members_get"];
         put?: never;
@@ -3277,19 +3284,29 @@ export interface components {
         };
         /**
          * ExportFiltersBody
-         * @description The only caller-suppliable scope (blocker a): ids and dates.
+         * @description The only caller-suppliable scope (blocker a): ids, dates, and —
+         *     for the transactions-ledger register (expand-only) —
+         *     the register page's own declared filters, pinned to the code-owned
+         *     vocabularies (TxnType/Channel/Side) and bounded operator text.
          */
         ExportFiltersBody: {
+            channel?: components["schemas"]["Channel"] | null;
             /** Date From */
             date_from?: string | null;
             /** Date To */
             date_to?: string | null;
             /** Declaration Id */
             declaration_id?: string | null;
+            direction?: components["schemas"]["Side"] | null;
             /** Exit Id */
             exit_id?: string | null;
             /** Member Id */
             member_id?: string | null;
+            /** Ref */
+            ref?: string | null;
+            /** Search */
+            search?: string | null;
+            txn_type?: components["schemas"]["TxnType"] | null;
         };
         /** ExportOut */
         ExportOut: {
@@ -4226,7 +4243,7 @@ export interface components {
          * ReportName
          * @enum {string}
          */
-        ReportName: "member_statement" | "trial_balance" | "loan_book" | "disbursement_collections" | "npl_trend" | "member_exit_statement" | "dividend_rebate_schedule" | "portfolio_at_risk_aging" | "membership_register" | "income_statement" | "sasra_return";
+        ReportName: "member_statement" | "trial_balance" | "loan_book" | "disbursement_collections" | "npl_trend" | "member_exit_statement" | "dividend_rebate_schedule" | "portfolio_at_risk_aging" | "membership_register" | "transactions_ledger" | "income_statement" | "sasra_return";
         /** RoleOut */
         RoleOut: {
             /** Id */
@@ -7486,6 +7503,7 @@ export interface operations {
                 status?: components["schemas"]["MemberStatus"] | null;
                 type?: components["schemas"]["MemberType"] | null;
                 member_no?: string | null;
+                id_number?: string | null;
                 include?: "aggregates" | null;
             };
             header?: never;

@@ -1,0 +1,417 @@
+/*
+ * Form-element primitives — brand-token edition.
+ *
+ * Every color value references a design-system CSS custom property from
+ * tokens.css (gate 1.1 — no ad-hoc hex values).  Structural values
+ * (radius, spacing, min-height) use scale.css tokens.
+ *
+ * Class inventory (mirrors the accessible-form reference):
+ *   .formControl          — text-like inputs (text, email, tel, url,
+ *                           password, number, date, …) and textarea
+ *   .selectWrap           — wrapper div giving the native select a CSS arrow
+ *   .choiceGroup          — fieldset for checkbox / radio groups
+ *   .choiceList           — grid of .choice items
+ *   .choiceListInline     — auto-fit multi-column variant
+ *   .choice               — individual checkbox / radio card
+ *   .choiceText           — text column inside .choice
+ *   .choiceTitle          — bold choice label
+ *   .choiceDescription    — muted choice sub-label
+ *   .hint                 — helper text below a control
+ *   .error                — inline validation error (with icon prefix)
+ *   .required             — asterisk marker beside a label
+ *   .formStatus           — server-level error banner (role="alert")
+ *   .fieldFull            — span a field across all grid columns
+ *   .otpInput             — monospace OTP modifier for .formControl
+ */
+
+/* ------------------------------------------------------------------ */
+/* Base input                                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Apply .formControl to: text, email, tel, url, password, search,
+ * number, date, time, datetime-local, month, week, and textarea.
+ */
+.formControl,
+.selectWrap select {
+    display: block;
+    width: 100%;
+    min-height: var(--touch-target-comfortable); /* 48px (scale.css) */
+    margin: 0;
+    border: 1.5px solid var(--line);
+    border-radius: var(--radius-md);
+    background-color: var(--card);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-body);
+    line-height: var(--leading-body);
+    padding: var(--space-xs) var(--space-sm);  /* 8px 12px */
+
+    /* Focus does not alter border width — no layout shift. */
+    transition:
+        border-color var(--duration-fast) ease,
+        background-color var(--duration-fast) ease,
+        box-shadow var(--duration-fast) ease;
+}
+
+.formControl::placeholder {
+    color: var(--sub);
+    opacity: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hover                                                                */
+/* ------------------------------------------------------------------ */
+
+.formControl:hover:not(:disabled):not(:read-only),
+.selectWrap select:hover:not(:disabled) {
+    border-color: var(--sub);
+}
+
+/* ------------------------------------------------------------------ */
+/* Focus                                                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Focus only recolors the existing border — no separate outline ring.
+ * outline: none suppresses the browser's own default focus outline,
+ * which would otherwise still render alongside the border change.
+ */
+.formControl:focus-visible,
+.selectWrap select:focus-visible {
+    outline: none;
+    border-color: var(--navy);
+}
+
+/* ------------------------------------------------------------------ */
+/* Disabled / read-only                                                 */
+/* ------------------------------------------------------------------ */
+
+.formControl:disabled,
+.selectWrap select:disabled {
+    background: var(--bg);
+    color: var(--sub);
+    cursor: not-allowed;
+    opacity: 1;
+}
+
+.formControl:read-only {
+    background: var(--panel);
+    cursor: default;
+}
+
+/* ------------------------------------------------------------------ */
+/* Validation — aria-invalid (server / script errors)                  */
+/* ------------------------------------------------------------------ */
+
+.formControl[aria-invalid="true"],
+.selectWrap select[aria-invalid="true"] {
+    border-color: var(--brick);
+    background-color: var(--brickSoft);
+}
+
+/*
+ * While actively focused, the border reads as "in progress" (focus
+ * color) rather than "still wrong" — same single border-color
+ * mechanism as the base focus state above.
+ */
+.formControl[aria-invalid="true"]:focus-visible,
+.selectWrap select[aria-invalid="true"]:focus-visible {
+    border-color: var(--navy);
+}
+
+/* ------------------------------------------------------------------ */
+/* Validation — :user-invalid (browser-driven, post-interaction)       */
+/* ------------------------------------------------------------------ */
+
+.formControl:user-invalid,
+.selectWrap select:user-invalid {
+    border-color: var(--brick);
+}
+
+/* ------------------------------------------------------------------ */
+/* Textarea                                                             */
+/* ------------------------------------------------------------------ */
+
+textarea.formControl {
+    min-height: 8rem;
+    resize: vertical;
+}
+
+/* ------------------------------------------------------------------ */
+/* Select with CSS arrow                                                */
+/* ------------------------------------------------------------------ */
+
+.selectWrap {
+    position: relative;
+}
+
+.selectWrap select {
+    appearance: none;
+    padding-inline-end: 3rem;
+    cursor: pointer;
+}
+
+/* Chevron drawn with two CSS borders — no SVG dependency. */
+.selectWrap::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 1rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-right: 2px solid var(--sub);
+    border-bottom: 2px solid var(--sub);
+    pointer-events: none;
+    transform: translateY(-65%) rotate(45deg);
+}
+
+/* ------------------------------------------------------------------ */
+/* File input                                                           */
+/* ------------------------------------------------------------------ */
+
+.formControl[type="file"] {
+    padding: var(--space-xxs);
+}
+
+.formControl[type="file"]::file-selector-button {
+    min-height: 2.25rem;
+    margin-inline-end: var(--space-xs);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--navySoft);
+    color: var(--ink);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 750;
+    padding: var(--space-xxs) var(--space-sm);
+}
+
+.formControl[type="file"]::file-selector-button:hover {
+    filter: brightness(0.96);
+}
+
+/* ------------------------------------------------------------------ */
+/* Choice group (checkbox / radio)                                      */
+/* ------------------------------------------------------------------ */
+
+.choiceGroup {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.choiceGroup legend {
+    margin-bottom: var(--space-xs);
+    padding: 0;
+    font-size: var(--fs-body);
+    font-weight: 750;
+    color: var(--ink);
+}
+
+.choiceList {
+    display: grid;
+    gap: var(--space-xs);
+}
+
+.choiceListInline {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+/*
+ * Individual choice card — a label wrapping both the input and its
+ * text description so the entire tile is the click target.
+ */
+.choice {
+    display: grid;
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-sm);
+    width: 100%;
+    min-height: var(--touch-target-comfortable);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
+.choice:hover {
+    border-color: var(--sub);
+}
+
+/* Focus lands on the native input, but the whole card is the click
+   target (see comment above), so the card's own border is what
+   recolors — same mechanism as .formControl, no separate ring. */
+.choice:focus-within {
+    border-color: var(--navy);
+}
+
+.choice input[type="checkbox"],
+.choice input[type="radio"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0.12rem 0 0;
+    accent-color: var(--navy);
+    cursor: pointer;
+}
+
+/* Card border (.choice:focus-within, above) is the visible indicator;
+   suppress the browser's own ring on the small input to avoid a
+   second, redundant focus mark. */
+.choice input[type="checkbox"]:focus-visible,
+.choice input[type="radio"]:focus-visible {
+    outline: none;
+}
+
+.choiceText {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.choiceTitle {
+    color: var(--ink);
+    font-weight: 750;
+    font-size: var(--fs-body);
+}
+
+.choiceDescription {
+    color: var(--sub);
+    font-size: var(--fs-meta);
+    font-weight: 400;
+}
+
+/* Checked state — progressive enhancement; safe to omit :has() support. */
+@supports selector(label:has(input:checked)) {
+    .choice:has(input:checked) {
+        border-color: var(--navy);
+        background: var(--navySoft);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* OTP input modifier                                                   */
+/* ------------------------------------------------------------------ */
+
+.otpInput {
+    max-width: 24rem;
+    text-align: center;
+    text-indent: 0.55em;
+    font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Consolas,
+        "Liberation Mono",
+        monospace;
+    font-size: 1.35rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    letter-spacing: 0.55em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Helper text and inline errors                                        */
+/* ------------------------------------------------------------------ */
+
+.hint,
+.error {
+    margin: 0;
+    font-size: var(--fs-meta);
+}
+
+.hint {
+    color: var(--sub);
+}
+
+.error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    color: var(--brick);
+    font-weight: 650;
+}
+
+/* Circular "!" icon built with CSS — no SVG or icon font needed. */
+.error::before {
+    content: "!";
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.15rem;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Required marker                                                      */
+/* ------------------------------------------------------------------ */
+
+.required {
+    color: var(--brick);
+}
+
+/* ------------------------------------------------------------------ */
+/* Server-level form status banner                                      */
+/* ------------------------------------------------------------------ */
+
+.formStatus {
+    margin-bottom: var(--space-lg);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--brick);
+    border-radius: var(--radius-md);
+    background: var(--brickSoft);
+    color: var(--brick);
+    font-weight: 650;
+}
+
+/* ------------------------------------------------------------------ */
+/* Grid helpers                                                         */
+/* ------------------------------------------------------------------ */
+
+/* Span the full width of a parent form grid. */
+.fieldFull {
+    grid-column: 1 / -1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive — narrow viewports                                        */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 42rem) {
+    .formControl,
+    .selectWrap select,
+    .choice {
+        min-height: 3.5rem;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Forced-colors (Windows High Contrast Mode)                          */
+/* ------------------------------------------------------------------ */
+
+@media (forced-colors: active) {
+    .formControl,
+    .selectWrap select,
+    .choice {
+        border-color: CanvasText;
+    }
+
+    .selectWrap select {
+        appearance: auto;
+    }
+
+    .selectWrap::after {
+        display: none;
+    }
+
+    .formControl:focus-visible,
+    .selectWrap select:focus-visible,
+    .choice input:focus-visible {
+        outline: 3px solid Highlight;
+    }
+}

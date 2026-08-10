@@ -63,10 +63,10 @@ const writeOffsPageSchema = keysetPageSchema(writeOffSchema);
  */
 export async function fetchAdjustmentsPage(
   cursor: string | null,
-
+  limit: number = REGISTER_PAGE_SIZE,
 ): Promise<KeysetPage<AdjustmentRecord>> {
   const { data, error, response } = await api.GET("/corrections/repayment-adjustments", {
-    params: { query: { cursor: cursor ?? undefined, limit: REGISTER_PAGE_SIZE } },
+    params: { query: { cursor: cursor ?? undefined, limit } },
   });
   if (error !== undefined || data === undefined) throw toApiError(error, response);
   return adjustmentsPageSchema.parse(data);
@@ -79,9 +79,10 @@ export async function fetchAdjustmentsPage(
  */
 export async function fetchWriteOffsPage(
   cursor: string | null,
+  limit: number = REGISTER_PAGE_SIZE,
 ): Promise<KeysetPage<WriteOffRecord>> {
   const { data, error, response } = await api.GET("/corrections/write-offs", {
-    params: { query: { cursor: cursor ?? undefined, limit: REGISTER_PAGE_SIZE } },
+    params: { query: { cursor: cursor ?? undefined, limit } },
   });
   if (error !== undefined || data === undefined) throw toApiError(error, response);
   return writeOffsPageSchema.parse(data);

@@ -53,12 +53,13 @@ const declarationPageSchema = keysetPageSchema(declarationSchema);
 
 export async function fetchDeclarationsPage(
   cursor: string | null,
+  limit: number = DIVIDENDS_PAGE_SIZE,
 ): Promise<KeysetPage<DeclarationRecord>> {
   const { data, error, response } = await api.GET("/dividends/declarations", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: DIVIDENDS_PAGE_SIZE,
+        limit,
       },
     },
   });

@@ -39,12 +39,13 @@ export interface UserListFilters {
 export async function fetchUsersPage(
   filters: UserListFilters,
   cursor: string | null,
+  limit: number = USERS_PAGE_SIZE,
 ): Promise<KeysetPage<User>> {
   const { data, error, response } = await api.GET("/users", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: USERS_PAGE_SIZE,
+        limit,
         status: filters.status === "" ? undefined : filters.status,
         role_id: filters.roleId === "" ? undefined : filters.roleId,
       },

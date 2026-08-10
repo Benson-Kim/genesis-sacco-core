@@ -24,9 +24,10 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Stat } from "@genesis/design-system";
+import { Card, FilterControl, Stat } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { ErrorBanner } from "@/modules/layout/ErrorBanner";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
@@ -114,47 +115,6 @@ function PortfolioSummaryStrip() {
   );
 }
 
-function SegmentFilter<T extends string>({
-  label,
-  value,
-  options,
-  optionLabels,
-  onChange,
-}: Readonly<{
-  label: string;
-  value: T | "";
-  options: readonly T[];
-  optionLabels: Record<T, string>;
-  onChange: (next: T | "") => void;
-}>) {
-  return (
-    <div className={styles.filterGroup}>
-      <span className={styles.filterLabel}>{label}</span>
-      <div className={styles.segment} role="group" aria-label={label}>
-        <button
-          type="button"
-          className={styles.segmentButton}
-          aria-pressed={value === ""}
-          onClick={() => onChange("")}
-        >
-          All
-        </button>
-        {options.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={styles.segmentButton}
-            aria-pressed={value === option}
-            onClick={() => onChange(option)}
-          >
-            {optionLabels[option]}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 type DrawerState =
   | null
   | { mode: "loan"; loanId: string }
@@ -198,14 +158,25 @@ function DisburseQueue({
 export function LoansScreen() {
   const permissions = usePermissions();
   const products = useProducts();
-  const [status, setStatus] = useState<LoanStatus | "">("");
-  const [classification, setClassification] = useState<LoanClass | "">("");
+  const [status, setStatusRaw] = useState<LoanStatus | "">("");
+  const [classification, setClassificationRaw] = useState<LoanClass | "">("");
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  function setStatus(next: LoanStatus | "") {
+    setStatusRaw(next);
+    pagination.setPageIndex(0);
+  }
+  function setClassification(next: LoanClass | "") {
+    setClassificationRaw(next);
+    pagination.setPageIndex(0);
+  }
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   const filters: LoanListFilters = { status, classification };
   const list = useKeysetList<Loan>({
-    queryKey: ["loans", "list", filters],
-    fetchPage: (cursor) => fetchLoansPage(filters, cursor),
+    queryKey: ["loans", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchLoansPage(filters, cursor, pagination.pageSize),
   });
 
   // The disbursement queue consumes the approved-applications list
@@ -326,7 +297,7 @@ export function LoansScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.section}>
         <PortfolioSummaryStrip />
       </div>
@@ -342,19 +313,25 @@ export function LoansScreen() {
 
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <SegmentFilter
+          <FilterControl
+            id="loan-status-filter"
             label="Status"
             value={status}
-            options={LOAN_STATUSES}
-            optionLabels={LOAN_STATUS_LABELS}
             onChange={setStatus}
+            options={LOAN_STATUSES.map((option) => ({
+              value: option,
+              label: LOAN_STATUS_LABELS[option],
+            }))}
           />
-          <SegmentFilter
+          <FilterControl
+            id="loan-class-filter"
             label="Classification"
             value={classification}
-            options={LOAN_CLASSES}
-            optionLabels={LOAN_CLASS_LABELS}
             onChange={setClassification}
+            options={LOAN_CLASSES.map((option) => ({
+              value: option,
+              label: LOAN_CLASS_LABELS[option],
+            }))}
           />
         </div>
       </div>
@@ -365,6 +342,13 @@ export function LoansScreen() {
           rowKey={(loan) => loan.id}
           emptyMessage="No loans match this filter."
           onRowClick={(loan) => setDrawer({ mode: "loan", loanId: loan.id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "loans",
+          }}
         />
       </Card>
 
@@ -382,6 +366,6 @@ export function LoansScreen() {
           onClose={() => setDrawer(null)}
         />
       )}
-    </div>
+    </Card>
   );
 }

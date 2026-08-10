@@ -6,11 +6,11 @@
 
 .toolbar {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
 }
 
 .filters {
@@ -18,21 +18,6 @@
     gap: 16px;
     flex-wrap: wrap;
     align-items: flex-end;
-}
-
-.filterGroup {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-/* Persistent label (never placeholder-as-label). */
-.filterLabel {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--sub);
-    font-weight: 700;
 }
 
 .toolbarActions {
@@ -91,11 +76,6 @@
 .textarea:focus-visible {
     outline: 2px solid var(--navy);
     outline-offset: 1px;
-}
-
-/* Narrow toolbar variant of the shared control shapes. */
-.filterControl {
-    min-width: 150px;
 }
 
 .actions {

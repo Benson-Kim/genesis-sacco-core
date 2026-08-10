@@ -231,7 +231,7 @@ test("the register renders the SERVER's pending-first order verbatim (never re-s
   // Server figures verbatim in the rows.
   expect(rows[0]?.textContent).toContain("KES 5,000.10");
   expect(rows[1]?.textContent).toContain("KES 120.55");
-  expect(mocked.fetchShareTransfersPage).toHaveBeenCalledWith(null);
+  expect(mocked.fetchShareTransfersPage).toHaveBeenCalledWith(null, 10);
 });
 
 test("MAKER phase: typed confirmation starts DISARMED; a triple-clicked confirm records EXACTLY ONE request; the PENDING panel replaces the form and STATES no money moved (no balance figure exists to render)", async () => {

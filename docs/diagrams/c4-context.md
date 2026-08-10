@@ -57,6 +57,13 @@
   serving the staff phone sign-in lookup; no table/column/RLS
   change) ships in that MR (same-commit refresh per v1.2 rule 11 /
   spot-check check 5).
+  Migration head 0044 -> 0047 by the issue-#35 export-parity MR:
+  0047_exports_report_check_transactions_ledger.py (expand-only:
+  the exports.report CHECK vocabulary gains transactions_ledger —
+  the 0020/0023 precedent; no table/index/RLS change; claimed as
+  0047 because 0045/0046 are claimed by open sibling MRs and are
+  absent on this tree) ships in that MR (same-commit refresh per
+  v1.2 rule 11 / spot-check check 5).
   Traceability: every as-built box cites its module below and in the
   companion table (§2); the checked-in spot-check script
   `c4-spot-check.py` verifies every cited module path exists at the

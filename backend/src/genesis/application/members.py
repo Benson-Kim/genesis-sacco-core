@@ -196,6 +196,43 @@ MEMBER_LIST_SQL = (
 )
 
 
+#: National-ID member lookup (#35 item 14 residual — the posting
+#: drawer's second unique identifier, completing the member_no
+#: precedent). Module-level so the EXPLAIN structural gate
+#: (tests/test_idnumber_lookup.py) asserts this exact production
+#: statement. The KYC probe DRIVES: member_profiles is entered through
+#: the 0045 partial expression index idx_member_profiles_id_number
+#: (tenant_id, (profile -> 'bio' ->> 'id_number')) — shipped in the
+#: SAME MR as this query (the house rule: no probe without its index)
+#: — and each hit resolves the member row by PRIMARY KEY. Deliberately
+#: NO ORDER BY: an identity probe returns a cardinality-bounded result
+#: (one member, or the operator-visible duplicate-ID data-quality
+#: case), so the plan carries no Sort node (the EXPLAIN gate pins
+#: that). Only PERSON profiles carry bio.id_number — company/group/
+#: vehicle profiles yield NULL for the expression and can never match.
+#: Explicit tenant predicates on BOTH relations on top of forced RLS;
+#: every value a bound parameter.
+MEMBER_ID_NUMBER_LOOKUP_SQL = (
+    # MATERIALIZED is the optimization fence that makes the KYC probe the
+    # driving relation BY CONSTRUCTION: without it the planner may invert
+    # the join and enumerate the whole tenant membership per lookup (the
+    # O(tenant-size) plan the EXPLAIN gate caught in CI). The redundant
+    # IS NOT NULL predicate restates 0045's partial-index predicate so the
+    # probe is served qual-free by the expression index.
+    "WITH hit AS MATERIALIZED ("
+    "SELECT p.member_id FROM member_profiles p "
+    "WHERE p.tenant_id = CAST(:tid AS uuid) "
+    "AND (p.profile -> 'bio' ->> 'id_number') IS NOT NULL "
+    "AND (p.profile -> 'bio' ->> 'id_number') = :id_number "
+    "LIMIT :limit"
+    ") "
+    "SELECT m.id, m.member_no, m.type, m.name, m.phone, m.email, m.status, "
+    "m.version, m.branch_id, m.dividend_payout "
+    "FROM hit "
+    "JOIN members m ON m.tenant_id = CAST(:tid AS uuid) AND m.id = hit.member_id"
+)
+
+
 #: SQL template behind list_members_with_aggregates (the
 #: authorized LIST expansion), module-level so the EXPLAIN
 #: capture can assert its plan (the EXPLAIN-capture convention). ONE set-based
@@ -538,6 +575,30 @@ def _member_list_clauses(
         clauses.append(f"{col}type = :mtype")
         params["mtype"] = member_type.value
     return clauses, params
+
+
+async def lookup_members_by_id_number(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    id_number: str,
+    limit: int = 20,
+) -> MemberPage:
+    """Exact-match national-ID lookup (#35 item 14 residual).
+
+    An unknown ID number is an EMPTY page, never a 404 — no existence
+    oracle beyond the members:view grant, and the refusal path echoes
+    nothing (least disclosure). No cursor: the result is an identity
+    probe bounded by construction (see MEMBER_ID_NUMBER_LOOKUP_SQL);
+    next_cursor is always None.
+    """
+    limit = max(1, min(limit, 100))
+    result = await session.execute(
+        text(MEMBER_ID_NUMBER_LOOKUP_SQL),
+        {"tid": str(tenant_id), "id_number": id_number, "limit": limit},
+    )
+    rows = result.mappings().all()
+    return MemberPage(items=[_row_to_record(r) for r in rows], next_cursor=None)
 
 
 async def list_members(

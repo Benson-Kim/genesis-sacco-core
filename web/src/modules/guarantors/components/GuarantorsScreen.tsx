@@ -24,9 +24,10 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Stat } from "@genesis/design-system";
+import { Card, FilterControl, Stat } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { ErrorBanner } from "@/modules/layout/ErrorBanner";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
@@ -146,33 +147,6 @@ function AggregatesStrip() {
   );
 }
 
-function StageFilter({
-  value,
-  onChange,
-}: Readonly<{
-  value: PledgeableStage;
-  onChange: (next: PledgeableStage) => void;
-}>) {
-  return (
-    <div className={styles.filterGroup}>
-      <span className={styles.filterLabel}>Application stage</span>
-      <div className={styles.segment} role="group" aria-label="Application stage">
-        {PLEDGEABLE_STAGES.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={styles.segmentButton}
-            aria-pressed={value === option}
-            onClick={() => onChange(option)}
-          >
-            {STAGE_LABELS[option]}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Applications open for pledging (the P9 pledgeable stages) — a
  * separate component so its keyset hook mounts ONLY for operators
@@ -190,10 +164,11 @@ function PledgeQueue({
   onStageChange: (next: PledgeableStage) => void;
   onPledge: (applicationId: string) => void;
 }>) {
+  const pagination = useKeysetPagination();
   const filters = { stage: stage as ApplicationStage };
   const queue = useKeysetList<Application>({
-    queryKey: ["applications", "list", filters],
-    fetchPage: (cursor) => fetchApplicationsPage(filters, cursor),
+    queryKey: ["applications", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchApplicationsPage(filters, cursor, pagination.pageSize),
   });
   return (
     <Card padded={false}>
@@ -204,7 +179,25 @@ function PledgeQueue({
         </span>
       </div>
       <div className={styles.queueToolbar}>
-        <StageFilter value={stage} onChange={onStageChange} />
+        <FilterControl
+          id="pledge-stage-filter"
+          label="Application stage"
+          value={stage}
+          onChange={(next) => {
+            // allOption={false}: "" is never emitted — the pledgeable
+            // vocabulary has no "all stages" state (the UI never offers
+            // what the API forbids).
+            if (next !== "") {
+              pagination.setPageIndex(0);
+              onStageChange(next);
+            }
+          }}
+          options={PLEDGEABLE_STAGES.map((option) => ({
+            value: option,
+            label: STAGE_LABELS[option],
+          }))}
+          allOption={false}
+        />
       </div>
       <KeysetTable
         columns={columns}
@@ -212,6 +205,13 @@ function PledgeQueue({
         rowKey={(app) => app.id}
         emptyMessage="No applications in this stage."
         onRowClick={(app) => onPledge(app.id)}
+        pagination={{
+          pageIndex: pagination.pageIndex,
+          pageSize: pagination.pageSize,
+          onPageChange: pagination.setPageIndex,
+          onPageSizeChange: pagination.setPageSize,
+          rowLabel: "applications",
+        }}
       />
     </Card>
   );

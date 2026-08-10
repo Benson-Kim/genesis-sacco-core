@@ -135,6 +135,7 @@ erDiagram
         uuid member_id FK "UNIQUE (tenant_id, member_id) atomic-claim key (0018)"
         text member_type FK "composite FK (member_id, member_type) to members (id, type) (0018)"
         timestamptz dpa_consent_at "immutable once set: consent-guard triggers (0018)"
+        jsonb profile "per-type shape CHECK (0018); partial expression idx_member_profiles_id_number (tenant_id, bio.id_number) serves the posting-drawer national-ID lookup (0045)"
     }
     member_documents {
         uuid id PK
@@ -639,7 +640,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `otp_challenges` | 0001 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_otp_challenges_one_principal` XOR, `idx_otp_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `refresh_tokens` | 0002 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_refresh_tokens_one_principal` XOR, `idx_refresh_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `members` | 0001 | 0016 (`branch_id`), 0018 (`uq_members_id_type`), 0020 (dividend-scan idx), 0021 (`dormant` status, dormancy-scan idx), 0022 (scan predicate widened, exited-scan idx), 0023 (register keyset idx), 0028 (`uq_members_tenant_id_id` composite-FK anchor) | `application/members.py` (+ `dormancy.py` batch) |
-| `member_profiles` | 0018 | — | `application/member_kyc.py` |
+| `member_profiles` | 0018 | 0045 (partial expression `idx_member_profiles_id_number` — posting-drawer national-ID lookup) | `application/member_kyc.py`, `application/members.py` (id-number lookup read) |
 | `member_documents` | 0018 | — | `application/member_kyc.py` |
 | `branches` | 0016 | — | `application/branches.py` |
 | `member_credentials` | 0035 (incl. partial UNIQUEs `uq_member_credentials_email_active`/`uq_member_credentials_member_active`, `ck_member_credentials_revoked_at`) | — | `application/member_identity.py` (audited link admin), `application/member_auth.py` (member login/refresh reads) |
