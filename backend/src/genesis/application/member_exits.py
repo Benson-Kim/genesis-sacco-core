@@ -107,6 +107,29 @@ _EXIT_COLS = (
     "settlement_transaction_id, version, created_at"
 )
 
+#: Read-path column list: _EXIT_COLS table-qualified plus the member
+#: display labels. ONLY the un-locked reads use it — the settlement's
+#: FOR UPDATE read keeps the join-free _EXIT_COLS (an outer join under
+#: FOR UPDATE is refused by the database, and the lock must stay on
+#: the exit row alone).
+_EXIT_READ_COLS = (
+    "member_exits.id, member_exits.member_id, member_exits.status, "
+    "member_exits.reason, member_exits.shares_amount, "
+    "member_exits.deposits_amount, member_exits.loan_balance, "
+    "member_exits.fees, member_exits.net_payable, "
+    "member_exits.requested_by, member_exits.decided_at, "
+    "member_exits.settled_at, member_exits.settlement_transaction_id, "
+    "member_exits.version, member_exits.created_at, mm.member_no, mm.name"
+)
+
+#: Display-label join for the read statements: rides the members
+#: PRIMARY KEY per page row plus the explicit tenant predicate
+#: (index-served, no new index).
+_EXIT_LABEL_JOIN = (
+    "LEFT JOIN members mm ON mm.tenant_id = member_exits.tenant_id "
+    "AND mm.id = member_exits.member_id "
+)
+
 #: Cursor scope id: signed cursors are bound to this
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 EXITS_LIST_SCOPE = "member_exits.list"
@@ -189,6 +212,13 @@ class ExitRecord:
     settlement_transaction_id: uuid.UUID | None
     version: int
     created_at: datetime
+    #: Human display labels — the exiting member's number and
+    #: registered name — resolved server-side in the SAME read
+    #: statement (members PK join). Default None: the locked
+    #: settlement read deliberately skips the join (lock stays on the
+    #: exit row alone) and labels are never invented.
+    member_no: str | None = None
+    member_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -260,6 +290,10 @@ def _row_to_exit(row: Any) -> ExitRecord:
         settlement_transaction_id=uuid.UUID(str(row[12])) if row[12] is not None else None,
         version=int(row[13]),
         created_at=row[14],
+        # Label columns ride only the read-path statements; the locked
+        # settlement read serves the 15-column join-free shape.
+        member_no=str(row[15]) if len(row) > 15 and row[15] is not None else None,
+        member_name=str(row[16]) if len(row) > 16 and row[16] is not None else None,
     )
 
 
@@ -609,8 +643,10 @@ async def get_exit(session: AsyncSession, tenant_id: uuid.UUID, exit_id: uuid.UU
     row = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_COLS} FROM member_exits "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608
+                f"{_EXIT_LABEL_JOIN}"
+                "WHERE member_exits.id = CAST(:id AS uuid) "
+                "AND member_exits.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(exit_id), "tid": str(tenant_id)},
         )
@@ -636,25 +672,30 @@ async def list_exits(
     DESC, id DESC), also 0010.
     """
     limit = max(1, min(limit, 100))
-    clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
+    # Qualified because the label join brings further tenant_id/status
+    # columns into scope; the predicate stays the leading column of
+    # both keyset indexes.
+    clauses: list[str] = ["member_exits.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if status is not None:
-        clauses.append("status = :status")
+        clauses.append("member_exits.status = :status")
         params["status"] = status.value
     if cursor:
         # Opaque signed cursor: verify+unseal first;
         # the plaintext parse stays as defense-in-depth.
         inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=EXITS_LIST_SCOPE, entity="exit")
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="exit")
-        clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append("(member_exits.created_at, member_exits.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_COLS} FROM member_exits "  # noqa: S608
+                f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608
+                f"{_EXIT_LABEL_JOIN}"
                 f"{where}"
-                "ORDER BY created_at DESC, id DESC LIMIT :limit"
+                "ORDER BY member_exits.created_at DESC, "
+                "member_exits.id DESC LIMIT :limit"
             ),
             params,
         )

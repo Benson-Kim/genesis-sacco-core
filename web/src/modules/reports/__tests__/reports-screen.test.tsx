@@ -175,6 +175,8 @@ beforeEach(() => {
         member_id: MEMBER_ID,
         status: "requested",
         created_at: "2026-07-01T09:00:00+00:00",
+        member_no: "M-0001",
+        member_name: "Jane Wanjiku",
       },
     ]),
   );

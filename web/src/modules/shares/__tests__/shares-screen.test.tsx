@@ -83,6 +83,10 @@ const PENDING_RECORD: ShareTransferRecord = {
   decided_at: null,
   version: 1,
   created_at: "2026-08-07T09:00:00Z",
+  from_member_no: "M-0001",
+  from_member_name: "Jane Wanjiku",
+  to_member_no: "M-0002",
+  to_member_name: "Peter Otieno",
 };
 
 /** Terminal history row behind the pending band (server order). */
@@ -99,6 +103,10 @@ const POSTED_RECORD: ShareTransferRecord = {
   decided_at: "2026-08-06T12:00:00Z",
   version: 2,
   created_at: "2026-08-06T11:00:00Z",
+  from_member_no: "M-0001",
+  from_member_name: "Jane Wanjiku",
+  to_member_no: "M-0002",
+  to_member_name: "Peter Otieno",
 };
 
 /**
@@ -223,7 +231,7 @@ test("the register renders the SERVER's pending-first order verbatim (never re-s
   // Server figures verbatim in the rows.
   expect(rows[0]?.textContent).toContain("KES 5,000.10");
   expect(rows[1]?.textContent).toContain("KES 120.55");
-  expect(mocked.fetchShareTransfersPage).toHaveBeenCalledWith(null);
+  expect(mocked.fetchShareTransfersPage).toHaveBeenCalledWith(null, 10);
 });
 
 test("MAKER phase: typed confirmation starts DISARMED; a triple-clicked confirm records EXACTLY ONE request; the PENDING panel replaces the form and STATES no money moved (no balance figure exists to render)", async () => {

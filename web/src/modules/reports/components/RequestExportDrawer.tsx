@@ -142,7 +142,10 @@ function ExitPickerField({
             <option value="">Select an exit request…</option>
             {options.map((exit) => (
               <option key={exit.id} value={exit.id}>
-                {exit.id.slice(0, 8)} · member {exit.member_id.slice(0, 8)} · {exit.status}
+                {exit.member_no !== null
+                  ? `${exit.member_no} — ${exit.member_name ?? ""}`
+                  : `member ${exit.member_id.slice(0, 8)}`}{" "}
+                · {exit.status} · {exit.id.slice(0, 8)}
               </option>
             ))}
           </select>

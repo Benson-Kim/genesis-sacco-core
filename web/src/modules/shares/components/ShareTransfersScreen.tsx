@@ -49,6 +49,7 @@ import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { useKeysetList } from "@/modules/table/useKeysetList";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -87,9 +88,10 @@ export function ShareTransfersScreen() {
   // The ledger-(m) register: server-ordered keyset pages (pending
   // first — the checker's job order) — never re-sorted or filtered
   // locally.
+  const pagination = useKeysetPagination();
   const register = useKeysetList<ShareTransferRecord>({
-    queryKey: ["shares", "transfers-register"],
-    fetchPage: (cursor) => fetchShareTransfersPage(cursor),
+    queryKey: ["shares", "transfers-register", pagination.pageSize],
+    fetchPage: (cursor) => fetchShareTransfersPage(cursor, pagination.pageSize),
   });
 
   const request = useMutation({
@@ -148,20 +150,32 @@ export function ShareTransfersScreen() {
     {
       key: "from",
       header: "From member",
-      render: (row) => (
-        <span className={styles.mono} title={row.from_member_id}>
-          {row.from_member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        // Identifier doctrine: number — name, resolved server-side on
+        // the row; the uuid stays machine identity (title).
+        row.from_member_no !== null ? (
+          <span title={row.from_member_id}>
+            {row.from_member_no} — {row.from_member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.from_member_id}>
+            {row.from_member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "to",
       header: "To member",
-      render: (row) => (
-        <span className={styles.mono} title={row.to_member_id}>
-          {row.to_member_id.slice(0, 8)}
-        </span>
-      ),
+      render: (row) =>
+        row.to_member_no !== null ? (
+          <span title={row.to_member_id}>
+            {row.to_member_no} — {row.to_member_name}
+          </span>
+        ) : (
+          <span className={styles.mono} title={row.to_member_id}>
+            {row.to_member_id.slice(0, 8)}
+          </span>
+        ),
     },
     {
       key: "amount",
@@ -387,6 +401,13 @@ export function ShareTransfersScreen() {
           rowKey={(row) => row.id}
           onRowClick={(row) => setOpenTransferId(row.id)}
           emptyMessage="No share transfers exist for this SACCO yet."
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "transfers",
+          }}
         />
       </Card>
 

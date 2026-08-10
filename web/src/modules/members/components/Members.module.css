@@ -1,66 +1,16 @@
 .toolbar {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
 }
 
 .filters {
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
-}
-
-.filterGroup {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-/* Persistent label (never placeholder-as-label). */
-.filterLabel {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--sub);
-    font-weight: 700;
-}
-
-.segment {
-    display: inline-flex;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    overflow: hidden;
-    background: var(--card);
-}
-
-/* Segmented control per (≤5 options — no hidden dropdown). */
-.segmentButton {
-    border: none;
-    background: transparent;
-    padding: 0 14px;
-    min-height: 44px;
-    font-size: 12.5px;
-    font-weight: 600;
-    color: var(--sub);
-    cursor: pointer;
-}
-
-.segmentButton+.segmentButton {
-    border-left: 1px solid var(--line);
-}
-
-.segmentButton[aria-pressed="true"] {
-    background: var(--navySoft);
-    color: var(--navy);
-    font-weight: 800;
-}
-
-.segmentButton:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: -2px;
 }
 
 .userCell {
@@ -95,24 +45,6 @@
 
 .muted {
     color: var(--sub);
-}
-
-.input,
-.select {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.input:focus-visible,
-.select:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
 }
 
 .actions {

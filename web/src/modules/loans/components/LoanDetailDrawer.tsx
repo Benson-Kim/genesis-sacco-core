@@ -241,12 +241,16 @@ export function LoanDetailDrawer({
             <>
               {member.data.name} · {member.data.member_no}
             </>
+          ) : loan.member_no !== null ? (
+            <span title={loan.member_id}>
+              {loan.member_no} — {loan.member_name}
+            </span>
           ) : (
             <span className={styles.mono}>{loan.member_id}</span>
           )}
         </Kv>
         <Kv label="Product">
-          {product !== undefined ? product.name : <span className={styles.mono}>{loan.product_id}</span>}
+          {product?.name ?? loan.product_name ?? <span className={styles.mono}>{loan.product_id}</span>}
         </Kv>
         <Kv label="Principal">{fmtKes(loan.principal)}</Kv>
         <Kv label="Outstanding balance">{fmtKes(loan.balance)}</Kv>

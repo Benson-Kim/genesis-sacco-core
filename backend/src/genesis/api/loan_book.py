@@ -86,6 +86,14 @@ class LoanOut(BaseModel):
     disbursed_at: str | None
     closed_at: str | None
     version: int
+    #: Human display labels: the borrower's member number and
+    #: registered name plus the product name, resolved server-side in
+    #: the same read statement. Disclosed under the same permission
+    #: that already serves the row; null only if a label row is
+    #: absent — labels are never invented.
+    member_no: str | None
+    member_name: str | None
+    product_name: str | None
 
 
 class LoanListResponse(BaseModel):
@@ -180,6 +188,9 @@ def _loan_out(loan: loans_service.LoanRecord) -> LoanOut:
         disbursed_at=loan.disbursed_at.isoformat() if loan.disbursed_at else None,
         closed_at=loan.closed_at.isoformat() if loan.closed_at else None,
         version=loan.version,
+        member_no=loan.member_no,
+        member_name=loan.member_name,
+        product_name=loan.product_name,
     )
 
 

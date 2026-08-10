@@ -162,6 +162,14 @@ class ApplicationOut(BaseModel):
     #: would grow queries with result size, scalability).
     max_eligible: str | None = None
     version: int
+    #: Human display labels: the applicant's member number and
+    #: registered name plus the product name, resolved server-side in
+    #: the same read statement. Disclosed under the same permission
+    #: that already serves the row; null only if a label row is
+    #: absent — labels are never invented.
+    member_no: str | None
+    member_name: str | None
+    product_name: str | None
 
 
 class ApplicationListResponse(BaseModel):
@@ -281,6 +289,9 @@ def _application_out(a: applications_service.ApplicationRecord) -> ApplicationOu
         created_by=str(a.created_by) if a.created_by else None,
         recommended_by=str(a.recommended_by) if a.recommended_by else None,
         version=a.version,
+        member_no=a.member_no,
+        member_name=a.member_name,
+        product_name=a.product_name,
     )
 
 

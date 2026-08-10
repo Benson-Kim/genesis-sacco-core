@@ -49,6 +49,21 @@
   NOT NULL serving the new phone sign-in lookup — no table, column,
   constraint or RLS change);
   diagram 2.A and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0045 by the issue-#35 id-number-lookup MR, IN THE
+  SAME COMMIT as the migration: alembic head 0044 -> 0045
+  (0045_member_profiles_id_number_index.py, down_revision = "0044";
+  one partial expression index idx_member_profiles_id_number
+  (tenant_id, (profile -> 'bio' ->> 'id_number')) WHERE the
+  expression IS NOT NULL, serving the posting-drawer national-ID
+  member lookup — no table, column, constraint or RLS change);
+  diagram 2.B and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0046 by the issue-#35 KYC-phone-E.164 MR, IN THE
+  SAME COMMIT as the migration: alembic head 0045 -> 0046
+  (0046_kyc_profile_phone_e164_backfill.py, down_revision = "0045";
+  DATA-ONLY backfill of the six code-owned profile phone paths to
+  E.164 with an exact inverse downgrade — the 0042 discipline; no
+  table, column, index, constraint or RLS change, so no diagram or
+  traceability row changes beyond this head note).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -59,10 +74,11 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0044**: **47 tables** (0035
+The entire schema at alembic head **0046**: **47 tables** (0035
 creates `member_credentials`; 0033/0034/0036/0037/0040/0043 alter
-existing tables and create none; 0038/0041/0044 add indexes only;
-0042 is a data-only backfill touching no schema object), drawn as
+existing tables and create none; 0038/0041/0044/0045 add indexes only;
+0042 and 0046 are data-only backfills touching no schema object),
+drawn as
 seven subject-area `erDiagram`s (one diagram would not render readably;
 the split follows the module boundaries in the §3 traceability table).
 An entity appearing in more than one diagram (e.g. `members`,
@@ -125,6 +141,7 @@ erDiagram
         uuid member_id FK "UNIQUE (tenant_id, member_id) atomic-claim key (0018)"
         text member_type FK "composite FK (member_id, member_type) to members (id, type) (0018)"
         timestamptz dpa_consent_at "immutable once set: consent-guard triggers (0018)"
+        jsonb profile "per-type shape CHECK (0018); partial expression idx_member_profiles_id_number (tenant_id, bio.id_number) serves the posting-drawer national-ID lookup (0045)"
     }
     member_documents {
         uuid id PK
@@ -627,7 +644,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `otp_challenges` | 0001 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_otp_challenges_one_principal` XOR, `idx_otp_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `refresh_tokens` | 0002 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_refresh_tokens_one_principal` XOR, `idx_refresh_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `members` | 0001 | 0016 (`branch_id`), 0018 (`uq_members_id_type`), 0020 (dividend-scan idx), 0021 (`dormant` status, dormancy-scan idx), 0022 (scan predicate widened, exited-scan idx), 0023 (register keyset idx), 0028 (`uq_members_tenant_id_id` composite-FK anchor) | `application/members.py` (+ `dormancy.py` batch) |
-| `member_profiles` | 0018 | — | `application/member_kyc.py` |
+| `member_profiles` | 0018 | 0045 (partial expression `idx_member_profiles_id_number` — posting-drawer national-ID lookup) | `application/member_kyc.py`, `application/members.py` (id-number lookup read) |
 | `member_documents` | 0018 | — | `application/member_kyc.py` |
 | `branches` | 0016 | — | `application/branches.py` |
 | `member_credentials` | 0035 (incl. partial UNIQUEs `uq_member_credentials_email_active`/`uq_member_credentials_member_active`, `ck_member_credentials_revoked_at`) | — | `application/member_identity.py` (audited link admin), `application/member_auth.py` (member login/refresh reads) |

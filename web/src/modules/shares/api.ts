@@ -74,9 +74,10 @@ export async function requestShareTransfer(
  */
 export async function fetchShareTransfersPage(
   cursor: string | null,
+  limit: number = REGISTER_PAGE_SIZE,
 ): Promise<KeysetPage<ShareTransferRecord>> {
   const { data, error, response } = await api.GET("/share-transfers", {
-    params: { query: { cursor: cursor ?? undefined, limit: REGISTER_PAGE_SIZE } },
+    params: { query: { cursor: cursor ?? undefined, limit } },
   });
   if (error !== undefined || data === undefined) throw toApiError(error, response);
   return transfersPageSchema.parse(data);

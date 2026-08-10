@@ -34,6 +34,7 @@ function entry(overrides: Partial<AuditEntry> = {}): AuditEntry {
     before: { full_name: HOSTILE, branch: "HQ" },
     after: { full_name: "Renamed", branch: "HQ" },
     redacted: false,
+    actor_name: "Test User",
     ...overrides,
   };
 }
@@ -92,15 +93,19 @@ test("redacted entries disclose no payload and no client-side reconstruction", a
   expect(container.textContent).not.toContain("full_name");
 });
 
-test("pagination is keyset-only: Load more echoes the opaque cursor untouched", async () => {
+test("pagination is keyset-only: the paginator echoes the opaque cursor untouched", async () => {
   const user = userEvent.setup();
   const cursor = "b3BhcXVlLWN1cnNvcg==:not-your-business";
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) => entry({ id: 100 + i }));
   mocked.fetchAuditPage
-    .mockResolvedValueOnce({ items: [entry()], nextCursor: cursor })
+    .mockResolvedValueOnce({ items: fullPage, nextCursor: cursor })
     .mockResolvedValueOnce({ items: [entry({ id: 41 })], nextCursor: null });
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchAuditPage).toHaveBeenCalledTimes(2));
   // First page: null cursor; second page: the server cursor VERBATIM.
