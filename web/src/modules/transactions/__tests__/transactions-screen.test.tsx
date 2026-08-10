@@ -24,6 +24,7 @@ import {
 } from "../schemas";
 import * as txnApi from "../api";
 import * as membersApi from "@/modules/members/api";
+import * as reportsApi from "@/modules/reports/api";
 
 jest.mock("../api", () => {
   const actual = jest.requireActual<typeof import("../api")>("../api");
@@ -50,8 +51,17 @@ jest.mock("@/modules/authz/usePermissions", () => ({
   usePermissions: jest.fn(),
 }));
 
+// #35 item 5 (export parity): the register's Export affordance opens
+// the REAL RequestExportDrawer — only its API layer is stubbed.
+jest.mock("@/modules/reports/api", () => ({
+  requestExport: jest.fn(),
+  fetchDeclarationsPage: jest.fn(),
+  fetchExitsPage: jest.fn(),
+}));
+
 const mocked = jest.mocked(txnApi);
 const mockedMembers = jest.mocked(membersApi);
+const mockedReports = jest.mocked(reportsApi);
 const mockedPermissions = jest.mocked(usePermissions);
 
 const ADMIN_ID = "99999999-9999-9999-9999-999999999999";
@@ -1071,6 +1081,71 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
   expect(laterCall?.[1]).toBe("w1-cursor-p2");
 });
 
+
+// #35 item 5 — export parity: the register's ONE prototype-promised
+// export affordance, wired through the existing RequestExportDrawer.
+// ---------------------------------------------------------------------------
+
+/** transactions:view + members:view + reports:view — the export-
+ * entitled register operator. */
+const REPORTS_PERMS = {
+  role_id: ADMIN_ID,
+  permissions: [
+    { module: "transactions", can_view: true, can_create: false, can_edit: false, can_approve: false },
+    { module: "members", can_view: true, can_create: false, can_edit: false, can_approve: false },
+    { module: "reports", can_view: true, can_create: false, can_edit: false, can_approve: false },
+  ],
+};
+
+const EXPORT_OUT = {
+  id: "cccccccc-1111-2222-3333-444444444444",
+  report: "transactions_ledger",
+  status: "requested",
+  filters: { txn_type: "deposit", channel: "mpesa" },
+  allowed_columns: ["occurred_at", "txn_ref", "type", "channel", "direction", "amount"],
+  as_of: "2026-08-09T10:00:00+00:00",
+  completed_at: null,
+  created_at: "2026-08-09T10:00:00+00:00",
+  artifact: null,
+};
+
+test("without reports:view the Export affordance simply is not there (hidden, not disabled — mirrors the server gate)", async () => {
+  grantPermissions(FULL_PERMS);
+  mocked.fetchTransactionsPage.mockResolvedValue(page([creditTxn()]));
+  mockedMembers.fetchMembersPage.mockResolvedValue(page([MEMBER]));
+  mountScreen();
+  await screen.findByText("MP-1042");
+  expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+});
+
+test("the export request carries the register's ACTIVE filters (hand-computed payload oracle)", async () => {
+  const user = userEvent.setup();
+  grantPermissions(REPORTS_PERMS);
+  mocked.fetchTransactionsPage.mockResolvedValue(page([creditTxn()]));
+  mockedMembers.fetchMembersPage.mockResolvedValue(page([MEMBER]));
+  mockedReports.requestExport.mockResolvedValue(EXPORT_OUT as never);
+  mountScreen();
+  await screen.findByText("MP-1042");
+
+  // The register's ACTIVE filters: Type=deposit, Channel=mpesa.
+  await user.selectOptions(screen.getByLabelText("Type"), "deposit");
+  await user.selectOptions(screen.getByLabelText("Channel"), "mpesa");
+
+  await user.click(screen.getByRole("button", { name: "Export" }));
+  const drawer = await screen.findByRole("dialog", { name: "Request export" });
+  await user.click(within(drawer).getByRole("button", { name: "Request export" }));
+  await waitFor(() => expect(mockedReports.requestExport).toHaveBeenCalledTimes(1));
+
+  // Hand-computed oracle: screen state {type:"deposit", channel:"mpesa"}
+  // maps 1:1 to {txn_type:"deposit", channel:"mpesa"}; every inactive
+  // filter stays OFF the wire (empty strings never travel).
+  // Falsifiable: dropping exportDraftFromFilters from the Export
+  // wiring sends an empty filter map and this equality fails.
+  expect(mockedReports.requestExport.mock.calls[0]?.[0]).toEqual({
+    report: "transactions_ledger",
+    filters: { txn_type: "deposit", channel: "mpesa" },
+  });
+});
 
 // ---------------------------------------------------------------------------
 // #35 item 14 residual — posting lookup by NATIONAL ID number.
