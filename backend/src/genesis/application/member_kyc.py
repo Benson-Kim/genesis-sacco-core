@@ -83,7 +83,12 @@ from genesis.domain.member_kyc import (
     validate_profile,
 )
 from genesis.domain.members import MemberType
-from genesis.errors import ConflictError, NotFoundError, UnprocessableError
+from genesis.errors import (
+    ConflictError,
+    NotFoundError,
+    PayloadSchemaError,
+    UnprocessableError,
+)
 
 #: Cursor scope id: signed cursors are bound to this
 #: endpoint and this tenant - no cross-scope replay (tenant isolation).
@@ -273,7 +278,7 @@ async def create_profile(
     try:
         validated = validate_profile(member.type, profile)
     except ProfileValidationError as exc:
-        raise UnprocessableError(str(exc)) from exc
+        raise PayloadSchemaError(str(exc)) from exc
     profile_id = uuid.uuid4()
     claimed = (
         await session.execute(
@@ -345,7 +350,7 @@ async def update_profile(
         try:
             validated = validate_profile(current.member_type, profile)
         except ProfileValidationError as exc:
-            raise UnprocessableError(str(exc)) from exc
+            raise PayloadSchemaError(str(exc)) from exc
     else:
         validated = current.profile
     result = cast(

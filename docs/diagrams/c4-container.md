@@ -49,8 +49,12 @@
   0042_phone_e164_backfill.py to main — the 0017/0041 precedent)
   ships in that MR (same-commit refresh per v1.2 rule 11 /
   spot-check check 5).
-  Migration head 0044 -> 0045 by the issue-#35 id-number-lookup MR:
-  0045_member_profiles_id_number_index.py (expand-only: one partial
+   Migration head 0045 -> 0046 by the issue-#35 KYC-phone-E.164 MR:
+   0046_kyc_profile_phone_e164_backfill.py (data-only: the six
+   code-owned KYC profile phone paths backfilled to E.164, exact
+   inverse downgrade). Previously: head 0044 -> 0045 by the issue-#35
+   id-number-lookup MR: 0045_member_profiles_id_number_index.py
+   (expand-only: one partial
   jsonb expression index for the posting-drawer national-ID member
   lookup). Previously: head 0043 -> 0044 by the issue-#35
   sign-in-identifier MR: 0044_users_phone_signin_index.py
@@ -98,7 +102,7 @@ flowchart TB
         IDW["idempotency purge — P13.17c<br/>genesis/infrastructure/idempotency_worker.py"]
     end
 
-    MIG["Migration runner — alembic upgrade head<br/>backend/alembic.ini + backend/migrations/<br/>versions 0001..0045 (head 0045 member-profiles id-number lookup index, shipped by the issue-#35 id-number-lookup MR; 0044 users phone sign-in lookup index; 0043 external txn ref + search prefix index)"]
+    MIG["Migration runner — alembic upgrade head<br/>backend/alembic.ini + backend/migrations/<br/>versions 0001..0046 (head 0046 KYC profile-phone E.164 data backfill, shipped by the issue-#35 KYC-phone-E.164 MR; 0045 member-profiles id-number lookup index; 0044 users phone sign-in lookup index)"]
 
     PG[("PostgreSQL 16 — FORCED RLS (ADR-0002)<br/>append-only: ledger_entries + transactions (0004 triggers),<br/>audit_log (0001), repayments (0032), loan_recoveries (0030)<br/>write-once: dividend_declarations (0020), loan_write_offs (0025),<br/>repayment_adjustments (0025/0031), portfolio_month_snapshots (0027),<br/>period rollups (0028)<br/>closed-period posting barrier (0012/0014)<br/>advisory-lock tier: lock-order.md §6")]
     RD[("Redis<br/>rate limiting + readyz")]
@@ -134,7 +138,7 @@ flowchart TB
 | export renderer | `genesis/infrastructure/export_worker.py` → `genesis/application/exports.py` (`run_export_job` L381, claim `CLAIM_SQL` L82) |
 | dormancy worker | `genesis/infrastructure/dormancy_worker.py` (`run_dormancy_cycle` L65 — fail-closed per tenant, per-tenant error isolation per !37) → `genesis/application/dormancy.py` (`run_dormancy_for_tenant` L370) |
 | idempotency purge worker | `genesis/infrastructure/idempotency_worker.py` (`run_worker`) → `genesis/application/idempotency_purge.py` (`purge_expired_idempotency_keys` — shared batch runner, `FOR UPDATE SKIP LOCKED` subquery; P13.17c/DSA-3) |
-| migration runner | `backend/alembic.ini`, `backend/migrations/env.py`, `backend/migrations/versions/0001..0045` — head `0045` (`0045_member_profiles_id_number_index.py`, `down_revision = "0044"`; shipped by the issue-#35 id-number-lookup MR in the same commit as this refresh), verified against `versions/` on this tree |
+| migration runner | `backend/alembic.ini`, `backend/migrations/env.py`, `backend/migrations/versions/0001..0046` — head `0046` (`0046_kyc_profile_phone_e164_backfill.py`, `down_revision = "0045"`; shipped by the issue-#35 KYC-phone-E.164 MR in the same commit as this refresh), verified against `versions/` on this tree |
 | PostgreSQL 16 | forced RLS per ADR-0002; store properties below |
 | Redis | `genesis/infrastructure/redis_client.py` (`ping_redis` — `/readyz`), `genesis/infrastructure/rate_limit.py` (auth endpoints) |
 
