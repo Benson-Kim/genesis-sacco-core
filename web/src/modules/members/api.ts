@@ -94,6 +94,19 @@ export async function lookupMemberByNo(memberNo: string): Promise<Member | null>
     return memberPageSchema.parse(data).items[0] ?? null;
 }
 
+/** #35 item 14 residual: the SECOND unique-identifier lookup — exact
+ *  national-ID match through the person KYC profile (expand-only
+ *  id_number param; the 0045 expression index serves it). Same honest
+ *  semantics as lookupMemberByNo: a miss is an EMPTY page resolving
+ *  null, never a 404. */
+export async function lookupMemberByIdNumber(idNumber: string): Promise<Member | null> {
+    const { data, error, response } = await api.GET("/members", {
+        params: { query: { limit: 1, id_number: idNumber } as never },
+    });
+    if (error !== undefined || data === undefined) throw toApiError(error, response);
+    return memberPageSchema.parse(data).items[0] ?? null;
+}
+
 export async function fetchMember(memberId: string): Promise<Member> {
     const { data, error, response } = await api.GET("/members/{member_id}", {
         params: { path: { member_id: memberId } },

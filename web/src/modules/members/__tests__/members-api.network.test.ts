@@ -102,6 +102,15 @@ async function fetchStub(input: Request | string | URL, init?: RequestInit): Pro
         next_cursor: null,
       });
     }
+    // #35 item 14 residual: the national-ID lookup — same honest
+    // empty-page miss semantics as the member_no probe.
+    const idNumberParam = new URL(request.url).searchParams.get("id_number");
+    if (idNumberParam !== null) {
+      return json(200, {
+        items: idNumberParam === "20735544" ? [memberOut] : [],
+        next_cursor: null,
+      });
+    }
     if (listUnknownStatus) {
       return json(200, { items: [{ ...memberOut, status: "suspended" }], next_cursor: null });
     }
@@ -452,5 +461,24 @@ test("#35 item 14: lookupMemberByNo probes the declared member_no EXACT param wi
   // not-found note instead of throwing (falsifiable: 404 the miss and
   // this rejects instead of resolving).
   const miss = await membersApi.lookupMemberByNo("GP-9999");
+  expect(miss).toBeNull();
+});
+
+test("#35 item 14 residual: lookupMemberByIdNumber probes the declared id_number EXACT param with limit 1; a miss resolves an honest null", async () => {
+  const hit = await membersApi.lookupMemberByIdNumber("20735544");
+  expect(hit?.id).toBe(MEMBER_ID);
+  expect(hit?.member_no).toBe("GP-0001");
+
+  const url = new URL(calls[0]!.url);
+  expect(url.pathname).toBe("/members");
+  expect(url.searchParams.get("id_number")).toBe("20735544");
+  expect(url.searchParams.get("limit")).toBe("1");
+  // An EXCLUSIVE identity probe: no other filter, no cursor, no
+  // aggregates expand ever rides along (the server 422s combinations).
+  expect(url.searchParams.has("member_no")).toBe(false);
+  expect(url.searchParams.has("cursor")).toBe(false);
+  expect(url.searchParams.has("include")).toBe(false);
+
+  const miss = await membersApi.lookupMemberByIdNumber("99990000");
   expect(miss).toBeNull();
 });

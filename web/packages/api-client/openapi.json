@@ -11137,7 +11137,7 @@
     },
     "/members": {
       "get": {
-        "description": "Keyset member register page (members:view).\n\nOPT-IN aggregates: with include=aggregates\nevery row carries the same four advisory decimal-string figures as\nthe detail read, computed by ONE set-based statement per page (the\nkeyset page drives, LEFT JOIN LATERAL supplies the probes \u2014 never\na per-row fan-out). Without the parameter the response is\nbyte-identical to the flat register. No rejection path (403, 422)\ncomputes or echoes an amount.\n\nmember_no (the posting-drawer unique-identifier\nlookup): expand-only EXACT-match filter served by the 0001 UNIQUE\n(tenant_id, member_no) key. An unknown number is an EMPTY page,\nnever a 404 \u2014 no existence oracle beyond the members:view grant.",
+        "description": "Keyset member register page (members:view).\n\nOPT-IN aggregates: with include=aggregates\nevery row carries the same four advisory decimal-string figures as\nthe detail read, computed by ONE set-based statement per page (the\nkeyset page drives, LEFT JOIN LATERAL supplies the probes \u2014 never\na per-row fan-out). Without the parameter the response is\nbyte-identical to the flat register. No rejection path (403, 422)\ncomputes or echoes an amount.\n\nmember_no (the posting-drawer unique-identifier\nlookup): expand-only EXACT-match filter served by the 0001 UNIQUE\n(tenant_id, member_no) key. An unknown number is an EMPTY page,\nnever a 404 \u2014 no existence oracle beyond the members:view grant.\n\nid_number (expand-only): EXACT-match\nnational-ID lookup through the person KYC profile, served by the\n0045 partial expression index (shipped with this query). An\nEXCLUSIVE identity probe: combining it with any other filter,\ncursor or the aggregates expand is a 422 (one declared meaning,\nno ambiguous merged scopes). Unknown ID: EMPTY page, never 404.",
         "operationId": "list_members_members_get",
         "parameters": [
           {
@@ -11216,6 +11216,24 @@
                 }
               ],
               "title": "Member No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id Number"
             }
           },
           {
