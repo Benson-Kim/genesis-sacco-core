@@ -18,12 +18,13 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Banner, Button, Card } from "@genesis/design-system";
+import { Banner, Button, Card, FilterControl } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { fmtKes } from "@/lib/format";
+import { fmtAmount } from "@/lib/format";
 import { fetchApplicationsPage, type ApplicationListFilters } from "../api";
 import { useProducts } from "../useProducts";
 import {
@@ -33,6 +34,9 @@ import {
   type ApplicationStage,
   type Product,
 } from "../schemas";
+import {
+  useDashboardSummary,
+} from "@/modules/dashboard/components/DashboardScreen";
 import { coverPill, stagePill } from "./pills";
 import styles from "./Applications.module.css";
 
@@ -47,54 +51,45 @@ const ApplicationDetailDrawer = dynamic(
   { ssr: false },
 );
 
-function StageFilter({
-  value,
-  onChange,
-}: Readonly<{
-  value: ApplicationStage | "";
-  onChange: (next: ApplicationStage | "") => void;
-}>) {
-  return (
-    <div className={styles.filterGroup}>
-      <span className={styles.filterLabel}>Stage</span>
-      <div className={styles.segment} role="group" aria-label="Stage">
-        <button
-          type="button"
-          className={styles.segmentButton}
-          aria-pressed={value === ""}
-          onClick={() => onChange("")}
-        >
-          All
-        </button>
-        {APPLICATION_STAGES.map((stage) => (
-          <button
-            key={stage}
-            type="button"
-            className={styles.segmentButton}
-            aria-pressed={value === stage}
-            onClick={() => onChange(stage)}
-          >
-            {STAGE_LABELS[stage]}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 type DrawerState = null | { mode: "create" } | { mode: "detail"; applicationId: string };
 
 export function ApplicationsScreen() {
   const permissions = usePermissions();
   const products = useProducts();
-  const [stage, setStage] = useState<ApplicationStage | "">("");
+  const dashboard = useDashboardSummary();
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [notice, setNotice] = useState<string>("");
+  const pagination = useKeysetPagination();
+  const [stage, setStageRaw] = useState<ApplicationStage | "">("");
 
+  // Reset to page 0 whenever the stage filter changes.
+  function setStage(next: ApplicationStage | "") {
+    setStageRaw(next);
+    pagination.setPageIndex(0);
+  }
+
+  // Build a stage → count lookup from the dashboard pipeline slice.
+  // Counts are advisory badges only — null when the slice is loading or absent.
+  const pipelineLookup = new Map(
+    (dashboard.data?.pipeline ?? []).map((row) => [row.stage, row.count]),
+  );
+  const stageCounts = APPLICATION_STAGES.map((s) => ({
+    value: s,
+    label: STAGE_LABELS[s],
+    count: pipelineLookup.get(s) ?? null,
+  }));
+  // Total across all stages — null until the pipeline slice loads.
+  const allStagesCount =
+    dashboard.data?.pipeline != null
+      ? dashboard.data.pipeline.reduce((sum, row) => sum + row.count, 0)
+      : null;
+
+  // pageSize drives both the API limit and the display slice.
+  // Changing stage resets to page 0 so we start fresh.
   const filters: ApplicationListFilters = { stage };
   const list = useKeysetList<Application>({
-    queryKey: ["applications", "list", filters],
-    fetchPage: (cursor) => fetchApplicationsPage(filters, cursor),
+    queryKey: ["applications", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchApplicationsPage(filters, cursor, pagination.pageSize),
   });
 
   const mayCreate = can(permissions.data, "applications", "create");
@@ -139,9 +134,9 @@ export function ApplicationsScreen() {
     },
     {
       key: "amount",
-      header: "Amount",
+      header: "Amount (KES)",
       align: "right",
-      render: (app) => <span className={styles.cellStrong}>{fmtKes(app.amount)}</span>,
+      render: (app) => <span className={styles.cellStrong}>{fmtAmount(app.amount)}</span>,
     },
     {
       key: "cover",
@@ -158,10 +153,18 @@ export function ApplicationsScreen() {
   ];
 
   return (
-    <div>
+    <Card>
       <div className={styles.toolbar}>
         <div className={styles.filters}>
-          <StageFilter value={stage} onChange={setStage} />
+          <FilterControl
+            id="app-stage-filter"
+            label="Stage"
+            value={stage}
+            onChange={setStage}
+            options={stageCounts}
+            allLabel="All stages"
+            allCount={allStagesCount}
+          />
         </div>
         {mayCreate && (
           <Button variant="primary" onClick={() => setDrawer({ mode: "create" })}>
@@ -177,6 +180,13 @@ export function ApplicationsScreen() {
           rowKey={(app) => app.id}
           emptyMessage="No applications match this filter."
           onRowClick={(app) => setDrawer({ mode: "detail", applicationId: app.id })}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "applications",
+          }}
         />
       </Card>
       {drawer !== null && drawer.mode === "create" && (
@@ -196,6 +206,6 @@ export function ApplicationsScreen() {
           onClose={() => setDrawer(null)}
         />
       )}
-    </div>
+    </Card>
   );
 }

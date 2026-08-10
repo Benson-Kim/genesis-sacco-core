@@ -30,7 +30,7 @@ import {
   type VoteResult,
 } from "./schemas";
 
-export const APPLICATIONS_PAGE_SIZE = 20;
+export const APPLICATIONS_PAGE_SIZE = 10;
 
 const applicationPageSchema = keysetPageSchema(applicationSchema);
 
@@ -41,12 +41,13 @@ export interface ApplicationListFilters {
 export async function fetchApplicationsPage(
   filters: ApplicationListFilters,
   cursor: string | null,
+  limit: number = APPLICATIONS_PAGE_SIZE,
 ): Promise<KeysetPage<Application>> {
   const { data, error, response } = await api.GET("/applications", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: APPLICATIONS_PAGE_SIZE,
+        limit,
         stage: filters.stage === "" ? undefined : filters.stage,
       },
     },

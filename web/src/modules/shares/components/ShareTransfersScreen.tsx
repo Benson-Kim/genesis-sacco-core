@@ -49,6 +49,7 @@ import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { useKeysetList } from "@/modules/table/useKeysetList";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -87,9 +88,10 @@ export function ShareTransfersScreen() {
   // The ledger-(m) register: server-ordered keyset pages (pending
   // first — the checker's job order) — never re-sorted or filtered
   // locally.
+  const pagination = useKeysetPagination();
   const register = useKeysetList<ShareTransferRecord>({
-    queryKey: ["shares", "transfers-register"],
-    fetchPage: (cursor) => fetchShareTransfersPage(cursor),
+    queryKey: ["shares", "transfers-register", pagination.pageSize],
+    fetchPage: (cursor) => fetchShareTransfersPage(cursor, pagination.pageSize),
   });
 
   const request = useMutation({
@@ -399,6 +401,13 @@ export function ShareTransfersScreen() {
           rowKey={(row) => row.id}
           onRowClick={(row) => setOpenTransferId(row.id)}
           emptyMessage="No share transfers exist for this SACCO yet."
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "transfers",
+          }}
         />
       </Card>
 

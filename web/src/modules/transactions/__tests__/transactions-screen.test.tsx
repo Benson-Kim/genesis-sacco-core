@@ -261,14 +261,19 @@ test("hostile txn ref renders as inert TEXT; DR/CR amounts render VERBATIM in th
   expect(screen.queryByText(/Totals/)).toBeNull();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM — no offset anywhere (gate 1.3)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10) keeps the cursor for the user's
+  // navigation (the paginator auto-fills short pages on mount).
+  const pagingFullPage = Array.from({ length: 10 }, (_, i) =>
+    debitTxn({ id: `cdcdcdcd-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchTransactionsPage
-    .mockResolvedValueOnce(page([debitTxn()], "opaque-cursor-§1"))
+    .mockResolvedValueOnce(page(pagingFullPage, "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([creditTxn()]));
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
 
   await waitFor(() => expect(mocked.fetchTransactionsPage).toHaveBeenCalledTimes(2));
   expect(mocked.fetchTransactionsPage.mock.calls[0]?.[1]).toBeNull();
@@ -285,14 +290,17 @@ test("type/channel/direction filters drive the SERVER query — the client never
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "withdrawal" }),
       null,
+      10,
     ),
   );
 
-  await user.selectOptions(screen.getByLabelText("Channel"), "accrual");
+  // Four declared channels → the shared filter renders its segment variant.
+  await user.click(screen.getByRole("button", { name: "Accrual" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "withdrawal", channel: "accrual" }),
       null,
+      10,
     ),
   );
 
@@ -301,6 +309,7 @@ test("type/channel/direction filters drive the SERVER query — the client never
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ direction: "debit" }),
       null,
+      10,
     ),
   );
 });
@@ -322,6 +331,7 @@ test("exact-ref + date-range drafts apply on submit as SERVER query params; the 
         date_to: "2026-07-31",
       }),
       null,
+      10,
     ),
   );
 
@@ -330,6 +340,7 @@ test("exact-ref + date-range drafts apply on submit as SERVER query params; the 
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ member_id: MEMBER_ID }),
       null,
+      10,
     ),
   );
 });
@@ -1010,11 +1021,17 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
   // Every FIRST page serves a cursor so "Load more" can force a REAL
   // wire fetch after the cached default page is re-selected; the
   // follow-on page carries a distinct row (no duplicate row keys).
+  // FULL first pages (page size 10): the paginator auto-fills the
+  // current page, so short pages would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const w1FullPage = Array.from({ length: 10 }, (_, i) =>
+    debitTxn({ id: `abababab-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchTransactionsPage.mockImplementation((_filters, cursor) =>
-    Promise.resolve(cursor === null ? page([debitTxn()], "w1-cursor-p2") : page([creditTxn()])),
+    Promise.resolve(cursor === null ? page(w1FullPage, "w1-cursor-p2") : page([creditTxn()])),
   );
   mountScreen();
-  await screen.findByText("KES 8,000.10");
+  await screen.findAllByText("KES 8,000.10");
 
   // Apply a Custom range through the manual drafts (the W1 scenario).
   await user.type(screen.getByLabelText("From date"), "2026-06-01");
@@ -1024,6 +1041,7 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ date_from: "2026-06-01", date_to: "2026-06-30" }),
       null,
+      10,
     ),
   );
   expect(screen.getByRole("button", { name: "Custom range" })).toHaveAttribute(
@@ -1038,7 +1056,7 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
   const callsBeforeRefetch = mocked.fetchTransactionsPage.mock.calls.length;
 
   // Force a REAL wire fetch on the restored default key: paginate.
-  await user.click(screen.getByRole("button", { name: "Load more" }));
+  await user.click(screen.getByRole("button", { name: "Next page" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage.mock.calls.length).toBe(callsBeforeRefetch + 1),
   );
