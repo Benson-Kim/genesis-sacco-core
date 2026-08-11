@@ -21,15 +21,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Card } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
+import { Button, Card, ErrorBanner, grid } from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { MODULES, MODULE_LABELS, type ModuleId } from "@/modules/authz/modules";
 import { STALE_TIME } from "@/lib/query";
 import { fetchRoles } from "@/modules/users/api";
 import { fetchRolePermissions, updateRolePermission, type Permission } from "./api";
-import grid from "@/modules/layout/grid.module.css";
 import styles from "./PermissionsScreen.module.css";
 
 /**

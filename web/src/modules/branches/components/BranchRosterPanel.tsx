@@ -18,9 +18,7 @@
  *   module's named XSS threat, gate-tested). NO money field exists on
  *   either roster contract and none is asserted or invented.
  */
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import type { KeysetPage } from "@/modules/table/schemas";
+import { KeysetTable, type Column, useKeysetList, type KeysetPage } from "@genesis/design-system";
 import styles from "./Branches.module.css";
 
 export interface RosterAdapter<T> {

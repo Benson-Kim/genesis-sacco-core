@@ -277,7 +277,8 @@ test("happy path: OTP login → loan book renders SERVER portfolio figures + reg
   // …and the register balance keeps its trailing cents (blocker (a)).
   await expect(page.getByText("KES 1,234,567.10")).toBeVisible();
 
-  // The approved queue offers the deferred-to-this-batch action.
+  // The approved queue offers the deferred-to-this-batch action (its own tab).
+  await page.getByRole("tab", { name: "Disbursement queue" }).click();
   await page.getByText("Disburse ›").click();
   const dialog = page.getByRole("dialog", { name: "Disburse loan" });
   await expect(dialog.getByText("KES 250,000.10")).toBeVisible();
@@ -322,6 +323,7 @@ test("adversarial (money write): stale disbursement → 409 conflict banner, EXA
   await login(page);
 
   await page.getByRole("link", { name: "Loan book" }).click();
+  await page.getByRole("tab", { name: "Disbursement queue" }).click();
   await page.getByText("Disburse ›").click();
   const dialog = page.getByRole("dialog", { name: "Disburse loan" });
   await dialog.getByLabel("Disbursement channel").selectOption("bank");

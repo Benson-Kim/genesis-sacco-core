@@ -23,17 +23,73 @@
     gap: 16px;
     flex-wrap: wrap;
     align-items: flex-end;
+    justify-content: space-between;
 }
 
 .filterGroup {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0;
+}
+
+/* Custom date range — an anchored dropdown panel carrying the same
+   border/background/radius treatment as the select controls it sits
+   beside, so "Custom range" reads as opening that control's own panel
+   rather than pushing new fields into the toolbar row. */
+.datePanelAnchor {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.datePanel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    min-width: 240px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.datePanelRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.datePanelLabel {
+    font-size: var(--fs-meta);
+    color: var(--ink);
+}
+
+/* Visually hidden — present for htmlFor/aria wiring only */
+.filterLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .cellStrong {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
+}
+
+.cellSub {
+    font-size: 12px;
+    color: var(--sub);
 }
 
 .muted {
@@ -47,16 +103,36 @@
     color: var(--sub);
 }
 
+.dateTime {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.date {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.time {
+    color: var(--sub);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
 /* DR / CR amount cells — color NEVER carries meaning alone: each
  * amount sits in its own labelled column (issue #8). */
 .drCell {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--brick);
     font-variant-numeric: tabular-nums;
 }
 
 .crCell {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--emerald);
     font-variant-numeric: tabular-nums;
 }
@@ -65,25 +141,17 @@
     color: var(--line);
 }
 
-.input,
-.select {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
+/* Compact modifier — matches FilterControl's 32px height for toolbar inputs.
+ * Overrides the formControl min-height and vertical padding so the Input
+ * and date inputs sit flush with the segment/select filter controls. */
+.filterCompact {
+    min-height: 32px !important;
+    height: 32px;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
-.input:focus-visible,
-.select:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
-}
-
-/* Narrow toolbar variants of the shared control shapes. */
+/* Legacy alias kept for any existing references. */
 .filterControl {
     min-width: 150px;
 }
@@ -100,6 +168,8 @@
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-bottom: 16px;
 }
 
 .formNote {
@@ -180,4 +250,22 @@
     font-size: 13px;
     font-weight: 800;
     margin-bottom: 8px;
+}
+
+/* Search sits at the RIGHT end of the filter row on wide screens
+   (margin-left:auto pushes it past the preset filters), and falls back
+   to its own full-width row once the toolbar wraps on narrow screens. */
+.searchForm {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-left: auto;
+}
+
+@media (max-width: 900px) {
+    .searchForm {
+        margin-left: 0;
+        width: 100%;
+    }
 }

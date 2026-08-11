@@ -25,22 +25,28 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  ErrorMessage,
+  announce,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { fetchMember, fetchMembersPage } from "@/modules/members/api";
+import { fetchMember } from "@/modules/members/api";
+import { MemberLookupField } from "@/modules/members/components/MemberLookupField";
 import type { Member } from "@/modules/members/schemas";
 import {
   CASH_CHANNELS,
@@ -65,7 +71,6 @@ type FeeEntry = z.infer<typeof feeEntrySchema>;
 
 export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
   const queryClient = useQueryClient();
-  const [memberId, setMemberId] = useState("");
   const [feeType, setFeeType] = useState<string>("registration");
   const [channel, setChannel] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
@@ -81,14 +86,11 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
   const [intentSeq, setIntentSeq] = useState(0);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
-  // Member picker: the keyset contract (scalability) — pages of 20 with
-  // an explicit "load more" (the PostTransactionDrawer pattern; the
-  // P8 list has no search parameter).
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "", type: "" }, cursor),
-  });
-  const memberOptions = members.data?.pages.flatMap((page) => page.items) ?? [];
+  // Member picker: ONE exact-match lookup by the identifier the operator
+  // types — never a paged dump of the whole membership. The resolved
+  // member only SELECTS; the binding read is the fresh detail read below.
+  const [member, setMember] = useState<Member | null>(null);
+  const memberId = member?.id ?? "";
 
   // FRESH record read (staleTime 0) the moment a member is chosen —
   // the confirmation only arms once this read has landed.
@@ -207,14 +209,6 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
           <Kv label="Amount (tenant-configured, server-resolved)">
             <span className={styles.netCell}>{fmtKes(result.amount)}</span>
           </Kv>
-          <Kv label="Ledger row">
-            <span className={styles.mono}>{result.txn_id}</span>
-          </Kv>
-          <div className={styles.formNote}>
-            The amount above is the SERVER&apos;s configured figure from
-            the posting response — no amount was (or can be) entered in this
-            screen. The row now appears in the transactions register.
-          </div>
           <div className={styles.actions}>
             <Button type="button" onClick={onClose}>
               Close
@@ -239,37 +233,15 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
 
       {!spent && (
         <form onSubmit={submitEntry} noValidate>
-          <div className={styles.formNote}>
-            The fee AMOUNT is tenant configuration (Settings ▸ Parameters) and
-            is resolved by the server — it is deliberately not shown or
-            entered here; the posting response reports the resolved figure.
-          </div>
-          <FormField id="fee-member" label="Member" error={fieldErrors["member_id"]}>
-            {(control) => (
-              <select
-                {...control}
-                className={styles.select}
-                value={memberId}
-                onChange={(event) => setMemberId(event.target.value)}
-                disabled={post.isPending}
-              >
-                <option value="">Select a member…</option>
-                {memberOptions.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} · {member.member_no}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-          {members.hasNextPage && (
-            <Button
-              type="button"
-              onClick={() => void members.fetchNextPage()}
-              disabled={members.isFetchingNextPage}
-            >
-              {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-            </Button>
+          
+          <MemberLookupField
+            idPrefix="fee-member"
+            hint="Search by member number or national ID"
+            disabled={post.isPending}
+            onResolved={setMember}
+          />
+          {fieldErrors["member_id"] !== undefined && (
+            <ErrorMessage id="fee-member-error">{fieldErrors["member_id"]}</ErrorMessage>
           )}
           {memberId !== "" && memberDetail.isPending && (
             <div className={styles.formNote}>Verifying the member record…</div>
@@ -277,26 +249,23 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
           {memberId !== "" && memberDetail.isError && <ErrorBanner error={memberDetail.error} />}
           {freshMember !== undefined && !memberExited && (
             <div className={styles.formNote}>
-              Member verified: {freshMember.name} · {freshMember.member_no} (record version{" "}
-              {freshMember.version}) — read fresh before this posting.
+              {freshMember.name} · {freshMember.member_no}
             </div>
           )}
           {memberExited && (
             <Banner variant="error">
               This member has EXITED — the ledger accepts no further postings
-              for them (the server enforces this regardless).
+              for them.
             </Banner>
           )}
           <FormField
             id="fee-type"
             label="Fee type"
             error={fieldErrors["fee_type"]}
-            hint="Code-owned vocabulary — each type maps to the tenant settings key its amount resolves from."
           >
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={feeType}
                 onChange={(event) => setFeeType(event.target.value)}
                 disabled={post.isPending}
@@ -306,14 +275,13 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
                     {FEE_TYPE_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <FormField id="fee-channel" label="Channel" error={fieldErrors["channel"]}>
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={channel}
                 onChange={(event) => setChannel(event.target.value)}
                 disabled={post.isPending}
@@ -324,14 +292,9 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
                     {CHANNEL_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
-          <div className={styles.formNote}>
-            Money physically moves via M-Pesa or Bank only — accrual and
-            internal postings are made by server jobs and are not offered
-            here. The posting date is resolved by the server.
-          </div>
           <div className={styles.actions}>
             <Button type="button" onClick={onClose} disabled={post.isPending}>
               Cancel
@@ -357,9 +320,7 @@ export function FeeDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
           <Banner>
             This posts a {FEE_TYPE_LABELS[confirmEntry.fee_type]} via{" "}
             {CHANNEL_LABELS[confirmEntry.channel]} for {freshMember.name} ·{" "}
-            {freshMember.member_no}. The amount is the tenant-configured figure, resolved by the
-            server. The ledger is append-only — undoing this requires a
-            correction posting.
+            {freshMember.member_no}. The amount is the tenant-configured figure
           </Banner>
         </ConfirmDangerModal>
       )}

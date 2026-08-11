@@ -31,11 +31,18 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
@@ -232,9 +239,8 @@ export function DisburseDialog({
             hint="Funds move via the selected cash channel; the posting date and schedule are resolved by the server."
           >
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={channel}
                 onChange={(event) => setChannel(event.target.value)}
                 disabled={disburse.isPending}
@@ -245,7 +251,7 @@ export function DisburseDialog({
                     {CHANNEL_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <div className={styles.actions}>

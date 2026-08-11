@@ -35,15 +35,20 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Kv } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  Kv,
+  FormField,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  useKeysetList,
+  type KeysetPage,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import type { KeysetPage } from "@/modules/table/schemas";
 import type { BranchAssignment } from "../schemas";
 import styles from "./Branches.module.css";
 
@@ -197,11 +202,7 @@ export function BranchAssignPanel({
       {result !== null && (
         <div className={styles.resultPanel} role="status">
           <div className={styles.resultTitle}>Assignment recorded</div>
-          <Kv label="Record">
-            <span className={styles.mono} title={result.entity_id}>
-              {result.entity_id.slice(0, 8)}
-            </span>
-          </Kv>
+          <Kv label="Record">{freshEntity?.label ?? "—"}</Kv>
           <Kv label="Branch">{result.branch_name}</Kv>
           <Kv label="New record version">{result.version}</Kv>
           <div className={styles.formNote}>
@@ -213,9 +214,8 @@ export function BranchAssignPanel({
 
       <FormField id={fieldId} label={adapter.entityLabel}>
         {(control) => (
-          <select
+          <Select
             {...control}
-            className={styles.select}
             value={entityId}
             onChange={(event) => {
               setEntityId(event.target.value);
@@ -230,7 +230,7 @@ export function BranchAssignPanel({
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </FormField>
       {options.isError && <ErrorBanner error={options.error} />}

@@ -27,9 +27,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Kv, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import { Button, Kv, Modal, ErrorBanner, announce } from "@genesis/design-system";
 import { runBranchBackfill, SERVER_DEFAULT_BATCH_SIZE } from "../api";
 import type { BackfillRun } from "../schemas";
 import styles from "./Branches.module.css";
@@ -85,11 +83,7 @@ export function BackfillDialog({ onClose }: Readonly<{ onClose: () => void }>) {
           <Kv label="Branches created">{lastRun.branches_created}</Kv>
           <Kv label="Users linked">{lastRun.users_linked}</Kv>
           <Kv label="Batches">{lastRun.batches}</Kv>
-          <div className={styles.formNote}>
-            Every count above is the SERVER&apos;s run report. A completed
-            re-run scans nothing (the anti-join claim key makes it a
-            lock-free no-op) — the zeros are the proof, not this text.
-          </div>
+          
         </div>
       )}
 

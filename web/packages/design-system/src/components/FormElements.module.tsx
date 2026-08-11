@@ -214,11 +214,12 @@ export interface ErrorMessageProps {
 /**
  * Inline validation error with a CSS-drawn circular "!" prefix.
  * Wire the `id` to the control's `aria-describedby` for screen
- * reader announcement.
+ * reader announcement. Carries `role="alert"` so assistive tech
+ * announces it immediately when it appears.
  */
 export function ErrorMessage({ id, children }: Readonly<ErrorMessageProps>) {
     return (
-        <p id={id} className={styles.error}>
+        <p id={id} role="alert" className={styles.error}>
             {children}
         </p>
     );

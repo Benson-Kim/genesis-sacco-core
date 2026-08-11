@@ -6,8 +6,7 @@
  * wizard and the drawer's edit form (reuse-first). Every field goes
  * through the shared FormField primitive (persistent label, aria-describedby/aria-invalid, inline client+server errors — blocker (f)).
  */
-import { FormField } from "@/modules/forms/FormField";
-import type { FieldErrors } from "@/modules/forms/form-errors";
+import { FormField, type FieldErrors, Input } from "@genesis/design-system";
 import { KYC_FORM_SECTIONS, type KycFieldSpec } from "../kycSchemas";
 import { kycFieldKey } from "../kycForm";
 import type { MemberType } from "../schemas";
@@ -65,10 +64,9 @@ export function KycProfileFields({
               return (
                 <FormField key={key} id={id} label={label} error={errors[key]}>
                   {(control) => (
-                    <input
+                    <Input
                       {...control}
                       {...inputProps(field)}
-                      className={styles.input}
                       value={values[key] ?? ""}
                       disabled={disabled}
                       onChange={(event) => onChange(key, event.target.value)}

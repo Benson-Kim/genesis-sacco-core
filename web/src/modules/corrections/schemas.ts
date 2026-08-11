@@ -328,7 +328,9 @@ export const adjustmentRequestEntrySchema = z.object({
 export type AdjustmentRequestEntry = z.infer<typeof adjustmentRequestEntrySchema>;
 
 export const writeOffRequestEntrySchema = z.object({
-  loan_id: uuidField("The loan id"),
+  /** Resolved via the loan picker (Select) — never typed or shown as a
+   * raw uuid; only presence is required here. */
+  loan_id: z.string().min(1, "Select a loan."),
   reason: z
     .string()
     .min(1, "A reason is required.")

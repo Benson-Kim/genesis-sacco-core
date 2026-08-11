@@ -90,10 +90,10 @@ export interface FilterControlProps<V extends string> {
 function CountBadge({
   count,
   countMore,
-}: {
+}: Readonly<{
   count: number | null | undefined;
   countMore?: boolean;
-}) {
+}>) {
   if (count === null || count === undefined) return null;
   return (
     <span className={styles.count} aria-hidden="true">
@@ -110,7 +110,7 @@ function countText(count: number | null | undefined, countMore?: boolean): strin
 
 // ─── Segment variant (≤ 4 options) ──────────────────────────────────────────
 
-function SegmentFilter<V extends string>({
+export function SegmentFilter<V extends string>({
   label,
   id,
   value,
@@ -120,7 +120,7 @@ function SegmentFilter<V extends string>({
   allCount,
   allCountMore,
   allOption = true,
-}: FilterControlProps<V>) {
+}: Readonly<FilterControlProps<V>>) {
   return (
     <div className={styles.filterGroup}>
       {/* Label is visually hidden but kept for aria-labelledby — screen
@@ -164,7 +164,7 @@ function SegmentFilter<V extends string>({
 
 // ─── Select variant (≥ 5 options) ───────────────────────────────────────────
 
-function SelectFilter<V extends string>({
+export function SelectFilter<V extends string>({
   label,
   id,
   value,
@@ -174,7 +174,7 @@ function SelectFilter<V extends string>({
   allCount,
   allCountMore,
   allOption = true,
-}: FilterControlProps<V>) {
+}: Readonly<FilterControlProps<V>>) {
   return (
     <div className={styles.filterGroup}>
       {/* Visually hidden label — wired to the select for a11y. */}

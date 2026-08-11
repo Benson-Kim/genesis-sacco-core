@@ -70,6 +70,7 @@ const SUMMARY_WITH_CHARTS = {
   loan_book: {
     active_loans: 12,
     outstanding_balance: "5000000.00",
+    performing_balance: "4850000.00",
     npl_balance: "150000.00",
     npl_ratio_pct: "3.00",
     par30_balance: "160000.00",
@@ -218,6 +219,14 @@ test("the four #32 affordances render the SERVER's geometry verbatim; charts sta
     /conic-gradient\(var\(--gold\) 97%/,
   );
   await expect(page.getByText("Non-performing")).toBeVisible();
+  // The row figures are the loan_book MONEY values verbatim — never
+  // re-derived from the ring's integer percentages.
+  await expect(page.getByText("KES 4,850,000.00")).toBeVisible();
+  await expect(page.getByText("KES 150,000.00")).toBeVisible();
+  await expect(page.getByText("PAR > 30")).toBeVisible();
+  await expect(page.getByText("3.20%")).toBeVisible();
+  await expect(page.getByText("Provisions held")).toBeVisible();
+  await expect(page.getByText("KES 7,500.00")).toBeVisible();
 
   // 4) Classification progress bars: name + percent TEXT accompany the
   // track (colour-never-alone); the fill width is the wire integer.

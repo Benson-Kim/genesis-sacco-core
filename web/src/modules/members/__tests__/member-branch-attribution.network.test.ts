@@ -48,6 +48,7 @@ const memberOut = {
   version: 2,
   branch_id: BRANCH_ID,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const aggregates = {

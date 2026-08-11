@@ -78,6 +78,7 @@ const MEMBER: Member = {
   version: 1,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const AGGREGATES = {

@@ -32,12 +32,9 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card, Pill } from "@genesis/design-system";
+import { Button, Card, Pill, ErrorBanner, announce, grid } from "@genesis/design-system";
 import { useMutation } from "@tanstack/react-query";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
 import { fmtDateTime } from "@/lib/format";
-import grid from "@/modules/layout/grid.module.css";
 import { downloadArtifact, fetchExport } from "../api";
 import { recordWitnessedExport, useWitnessedExports } from "../exportRegistry";
 import {

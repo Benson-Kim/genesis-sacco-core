@@ -22,10 +22,16 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
@@ -283,10 +289,7 @@ export function ApplicationDetailDrawer({
           )}
           {app.stage === "committee" && (
             <>
-              <div className={styles.formNote}>
-                Approval is decided by committee voting (Credit committee screen) —
-                there is no direct approve action here.
-              </div>
+              
               <div className={styles.actions}>
                 <Button variant="danger" onClick={() => setConfirmReject(true)} disabled={transition.isPending}>
                   Reject…
@@ -296,12 +299,11 @@ export function ApplicationDetailDrawer({
           )}
           {app.stage === "approved" && (
             <div className={styles.formNote}>
-              Approved by committee. Disbursement runs through the loan-book module
-              (next batch) — it is not offered here.
+              Approved by committe
             </div>
           )}
           {(app.stage === "rejected" || app.stage === "disbursed") && (
-            <div className={styles.formNote}>This stage is terminal — no officer action.</div>
+            <div className={styles.formNote}>This stage requires no officer action.</div>
           )}
         </>
       )}

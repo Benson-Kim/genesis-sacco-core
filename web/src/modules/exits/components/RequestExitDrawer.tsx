@@ -32,18 +32,29 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, fromZodError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  fromZodError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ConflictBanner,
+  ErrorBanner,
+  ErrorMessage,
+  announce,
+  Textarea,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
 import { getOwnUserId } from "@/modules/auth/session";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { fetchMember, fetchMembersPage } from "@/modules/members/api";
+import { fetchMember } from "@/modules/members/api";
+import { MemberLookupField } from "@/modules/members/components/MemberLookupField";
 import type { Member } from "@/modules/members/schemas";
 import { createExitRequest, fetchExitEligibility } from "../api";
 import { recordExitMaker } from "../makerRegistry";
@@ -52,7 +63,6 @@ import styles from "./Exits.module.css";
 
 export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
   const queryClient = useQueryClient();
-  const [memberId, setMemberId] = useState("");
   const [reason, setReason] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [confirmEntry, setConfirmEntry] = useState<ExitRequestEntry | null>(null);
@@ -73,11 +83,16 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
   // explicit "load more". No status filter: exits of arrears or dormant
   // members are legitimate governance flows (Dormant→Exited goes through
   // this workflow); the server enforces eligibility regardless.
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "", type: "" }, cursor),
-  });
-  const memberOptions = members.data?.pages.flatMap((page) => page.items) ?? [];
+  // ONE exact-match lookup by the identifier the operator types — never
+  // a paged dump of the whole membership. The resolved member only
+  // SELECTS; the binding reads are the fresh detail/eligibility reads.
+  const [member, setMember] = useState<Member | null>(null);
+  const memberId = member?.id ?? "";
+  // Bumped on "Request another": forces the lookup subtree to remount so
+  // its own input and resolution clear with the parent's — otherwise a
+  // stale "Member verified" note would linger for a member no longer
+  // selected (the RequestTransferDrawer precedent).
+  const [formKey, setFormKey] = useState(0);
 
   // FRESH record read (staleTime 0) the moment a member is chosen —
   // the confirmation only arms once this read has landed (pattern (e)).
@@ -265,7 +280,8 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
                 // A NEW intent: entry cleared; the next submission builds
                 // fresh key material by content and intent counter.
                 setResult(null);
-                setMemberId("");
+                setMember(null);
+                setFormKey((n) => n + 1);
                 setReason("");
                 setClientErrors({});
                 create.reset();
@@ -279,32 +295,15 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
 
       {!spent && (
         <form onSubmit={submitEntry} noValidate>
-          <FormField id="exit-member" label="Member" error={fieldErrors["member_id"]}>
-            {(control) => (
-              <select
-                {...control}
-                className={styles.select}
-                value={memberId}
-                onChange={(event) => setMemberId(event.target.value)}
-                disabled={create.isPending}
-              >
-                <option value="">Select a member…</option>
-                {memberOptions.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} · {member.member_no}
-                  </option>
-                ))}
-              </select>
-            )}
-          </FormField>
-          {members.hasNextPage && (
-            <Button
-              type="button"
-              onClick={() => void members.fetchNextPage()}
-              disabled={members.isFetchingNextPage}
-            >
-              {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-            </Button>
+          <MemberLookupField
+            key={formKey}
+            idPrefix="exit-member"
+            hint="Search by member number or national ID"
+            disabled={create.isPending}
+            onResolved={setMember}
+          />
+          {fieldErrors["member_id"] !== undefined && (
+            <ErrorMessage id="exit-member-error">{fieldErrors["member_id"]}</ErrorMessage>
           )}
           {memberId !== "" && memberDetail.isPending && (
             <div className={styles.formNote}>Verifying the member record…</div>
@@ -383,9 +382,8 @@ export function RequestExitDrawer({ onClose }: Readonly<{ onClose: () => void }>
             hint="Free text for the committee, up to 200 characters. No figure is entered here: the settlement snapshot is computed by the server."
           >
             {(control) => (
-              <textarea
+              <Textarea
                 {...control}
-                className={styles.textarea}
                 maxLength={200}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}

@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiError } from "@genesis/api-client";
-import { Banner } from "@genesis/design-system";
+import { Banner } from "../components/Banner";
 import { operatorMessage } from "@/lib/errors";
 import styles from "./ErrorBanner.module.css";
 

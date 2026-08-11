@@ -1,12 +1,10 @@
 "use client";
-
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { FormField } from "@/modules/forms/FormField";
+import { Button, Modal, ErrorBanner, FormField, Input, Select } from "@genesis/design-system";
 import { KENYA_PHONE_MESSAGE, normalizeKenyaMsisdn } from "@/lib/phone";
+import { StepRail } from "./StepRail";
 import { createMember } from "../api";
 import {
     MEMBER_TYPES,
@@ -15,7 +13,6 @@ import {
     type Member,
     type MemberCreateInput,
 } from "../schemas";
-import { StepRail } from "./StepRail";
 import styles from "./Members.module.css";
 
 /**
@@ -97,12 +94,15 @@ export function MemberCreateDrawer({
             // registration form — dismissal is the explicit ✕ or Escape.
             dismissOnOverlay={false}
         >
+            {/* The identity step of the SAME four-step flow the KYC
+                wizard continues (StepRail's docblock contract: both
+                registration surfaces render one code-owned list). */}
+            <StepRail current={0} />
             <form onSubmit={submit} noValidate>
                 <FormField id="member-type" label="Member type">
                     {(control) => (
-                        <select
+                        <Select
                             {...control}
-                            className={styles.select}
                             value={type}
                             onChange={(event) => setType(event.target.value)}
                         >
@@ -111,7 +111,7 @@ export function MemberCreateDrawer({
                                     {TYPE_LABELS[memberType]}
                                 </option>
                             ))}
-                        </select>
+                        </Select>
                     )}
                 </FormField>
                 <FormField
@@ -120,9 +120,8 @@ export function MemberCreateDrawer({
                     error={nameError ?? undefined}
                 >
                     {(control) => (
-                        <input
+                        <Input
                             {...control}
-                            className={styles.input}
                             maxLength={200}
                             value={name}
                             onChange={(event) => {
@@ -139,9 +138,8 @@ export function MemberCreateDrawer({
                     hint={phoneBlurError === null ? "+254 or 07… format accepted." : undefined}
                 >
                     {(control) => (
-                        <input
+                        <Input
                             {...control}
-                            className={styles.input}
                             type="tel"
                             inputMode="tel"
                             autoComplete="tel"
@@ -161,9 +159,8 @@ export function MemberCreateDrawer({
                     error={emailError ?? undefined}
                 >
                     {(control) => (
-                        <input
+                        <Input
                             {...control}
-                            className={styles.input}
                             type="email"
                             inputMode="email"
                             autoComplete="email"

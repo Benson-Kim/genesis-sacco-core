@@ -40,6 +40,8 @@ jest.mock("../api", () => {
 
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
   fetchMember: jest.fn(),
 }));
 
@@ -63,6 +65,7 @@ const MEMBER = {
   version: 3,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 /** Distinct counts so each row's VERBATIM value is unambiguous. */
@@ -124,6 +127,8 @@ beforeEach(() => {
   clearSession();
   setSession({ accessToken: fakeJwt({ sub: ADMIN_ID }), refreshToken: "refresh-1" });
   mockedMembers.fetchMembersPage.mockResolvedValue({ items: [MEMBER], nextCursor: null });
+  mockedMembers.lookupMemberByNo.mockResolvedValue(MEMBER);
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
   mockedMembers.fetchMember.mockResolvedValue(MEMBER);
   mocked.fetchExitEligibility.mockResolvedValue(ELIGIBLE);
   mocked.createExitRequest.mockResolvedValue(CREATED);
@@ -141,11 +146,13 @@ function mountDrawer() {
   );
 }
 
-/** Select the (only) member and wait for the checklist to land. The
- * option list is async (keyset page) — wait for it before selecting. */
+/** Resolve the member and wait for the checklist to land. The picker is
+ * an exact-match lookup (#35 item 14) — there is no option list to wait
+ * for; the server's confirmation is the signal that it resolved. */
 async function selectMember(user: ReturnType<typeof userEvent.setup>) {
-  await screen.findByRole("option", { name: /Jane Wanjiku/ });
-  await user.selectOptions(screen.getByLabelText("Member"), MEMBER_ID);
+  await user.type(screen.getByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await screen.findByText(/Member found: Jane Wanjiku/);
   return await screen.findByTestId("eligibility-checklist");
 }
 
@@ -237,8 +244,9 @@ test("advisory-only degradation: a FAILED eligibility read never gates — the h
   const user = userEvent.setup();
   mountDrawer();
 
-  await screen.findByRole("option", { name: /Jane Wanjiku/ });
-  await user.selectOptions(screen.getByLabelText("Member"), MEMBER_ID);
+  await user.type(screen.getByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await screen.findByText(/Member found: Jane Wanjiku/);
 
   // The honest degradation note (Providers retry the query ONCE with a
   // backoff before erroring — allow for the retry delay).

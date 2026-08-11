@@ -55,6 +55,7 @@ const memberOut = {
   version: 2,
   branch_id: null,
   dividend_payout: "mpesa",
+  id_number_masked: null,
 };
 
 const aggregates = {

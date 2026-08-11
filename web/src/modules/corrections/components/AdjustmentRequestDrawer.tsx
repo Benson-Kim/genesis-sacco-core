@@ -25,17 +25,23 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+  Textarea,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { requestAdjustment } from "../api";
@@ -163,8 +169,14 @@ export function AdjustmentRequestDrawer({
             Adjustment requested · awaiting a distinct checker
           </div>
           <Kv label="Status">{adjustmentStatusPill(result.status)}</Kv>
-          <Kv label="Adjustment id">
-            <span className={styles.mono}>{result.id}</span>
+          <Kv label="Member">
+            {result.member_no !== null ? (
+              <span>
+                {result.member_no} — {result.member_name}
+              </span>
+            ) : (
+              <span className={styles.muted}>Unresolved member</span>
+            )}
           </Kv>
           <Kv label="Amount to reverse">
             <span className={styles.netCell}>{fmtKes(result.amount)}</span>
@@ -209,9 +221,8 @@ export function AdjustmentRequestDrawer({
             hint="The repayment row id from the posting receipt or the audit trail — the contract has no repayments register to pick from."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 value={repaymentId}
                 onChange={(event) => setRepaymentId(event.target.value)}
                 disabled={request.isPending}
@@ -226,9 +237,8 @@ export function AdjustmentRequestDrawer({
             hint="Recorded immutably on the write-once adjustment row and the audit trail."
           >
             {(control) => (
-              <textarea
+              <Textarea
                 {...control}
-                className={styles.textarea}
                 maxLength={500}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}

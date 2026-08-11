@@ -1,11 +1,16 @@
 "use client";
-
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { FormField } from "@/modules/forms/FormField";
+import {
+  Banner,
+  Button,
+  Modal,
+  ErrorBanner,
+  FormField,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { KENYA_PHONE_MESSAGE, normalizeKenyaMsisdn } from "@/lib/phone";
 import { createUser, type CreateUserInput } from "../api";
 import type { Role, User } from "../schemas";
@@ -90,9 +95,8 @@ export function UserCreateDrawer({
       <form onSubmit={submit}>
         <FormField id="create-name" label="Full name">
           {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={200}
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
@@ -101,9 +105,8 @@ export function UserCreateDrawer({
         </FormField>
         <FormField id="create-email" label="Email">
           {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 type="email"
                 inputMode="email"
                 maxLength={254}
@@ -114,9 +117,8 @@ export function UserCreateDrawer({
         </FormField>
         <FormField id="create-role" label="Role">
           {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={roleId}
                 onChange={(event) => setRoleId(event.target.value)}
               >
@@ -126,7 +128,7 @@ export function UserCreateDrawer({
                     {role.name}
                   </option>
                 ))}
-              </select>
+              </Select>
           )}
         </FormField>
         <FormField
@@ -135,9 +137,8 @@ export function UserCreateDrawer({
           error={phoneBlurError ?? undefined}
         >
           {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 type="tel"
                 inputMode="tel"
                 maxLength={32}
@@ -152,9 +153,8 @@ export function UserCreateDrawer({
         </FormField>
         <FormField id="create-branch" label="Branch (optional)">
           {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={120}
                 value={branch}
                 onChange={(event) => setBranch(event.target.value)}

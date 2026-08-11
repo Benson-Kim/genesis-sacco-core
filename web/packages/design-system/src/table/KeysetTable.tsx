@@ -2,7 +2,7 @@
 
 import type { KeyboardEvent, ReactNode } from "react";
 import { ApiError } from "@genesis/api-client";
-import { Button } from "@genesis/design-system";
+import { Button } from "../components/Button";
 import type { KeysetListResult } from "./useKeysetList";
 import {
   KeysetPaginator,

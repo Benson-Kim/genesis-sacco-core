@@ -28,17 +28,23 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
@@ -202,10 +208,14 @@ export function RecoveryReceiptDialog({
       {notice !== "" && <Banner>{notice}</Banner>}
 
       <div className={styles.detailGrid}>
-        <Kv label="Write-off">
-          <span className={styles.mono} title={writeOff.id}>
-            {writeOff.id.slice(0, 8)}
-          </span>
+        <Kv label="Member">
+          {writeOff.member_no !== null ? (
+            <span>
+              {writeOff.member_no} — {writeOff.member_name}
+            </span>
+          ) : (
+            <span className={styles.muted}>Unresolved member</span>
+          )}
         </Kv>
         <Kv label="Status">{writeOff.status}</Kv>
         <Kv label="Total written off (claim)">
@@ -232,16 +242,6 @@ export function RecoveryReceiptDialog({
           </Kv>
           <Kv label="Claim fully recovered">{result.claim_fully_recovered ? "Yes" : "No"}</Kv>
           <Kv label="Guarantees released">{result.guarantees_released}</Kv>
-          {result.recovery_case_id !== null && (
-            <Kv label="Recovery case">
-              <span className={styles.mono} title={result.recovery_case_id}>
-                {result.recovery_case_id.slice(0, 8)}
-              </span>
-            </Kv>
-          )}
-          <Kv label="RC- ledger row">
-            <span className={styles.mono}>{result.txn_id}</span>
-          </Kv>
           <div className={styles.formNote}>
             The position above is the SERVER&apos;s from the receipt response
             — nothing was computed in this screen. The loan is never
@@ -281,9 +281,8 @@ export function RecoveryReceiptDialog({
             hint="The cash actually received — the server refuses any receipt exceeding the outstanding claim."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={18}
                 value={amount}
@@ -294,9 +293,8 @@ export function RecoveryReceiptDialog({
           </FormField>
           <FormField id="receipt-channel" label="Channel" error={fieldErrors["channel"]}>
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={channel}
                 onChange={(event) => setChannel(event.target.value)}
                 disabled={record.isPending}
@@ -307,7 +305,7 @@ export function RecoveryReceiptDialog({
                     {CHANNEL_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <div className={styles.formNote}>
@@ -334,7 +332,7 @@ export function RecoveryReceiptDialog({
       {confirmEntry !== null && (
         <ConfirmDangerModal
           title="Record recovery receipt"
-          confirmPhrase={writeOff.id.slice(0, 8)}
+          confirmPhrase={writeOff.member_no ?? "RECEIPT"}
           confirmLabel="Record receipt"
           pending={record.isPending}
           onConfirm={() => {

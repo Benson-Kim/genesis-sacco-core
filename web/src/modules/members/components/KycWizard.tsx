@@ -27,11 +27,17 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
+import {
+  Button,
+  Modal,
+  ErrorBanner,
+  announce,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  Input,
+} from "@genesis/design-system";
 import { createKycProfile } from "../kycApi";
 import { kycProfileCreateSchema, type KycProfile } from "../kycSchemas";
 import { buildProfilePayload, validateProfilePayload } from "../kycForm";
@@ -159,9 +165,8 @@ export function KycWizard({
             hint="For example Ordinary — the tenant's own vocabulary."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={60}
                 value={category}
                 disabled={create.isPending}

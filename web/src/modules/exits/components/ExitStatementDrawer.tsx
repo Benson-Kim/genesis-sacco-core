@@ -22,8 +22,7 @@
  *   derived from a server string (the class cannot arise).
  */
 import { useQuery } from "@tanstack/react-query";
-import { Kv, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
+import { Kv, Modal, ErrorBanner } from "@genesis/design-system";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
 import { fetchExitStatement } from "../api";

@@ -372,7 +372,7 @@ test("accept/reject matrix: every ShareTransferOut money figure asserts the cano
   }
 });
 
-test("entry pre-validation matrix (hand-computed oracles): UUID shape, amount shape (no leading zeros, ≤2dp, > 0), the self-transfer refusal and the mandatory rejection rationale — the layer above never even constructs a wire call from garbage", () => {
+test("entry pre-validation matrix (hand-computed oracles): resolved-id presence, amount shape (no leading zeros, ≤2dp, > 0), the self-transfer refusal and the mandatory rejection rationale — the layer above never even constructs a wire call from garbage", () => {
   const parse = (entry: { from_member_id: string; to_member_id: string; amount: string }) =>
     sharesSchemas.transferEntrySchema.safeParse(entry).success;
 
@@ -386,11 +386,13 @@ test("entry pre-validation matrix (hand-computed oracles): UUID shape, amount sh
   for (const bad of ["0", "0.00", "007.10", "5000.123", "-1.00", "5,000.10", "1e5", ""]) {
     expect(parse({ from_member_id: FROM_ID, to_member_id: TO_ID, amount: bad })).toBe(false);
   }
-  // UUID shape.
-  expect(parse({ from_member_id: "not-a-uuid", to_member_id: TO_ID, amount: "5000.10" })).toBe(
-    false,
-  );
-  expect(parse({ from_member_id: FROM_ID, to_member_id: "nope", amount: "5000.10" })).toBe(false);
+  // Both ids are RESOLVED ids (the #35 item 14 lookup pattern — the
+  // operator never types or sees a raw UUID, so the shape is no longer
+  // asserted here): only PRESENCE is required — an empty id (no
+  // member resolved yet) refuses; the resolution step itself is what
+  // guarantees a real id reaches this schema.
+  expect(parse({ from_member_id: "", to_member_id: TO_ID, amount: "5000.10" })).toBe(false);
+  expect(parse({ from_member_id: FROM_ID, to_member_id: "", amount: "5000.10" })).toBe(false);
 
   // The checker's rationale: required, bounded (!52 F2).
   expect(sharesSchemas.rejectReasonEntrySchema.safeParse({ reason: "why" }).success).toBe(true);

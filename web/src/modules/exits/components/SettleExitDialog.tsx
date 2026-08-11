@@ -37,12 +37,19 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Select,
+} from "@genesis/design-system";
 import { MakerCheckerPanel } from "@/modules/authz/components/MakerCheckerPanel";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
 import { getOwnUserId } from "@/modules/auth/session";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -313,9 +320,8 @@ export function SettleExitDialog({
                 hint="The net payable moves via the selected cash channel; the posting date and every figure are resolved by the server."
               >
                 {(control) => (
-                  <select
+                  <Select
                     {...control}
-                    className={styles.select}
                     value={channel}
                     onChange={(event) => setChannel(event.target.value)}
                     disabled={settle.isPending}
@@ -326,7 +332,7 @@ export function SettleExitDialog({
                         {CHANNEL_LABELS[option]}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
               </FormField>
               <div className={styles.actions}>

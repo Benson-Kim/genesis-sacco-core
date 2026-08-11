@@ -19,8 +19,9 @@
  * SVG/CSS within the test-locked design tokens — NO third-party chart
  * library (the client-hygiene gate bans third-party requests).
  */
+import { Kv } from "@genesis/design-system";
 import { fmtKes } from "@/lib/format";
-import type { FlowsChart, PortfolioChart } from "../schemas";
+import type { FlowsChart, PortfolioChart, PortfolioSummary } from "../schemas";
 import styles from "./DashboardCharts.module.css";
 
 /** Code-owned classification → token map (never derived from server
@@ -36,7 +37,7 @@ const CLASS_TOKEN: Record<string, string> = {
 };
 
 function classToken(classification: string): string {
-    return CLASS_TOKEN[classification] ?? "var(--navyMid)";
+    return CLASS_TOKEN[classification.trim().toLowerCase()] ?? "var(--navyMid)";
 }
 
 /**
@@ -110,47 +111,62 @@ export function FlowsBarChart({ flows }: Readonly<{ flows: FlowsChart }>) {
                     <span className={`${styles.legendSwatch} ${styles.swatchNavy}`} /> Disbursed
                 </span>
             </div>
+            {/* The bars are percentages of the SERVER's axis_max; without
+                this caption the geometry carries no magnitude. Rendered
+                verbatim through fmtKes — never re-derived from the
+                monthly figures. */}
+            <div className={styles.scaleNote}>Bar scale: 0 – {fmtKes(flows.axis_max)}</div>
         </div>
     );
 }
 
 /**
- * Performing donut (conic-gradient from the server's integer). An
- * empty book (0/0 — the server's honest empty state) renders copy,
- * never a fabricated ring. The percent TEXT beside the ring is the
- * accessible carrier.
+ * Performing donut (conic-gradient from the server's integer) plus the
+ * prototype's four detail rows — Performing / Non-performing / PAR>30 /
+ * Provisions held. The ring's percent TEXT is the accessible carrier
+ * for the geometry; the rows below are money/ratio figures read
+ * VERBATIM from the loan_book slice (never re-derived here — the
+ * money rule stays absolute in web/). An empty book (0/0 — the
+ * server's honest empty state) renders copy, never a fabricated ring.
  */
-export function PerformingDonut({ portfolio }: Readonly<{ portfolio: PortfolioChart }>) {
+export function PerformingDonut({
+    portfolio,
+    loanBook,
+}: Readonly<{ portfolio: PortfolioChart; loanBook: PortfolioSummary }>) {
     const empty = portfolio.performing_pct === 0 && portfolio.npl_pct === 0;
     if (empty) {
         return <div className={styles.emptyNote}>No active loan book to chart.</div>;
     }
     return (
-        <div className={styles.donutWrap}>
-            <div
-                className={styles.donut}
-                style={{
-                    background: `conic-gradient(var(--gold) ${portfolio.performing_pct}%, var(--brickSoft) 0)`,
-                }}
-                aria-hidden="true"
-                data-testid="performing-donut"
-            >
-                <div className={styles.donutHole}>
-                    <span className={styles.donutPct}>{portfolio.performing_pct}%</span>
-                    <span className={styles.donutCaption}>performing</span>
+        <div>
+            <div className={styles.donutWrap}>
+                <div
+                    className={styles.donut}
+                    style={{
+                        background: `conic-gradient(var(--gold) ${portfolio.performing_pct}%, var(--brickSoft) 0)`,
+                    }}
+                    aria-hidden="true"
+                    data-testid="performing-donut"
+                >
+                    <div className={styles.donutHole}>
+                        <span className={styles.donutPct}>{portfolio.performing_pct}%</span>
+                        <span className={styles.donutCaption}>performing</span>
+                    </div>
                 </div>
             </div>
-            <div className={styles.donutStats}>
-                <div>
-                    Performing <strong>{portfolio.performing_pct}%</strong>
-                </div>
-                <div>
-                    Non-performing <strong>{portfolio.npl_pct}%</strong>
-                </div>
-                <div className={styles.scaleNote}>
-                    Server-computed shares of the outstanding book — the classification
-                    table carries the figures of record.
-                </div>
+            <div className={styles.qualityRows}>
+                <Kv label="Performing" valueClassName={styles.qualityEmerald}>
+                    {fmtKes(loanBook.performing_balance)}
+                </Kv>
+                <Kv label="Non-performing" valueClassName={styles.qualityBrick}>
+                    {fmtKes(loanBook.npl_balance)}
+                </Kv>
+                <Kv label="PAR > 30" valueClassName={styles.tnum}>
+                    {loanBook.par30_ratio_pct}%
+                </Kv>
+                <Kv label="Provisions held" valueClassName={styles.qualitySub}>
+                    {fmtKes(loanBook.provisions)}
+                </Kv>
             </div>
         </div>
     );
@@ -160,14 +176,24 @@ export function PerformingDonut({ portfolio }: Readonly<{ portfolio: PortfolioCh
  * Classification progress bars: name + percent TEXT always accompany
  * the bar (colour-never-alone); the track geometry is aria-hidden.
  */
-export function ClassificationBars({ portfolio }: Readonly<{ portfolio: PortfolioChart }>) {
+export function ClassificationBars({
+    portfolio,
+}: Readonly<{ portfolio: PortfolioChart }>) {
     if (portfolio.classification.length === 0) return null;
+
     return (
-        <div className={styles.clsBars} data-testid="classification-bars">
+        <div className={styles.clsBars}>
             {portfolio.classification.map((share) => (
                 <div key={share.classification} className={styles.clsRow}>
-                    <span className={styles.clsName}>{share.classification}</span>
-                    <span className={styles.clsPct}>{share.pct}%</span>
+                    <div className={styles.clsHeader}>
+                        <span className={styles.clsName}>
+                            {share.classification.charAt(0).toUpperCase() + share.classification.slice(1)}
+                        </span>
+                        <span className={styles.clsPct}>
+                            {share.pct}%
+                        </span>
+                    </div>
+
                     <div className={styles.clsTrack} aria-hidden="true">
                         <div
                             className={styles.clsFill}

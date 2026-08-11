@@ -11,9 +11,15 @@
  * verbatim (no client-side money math).
  */
 import { useState, type FormEvent } from "react";
-import { Card } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
+import {
+  Card,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import type { UpdateSettingsInput } from "../api";
@@ -111,9 +117,8 @@ export function ParametersPanel({
             hint="Blank = not configured."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={19}
                 value={shareCapital}
@@ -128,9 +133,8 @@ export function ParametersPanel({
             error={fieldErrors["registration_fee"]}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={19}
                 value={registrationFee}
@@ -145,9 +149,8 @@ export function ParametersPanel({
             error={fieldErrors["min_monthly_contribution"]}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={19}
                 value={monthlyContribution}
@@ -162,9 +165,8 @@ export function ParametersPanel({
             error={fieldErrors["max_member_exposure"]}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={19}
                 value={memberExposure}
@@ -179,9 +181,8 @@ export function ParametersPanel({
             error={fieldErrors["dormancy_period_months"]}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="numeric"
                 maxLength={3}
                 value={dormancyMonths}
@@ -196,9 +197,8 @@ export function ParametersPanel({
             error={fieldErrors["financial_year_end_month"]}
           >
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={fyEndMonth}
                 disabled={!mayEdit}
                 onChange={(event) => setFyEndMonth(event.target.value)}
@@ -209,7 +209,7 @@ export function ParametersPanel({
                     {label}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <FormField
@@ -218,9 +218,8 @@ export function ParametersPanel({
             error={fieldErrors["exit_notice_period_days"]}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="numeric"
                 maxLength={3}
                 value={exitNoticeDays}
@@ -235,9 +234,8 @@ export function ParametersPanel({
             error={fieldErrors["exit_fee"]}
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={19}
                 value={exitFee}

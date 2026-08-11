@@ -63,39 +63,21 @@
   margin-bottom: 18px;
 }
 
-.input {
-  width: 100%;
-  min-height: var(--touch-target-min);
-  padding: 9px 12px;
-  border-radius: 9px;
-  border: 1.5px solid var(--line);
-  font-size: 13px;
-  font-family: inherit;
-  background: #fff;
-}
-
-/* Focus ring replaced, never removed. */
-.input:focus-visible {
-  outline: none;
-  border-color: var(--navy);
-  box-shadow: 0 0 0 3px var(--navySoft);
-}
-
 .otpRow {
   display: flex;
-  gap: 8px;
-  justify-content: center;
+  justify-content: space-between;
   margin: 6px 0 16px;
 }
 
 .otpInput {
-  width: 44px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   text-align: center;
   font-size: 22px;
   font-weight: 800;
   border: 1.5px solid var(--line);
   border-radius: 10px;
+  font-family: inherit;
 }
 
 /* Focus ring replaced, never removed. */
@@ -108,6 +90,16 @@
 .wide {
   width: 100%;
   margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.actions > * {
+  flex: 1;
 }
 
 .error {
@@ -138,7 +130,6 @@
   color: var(--sub);
 }
 
-.link,
 .linkStrong {
   background: none;
   border: none;
@@ -146,10 +137,11 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 12.5px;
-  color: var(--sub);
-}
-
-.linkStrong {
   color: var(--navy);
   font-weight: 700;
+}
+
+.linkStrong:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -39,6 +39,8 @@ jest.mock("../api", () => {
 
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
   fetchMember: jest.fn(),
 }));
 
@@ -112,6 +114,7 @@ const MEMBER = {
   version: 3,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const FULL_PERMS = {
@@ -191,6 +194,8 @@ beforeEach(() => {
     ]),
   );
   mockedMembers.fetchMembersPage.mockResolvedValue(page([MEMBER]));
+  mockedMembers.lookupMemberByNo.mockResolvedValue(MEMBER);
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
 });
 
 afterEach(() => {
@@ -302,7 +307,9 @@ test("idempotency keys: STABLE across retries of an identical intent, ROTATED wh
 
   await user.click(requestButtonFor("Member statement"));
   const drawer = await screen.findByRole("dialog", { name: "Request export" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
   const submit = within(drawer).getByRole("button", { name: "Request export" });
 
   // Attempt 1 fails with a 5xx…
@@ -326,7 +333,9 @@ test("idempotency keys: STABLE across retries of an identical intent, ROTATED wh
   // first response (review T2).
   await within(drawer).findByText(/Export queued/);
   await user.click(within(drawer).getByRole("button", { name: "Request another" }));
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
   await user.type(within(drawer).getByLabelText("From date"), "2026-07-01");
   await user.click(within(drawer).getByRole("button", { name: "Request export" }));
   await waitFor(() => expect(mocked.requestExport).toHaveBeenCalledTimes(4));
@@ -642,10 +651,12 @@ test("W56-3: a stray overlay click never discards a dirty export request or the 
 
   await user.click(requestButtonFor("Member statement"));
   const drawer = await screen.findByRole("dialog", { name: "Request export" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
   await user.click(container.querySelector('[role="presentation"]') as HTMLElement);
   expect(screen.getByRole("dialog", { name: "Request export" })).toBeInTheDocument();
-  expect(within(drawer).getByLabelText("Member")).toHaveValue(MEMBER_ID);
+  expect(within(drawer).getByText(/Member found: Jane Wanjiku/)).toBeInTheDocument();
   await user.click(within(drawer).getByRole("button", { name: "Close" }));
   expect(screen.queryByRole("dialog", { name: "Request export" })).toBeNull();
 

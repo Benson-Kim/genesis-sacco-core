@@ -11,14 +11,3 @@
   font-weight: 700;
   color: var(--sub);
 }
-
-.hint {
-  font-size: var(--fs-meta);
-  color: var(--sub);
-}
-
-.error {
-  font-size: var(--fs-meta);
-  font-weight: 600;
-  color: var(--brick);
-}

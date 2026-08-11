@@ -45,6 +45,7 @@ const CHART_SUMMARY = {
   loan_book: {
     active_loans: 12,
     outstanding_balance: "8000.00",
+    performing_balance: "6000.00",
     npl_balance: "2000.00",
     npl_ratio_pct: "25.00",
     par30_ratio_pct: "3.20",
@@ -159,20 +160,38 @@ describe("chart rendering — verbatim server geometry, never derived", () => {
     expect(await screen.findByTestId("flows-bar-chart")).toBeInTheDocument();
     expect(screen.getByTestId("bar-dep-2026-06")).toHaveStyle({ height: "40%" });
     expect(screen.getByTestId("bar-dis-2026-06")).toHaveStyle({ height: "100%" });
-    // The negative (reversal-only) month clamps to 0 SERVER-side; the
-    // signed figure still renders verbatim in the table.
+    // The negative (reversal-only) month clamps to 0 SERVER-side. The
+    // dashboard no longer carries a monthly-flows table (the ledger
+    // strip replaced it), so the clamp is asserted on the geometry
+    // alone — the signed monthly figures live in the register.
     expect(screen.getByTestId("bar-dep-2026-07")).toHaveStyle({ height: "0%" });
-    expect(screen.getByRole("cell", { name: "-50.00" })).toBeInTheDocument();
 
     // Scale caption: the server's axis_max VERBATIM through fmtKes.
     expect(screen.getByText(/Bar scale: 0 – KES 800\.00/)).toBeInTheDocument();
 
-    // Donut: server integers as text; ring is aria-hidden geometry.
+    // Donut: server integer as text; ring is aria-hidden geometry.
     expect(screen.getByTestId("performing-donut")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getAllByText("75%").length).toBeGreaterThanOrEqual(1);
-    // "25%" legitimately renders TWICE from the fixture: the donut's
-    // npl_pct stat AND the loss classification's pct text.
-    expect(screen.getAllByText("25%").length).toBeGreaterThanOrEqual(2);
+    // "25%" now renders ONCE — the loss classification's pct text; the
+    // donut's npl_pct is no longer echoed as a percent stat (route (a)
+    // redesign: the sibling rows carry the loan_book MONEY figures
+    // (performing_balance, npl_balance, provisions) verbatim instead).
+    expect(screen.getAllByText("25%").length).toBeGreaterThanOrEqual(1);
+
+    // Portfolio quality rows: server money/ratio figures VERBATIM,
+    // never re-derived (the prototype's Performing/Non-performing/
+    // PAR>30/Provisions held rows).
+    expect(screen.getByText("Performing")).toBeInTheDocument();
+    expect(screen.getByText("KES 6,000.00")).toBeInTheDocument();
+    expect(screen.getByText("Non-performing")).toBeInTheDocument();
+    expect(screen.getByText("KES 2,000.00")).toBeInTheDocument();
+    expect(screen.getByText("PAR > 30")).toBeInTheDocument();
+    // The same server figure legitimately appears twice on this screen:
+    // once as the headline KPI stat and once in this portfolio-quality
+    // breakdown. Both render it VERBATIM — which is what this leg pins.
+    expect(screen.getAllByText("3.20%").length).toBeGreaterThan(0);
+    expect(screen.getByText("Provisions held")).toBeInTheDocument();
+    expect(screen.getByText("KES 60.00")).toBeInTheDocument();
 
     // Classification bars: name + pct TEXT (colour-never-alone) with
     // widths exactly the server share.
@@ -201,8 +220,7 @@ describe("chart rendering — verbatim server geometry, never derived", () => {
     mockGet.mockResolvedValue({ data: withoutCharts, error: undefined, response: res(200) });
     renderScreen();
     // The tables (the figures of record) are untouched…
-    expect(await screen.findByText("Monthly flows")).toBeInTheDocument();
-    expect(screen.getByText("Portfolio classification")).toBeInTheDocument();
+    expect(await screen.findByText("Portfolio classification")).toBeInTheDocument();
     // …and NO chart geometry is fabricated client-side.
     expect(screen.queryByTestId("flows-bar-chart")).not.toBeInTheDocument();
     expect(screen.queryByTestId("performing-donut")).not.toBeInTheDocument();

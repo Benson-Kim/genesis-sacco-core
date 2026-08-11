@@ -25,9 +25,14 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Modal,
+  ErrorBanner,
+  announce,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { runDormancyJob, SERVER_DORMANCY_BATCH_SIZE } from "../api";
 import type { DormancyRun } from "../schemas";

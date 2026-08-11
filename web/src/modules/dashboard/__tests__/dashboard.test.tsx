@@ -31,6 +31,7 @@ const FULL_SUMMARY = {
   loan_book: {
     active_loans: 87,
     outstanding_balance: "5400000.00",
+    performing_balance: "5280000.00",
     npl_balance: "120000.00",
     npl_ratio_pct: "2.22",
     par30_balance: "300000.00",

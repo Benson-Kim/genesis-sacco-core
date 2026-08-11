@@ -27,9 +27,14 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card, Pill } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
+import {
+  Button,
+  Card,
+  Pill,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { initials } from "@/lib/format";
@@ -100,14 +105,6 @@ export function DormancyWorklistScreen() {
     return (
         <div>
             <div className={styles.toolbar}>
-                <p className={styles.panelNote}>
-                    Members with no member-initiated ledger activity inside the
-                    tenant-configured window, as judged by the SERVER&apos;s nightly
-                    dormancy job (this list is the member register&apos;s own dormant
-                    filter — no separate contract exists). Dormant members reactivate
-                    automatically on their next deposit; the register serves the full
-                    record.
-                </p>
                 {mayRunJob && (
                     <Button type="button" variant="primary" onClick={() => setDialogOpen(true)}>
                         Run dormancy scan…
