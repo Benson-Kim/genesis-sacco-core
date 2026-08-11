@@ -173,8 +173,30 @@ an admin can act on it immediately:
    ```
 5. Run migrations once, same venv:
    ```
+   export PGOPTIONS='-c app.tenant_id=00000000-0000-0000-0000-000000000000'
    alembic upgrade head
    ```
+
+   **Why PGOPTIONS is required here.** Every tenant table carries FORCE
+   ROW LEVEL SECURITY, and the policies read
+   `current_setting('app.tenant_id')`. FORCE applies to the table OWNER
+   too, so on managed hosting — where the app role is the owner and
+   there is no superuser — the data-backfill migrations (0011, 0042,
+   0046 …) abort with:
+
+       psycopg.errors.UndefinedObject: unrecognized configuration
+       parameter "app.tenant_id"
+
+   This never appears locally because docker-compose's `genesis` user is
+   a SUPERUSER and bypasses RLS entirely. Setting the GUC to the nil
+   UUID satisfies `current_setting` without granting visibility: every
+   policy evaluates false, so each backfill matches zero rows — exactly
+   right on a FRESH database, which has nothing to backfill.
+
+   **On a POPULATED database this is wrong**: the backfills would
+   silently skip real rows. Migrating a database that already holds
+   tenant data needs a role with BYPASSRLS (or a per-table
+   `NO FORCE ROW LEVEL SECURITY` window), not this flag.
    Confirm the extension privilege issue from §2.3 doesn't fire here; if
    it does, stop and resolve that with MochaHost support before
    continuing — don't work around it by hand-editing the migration.
