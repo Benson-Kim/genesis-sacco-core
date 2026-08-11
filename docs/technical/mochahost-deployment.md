@@ -246,9 +246,15 @@ don't redirect stderr to `/dev/null`.
    this virtual environment" command on the Setup Node.js App page — run
    that first so `npm`/`node` resolve to the versions you picked):
    ```
-   cd ~/web
-   npm ci
-   npm run build
+   cd ~/genesis-sacco/web
+   # cPanel sets NODE_ENV=production, which makes `npm ci` SKIP
+   # devDependencies — but `next build` needs typescript and the
+   # @types packages to type-check, so install them explicitly.
+   NODE_ENV=development npm ci --include=dev
+   # Cap build parallelism: `nproc` reports the HOST's cores (32 here),
+   # so Next spawns 32 workers and trips the per-account CloudLinux LVE
+   # process limit, dying with `spawn ... node EAGAIN`.
+   NEXT_BUILD_CPUS=1 NODE_ENV=production npm run build
    ```
 5. Restart the app from the Setup Node.js App screen.
 6. Smoke test: load `https://<bare-domain>` — expect the sign-in screen
