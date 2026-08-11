@@ -17,6 +17,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "redis>=5.0",
     "pyjwt>=2.9",
+    "a2wsgi>=1.10",
 ]
 
 [project.optional-dependencies]
