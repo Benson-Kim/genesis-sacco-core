@@ -111,7 +111,7 @@ an admin can act on it immediately:
 |---|---|---|
 | `docker-compose.yml` postgres service | cPanel PostgreSQL database (phpPgAdmin) | Real Postgres, not a swap to MySQL. |
 | Redis (`REDIS_URL`) | *(not provisioned)* | Not in your cPanel toolset, and not required — `rate_limit.py` falls back to an in-process window when `REDIS_URL` is unset, which is correct for a single-process deployment. Leave it unset. |
-| `uvicorn` (backend dev server) | cPanel "Setup Python App" (Passenger) | Passenger wants a WSGI callable; `backend/passenger_wsgi.py` (new) adapts the ASGI app with `a2wsgi`. |
+| `uvicorn` (backend dev server) | cPanel "Setup Python App" (Passenger) | Passenger wants a WSGI callable; `backend/wsgi.py` (new) adapts the ASGI app with `a2wsgi`. It must NOT be called passenger_wsgi.py — cPanel generates a file of that name which loads the startup file, so naming them alike makes it load itself (RecursionError at boot). |
 | `next dev` / `next start` (frontend) | cPanel "Setup Node.js App" (Passenger) | Passenger's Node integration runs a startup file that listens on `process.env.PORT`; `web/server.js` (new) does that. |
 | `outbox_worker.run_worker()` / `export_worker.run_worker()` / `idempotency_worker.run_worker()` / `dormancy_worker.run_worker()` (persistent loops) | cPanel Cron Jobs calling one-shot scripts | Shared/Passenger hosting cannot keep a `while True` daemon alive. Each worker already exposes a single-pass function under its loop (`run_dispatch_cycle`, `run_purge_cycle`, `run_export_cycle`, `run_dormancy_cycle`) — `backend/scripts/cron_*.py` (new) call those once per invocation; nothing about the workers' own logic changed. |
 | `alembic upgrade head` (CI / local) | Same command, run once via SSH | See §3. |
@@ -144,7 +144,7 @@ an admin can act on it immediately:
 
 1. cPanel → Setup Python App → Create Application: Python **3.12.13**,
    application root e.g. `api`, application URL `api.<domain>`,
-   startup file `passenger_wsgi.py`, entry point `application`.
+   startup file `wsgi.py`, entry point `application`.
 2. Set environment variables in that same screen (values, not
    placeholders — generate real secrets with the commands below; none of
    these are ever committed to the repo):
