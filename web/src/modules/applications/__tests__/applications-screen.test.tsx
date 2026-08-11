@@ -13,7 +13,7 @@ import { ApiError } from "@genesis/api-client";
 import { Providers } from "@/app/providers";
 import { clearSession, hasSession, setSession } from "@/modules/auth/session";
 import { usePermissions } from "@/modules/authz/usePermissions";
-import { announce } from "@/modules/layout/announcer";
+import { announce } from "@genesis/design-system";
 import { ApplicationsScreen } from "../components/ApplicationsScreen";
 import { clearCommitteeMakers } from "../makerRegistry";
 import {
@@ -40,6 +40,8 @@ jest.mock("../api", () => {
 
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
   fetchMember: jest.fn(),
 }));
 
@@ -57,9 +59,9 @@ jest.mock("@/modules/authz/usePermissions", () => ({
 // The live-region announcer is a spy so the suites can prove every
 // async outcome — including the post-conflict reload (W59-4) — is
 // announced.
-jest.mock("@/modules/layout/announcer", () => {
-  const actual = jest.requireActual<typeof import("@/modules/layout/announcer")>(
-    "@/modules/layout/announcer",
+jest.mock("@genesis/design-system", () => {
+  const actual = jest.requireActual<typeof import("@genesis/design-system")>(
+    "@genesis/design-system",
   );
   return { ...actual, announce: jest.fn() };
 });
@@ -131,6 +133,7 @@ const MEMBER = {
   version: 1,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const FULL_PERMS = {
@@ -167,6 +170,18 @@ function grantPermissions(perms: typeof FULL_PERMS) {
   } as unknown as ReturnType<typeof usePermissions>);
 }
 
+/** Resolve the member through the lookup field (#35 item 14): the
+ * drawer no longer offers a full-membership select — the operator types
+ * a unique identifier and the SERVER confirms who it resolved to. */
+async function selectMember(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+): Promise<void> {
+  await user.type(within(dialog).getByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(dialog).findByText(/Member found: Jane Wanjiku/);
+}
+
 function page(items: Application[], nextCursor: string | null = null) {
   return { items, nextCursor };
 }
@@ -193,6 +208,8 @@ beforeEach(() => {
     items: [MEMBER],
     nextCursor: null,
   });
+  mockedMembers.lookupMemberByNo.mockResolvedValue(MEMBER);
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
 });
 
 afterEach(() => {
@@ -284,7 +301,7 @@ test("intake double-submit produces exactly ONE create (pending short-circuit); 
 
   await user.click(await screen.findByRole("button", { name: "+ New application" }));
   const dialog = await screen.findByRole("dialog", { name: "New loan application" });
-  await user.selectOptions(within(dialog).getByLabelText("Member"), MEMBER_ID);
+  await selectMember(user, dialog);
   await user.selectOptions(within(dialog).getByLabelText("Loan product"), PRODUCT_ID);
   await user.type(within(dialog).getByLabelText("Amount (KES)"), "250000.10");
   await user.type(within(dialog).getByLabelText("Term (months)"), "24");
@@ -328,7 +345,7 @@ test("intake: client Zod verdicts render inline BEFORE any write; server 422 ver
   expect(mocked.createApplication).not.toHaveBeenCalled();
 
   // Fix the client issues; the server's field verdict renders inline.
-  await user.selectOptions(within(dialog).getByLabelText("Member"), MEMBER_ID);
+  await selectMember(user, dialog);
   await user.selectOptions(within(dialog).getByLabelText("Loan product"), PRODUCT_ID);
   await user.clear(within(dialog).getByLabelText("Amount (KES)"));
   await user.type(within(dialog).getByLabelText("Amount (KES)"), "250000");

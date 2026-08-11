@@ -38,6 +38,7 @@ const MEMBER = {
     version: 1,
     branch_id: null,
     dividend_payout: null,
+    id_number_masked: null,
 };
 
 // DELIBERATELY NON-ADDITIVE aggregate fixture (#31 batch 3 review): no

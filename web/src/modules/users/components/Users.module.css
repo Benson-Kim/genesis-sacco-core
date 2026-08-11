@@ -20,26 +20,6 @@
   flex-wrap: wrap;
 }
 
-.select,
-.input {
-  padding: 0 12px;
-  min-height: 44px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  font-size: 13.5px;
-  font-family: inherit;
-  background: var(--card);
-  color: var(--ink);
-  min-width: 150px;
-  width: 100%;
-}
-
-.select:focus-visible,
-.input:focus-visible {
-  outline: 2px solid var(--navy);
-  outline-offset: 1px;
-}
-
 .userCell {
   display: flex;
   align-items: center;
@@ -60,12 +40,12 @@
 }
 
 .cellStrong {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
 .cellSub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--sub);
 }
 

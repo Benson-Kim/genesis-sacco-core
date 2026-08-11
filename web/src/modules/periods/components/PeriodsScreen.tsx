@@ -25,9 +25,7 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
+import { Button, Card, KeysetTable, type Column, useKeysetList } from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime } from "@/lib/format";
@@ -89,6 +87,11 @@ export function PeriodsScreen() {
     <div>
       <div className={styles.toolbar}>
         <div className={styles.toolbarNote}>
+          <span>Closed accounting periods</span>
+          {/* States the register's semantics outright: a MISSING row means
+              the month is still open, not that data failed to load — and a
+              close is irreversible. The server (and the DB trigger) enforce
+              this regardless of what any screen shows. */}
           A row exists only for a month the books were CLOSED for — every
           other month is open for posting (posting dates are resolved and
           checked server-side; the database trigger refuses
@@ -105,10 +108,6 @@ export function PeriodsScreen() {
       </div>
 
       <Card padded={false}>
-        <div className={styles.registerHead}>
-          <span>Closed accounting periods</span>
-          <span className={styles.registerNote}>Newest first · server close-stamps verbatim</span>
-        </div>
         <KeysetTable
           columns={columns}
           query={list}

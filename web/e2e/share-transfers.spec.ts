@@ -24,10 +24,39 @@ const TO_ID = "33333333-3333-3333-3333-333333333333";
 const PENDING_ID = "aaaabbbb-1111-2222-3333-444444444444";
 const POSTED_ID = "ccccdddd-1111-2222-3333-444444444444";
 
-/** ConfirmDangerModal phrases: the MAKER types the transferring
- * member's id prefix; the CHECKER types the transfer record's. */
-const MAKER_PHRASE = FROM_ID.slice(0, 8);
-const CHECKER_PHRASE = PENDING_ID.slice(0, 8);
+/** ConfirmDangerModal phrases: BOTH the MAKER and the CHECKER type the
+ * transferring member's NUMBER — never a raw uuid fragment (the
+ * #35 item 14 lookup pattern; the console never shows a uuid). */
+const MAKER_PHRASE = "M-0001";
+const CHECKER_PHRASE = "M-0001";
+
+/** The two members resolved by the #35 item 14 lookup (member number
+ * only, in these tests) — never a raw uuid typed or shown. */
+const FROM_MEMBER = {
+  id: FROM_ID,
+  member_no: "M-0001",
+  type: "person",
+  name: "Jane Wanjiku",
+  phone: null,
+  email: null,
+  status: "active",
+  version: 1,
+  branch_id: null,
+  dividend_payout: null,
+};
+
+const TO_MEMBER = {
+  id: TO_ID,
+  member_no: "M-0002",
+  type: "person",
+  name: "Peter Otieno",
+  phone: null,
+  email: null,
+  status: "active",
+  version: 1,
+  branch_id: null,
+  dividend_payout: null,
+};
 
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
@@ -179,6 +208,19 @@ async function mockApi(page: Page, state: ApiState): Promise<void> {
       await respond(200, state.permissions ?? FULL_PERMISSIONS);
       return;
     }
+    // #35 item 14 exact-match lookup (RequestTransferDrawer): both
+    // legs resolve by member number — never a raw uuid typed or shown.
+    if (path === "/members" && method === "GET") {
+      const memberNo = url.searchParams.get("member_no");
+      const match =
+        memberNo === FROM_MEMBER.member_no
+          ? FROM_MEMBER
+          : memberNo === TO_MEMBER.member_no
+            ? TO_MEMBER
+            : null;
+      await respond(200, { items: match === null ? [] : [match], next_cursor: null });
+      return;
+    }
     // The ledger-(m) register (members:view): the server's
     // PENDING-FIRST order — the console renders it verbatim.
     if (path === "/share-transfers" && method === "GET") {
@@ -278,20 +320,31 @@ test("MAKER phase: OTP login → register renders the server's PENDING-FIRST ord
   await page.getByRole("link", { name: "Share transfers" }).click();
 
   // The ledger-(m) register renders the SERVER's pending-first order
-  // verbatim — never re-sorted locally.
+  // verbatim — never re-sorted locally. NO raw uuid anywhere.
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("Pending approval");
-  await expect(rows.nth(0)).toContainText(PENDING_ID.slice(0, 8));
   await expect(rows.nth(1)).toContainText("Posted");
-  await expect(rows.nth(1)).toContainText(POSTED_ID.slice(0, 8));
-  // Server decimal strings verbatim in the rows (blocker (a)).
-  await expect(rows.nth(1)).toContainText("KES 120.55");
+  // Server decimal strings verbatim in the rows (blocker (a); the
+  // column header carries the unit, the cell is the bare figure).
+  await expect(rows.nth(1)).toContainText("120.55");
+  await expect(page.locator("tbody")).not.toContainText(PENDING_ID.slice(0, 8));
+  await expect(page.locator("tbody")).not.toContainText(POSTED_ID.slice(0, 8));
 
-  await page.getByLabel("Transferring member id").fill(FROM_ID);
-  await page.getByLabel("Receiving member id").fill(TO_ID);
-  await page.getByLabel("Amount (KES)").fill("5000.10");
-  await page.getByRole("button", { name: "Request transfer…" }).click();
+  // The MAKER phase lives in its OWN modal — never inline on the
+  // screen — and both legs resolve by member NUMBER (#35 item 14),
+  // never a raw uuid typed or shown.
+  await page.getByRole("button", { name: "Transfer shares…" }).click();
+  const modal = page.getByRole("dialog", { name: "Transfer shares" });
+  const memberNoInputs = modal.getByLabel("Member number");
+  await memberNoInputs.nth(0).fill(FROM_MEMBER.member_no);
+  await memberNoInputs.nth(0).blur();
+  await expect(modal.getByText(`Member verified: ${FROM_MEMBER.name}`)).toBeVisible();
+  await memberNoInputs.nth(1).fill(TO_MEMBER.member_no);
+  await memberNoInputs.nth(1).blur();
+  await expect(modal.getByText(`Member verified: ${TO_MEMBER.name}`)).toBeVisible();
+  await modal.getByLabel("Amount (KES)").fill("5000.10");
+  await modal.getByRole("button", { name: "Request transfer…" }).click();
 
   // Typed confirmation: the danger button starts DISABLED; nothing
   // has reached the wire yet.
@@ -306,7 +359,7 @@ test("MAKER phase: OTP login → register renders the server's PENDING-FIRST ord
   // balance figure to render (the snapshot lives server-side).
   await expect(page.getByText("Transfer request recorded · PENDING approval")).toBeVisible();
   await expect(page.getByText(/NO money moved/)).toBeVisible();
-  await expect(page.getByLabel("Transferring member id")).toHaveCount(0);
+  await expect(modal.getByLabel("Member number")).toHaveCount(0);
 
   // Exactly ONE write reached the wire: the transferring member rides
   // the PATH, the body is KEY-EXACT {to_member_id, amount} with the
@@ -337,7 +390,7 @@ test("CHECKER phase: a register row opens the review drawer (fresh by-id read) �
   // The maker is a DIFFERENT officer — the checker affordances mount
   // (MakerCheckerPanel; the maker identity is the CONTRACT's
   // created_by, server truth).
-  await expect(page.getByText(/Requesting officer 88888888/)).toBeVisible();
+  await expect(page.getByText(/A different officer requested this transfer/)).toBeVisible();
 
   await page.getByRole("button", { name: "Approve & post transfer…" }).click();
   const confirmButton = page.getByRole("button", {
@@ -400,7 +453,7 @@ test("adversarial: rejection REQUIRES the rationale (!52 F2) — an empty reason
   await login(page);
 
   await openPendingRow(page);
-  await expect(page.getByText(/Requesting officer 88888888/)).toBeVisible();
+  await expect(page.getByText(/A different officer requested this transfer/)).toBeVisible();
 
   // Empty rationale: refused BEFORE any confirmation arms — nothing
   // reaches the wire.
@@ -461,7 +514,7 @@ test("adversarial: deny-by-default — a role without the members module gets no
   // share-transfer requests from the stripped role (reads included).
   await page.goto("/modules/members/share-transfers");
   await expect(page.getByText("Access denied")).toBeVisible();
-  await expect(page.getByLabel("Transferring member id")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Transfer shares…" })).toHaveCount(0);
   expect(state.transferCalls).toBe(0);
   expect(state.requestBodies).toHaveLength(0);
   expect(state.approvalBodies).toHaveLength(0);
@@ -489,7 +542,7 @@ test("adversarial: members:view-only reaches the console but the request form is
 
   await page.getByRole("link", { name: "Share transfers" }).click();
   await expect(page.getByText(/no members approval permission/)).toBeVisible();
-  await expect(page.getByLabel("Transferring member id")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Transfer shares…" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Request transfer…" })).toHaveCount(0);
 
   // The register is members:view — the (m) read surface renders for

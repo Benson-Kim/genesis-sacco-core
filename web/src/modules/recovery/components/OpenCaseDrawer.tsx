@@ -25,17 +25,22 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { loanClassPill } from "@/modules/loans/components/pills";
@@ -185,9 +190,8 @@ export function OpenCaseDrawer({
             hint="From the Loan book register (the loan detail drawer shows the id)."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 value={loanId}
                 onChange={(event) => setLoanId(event.target.value)}
                 disabled={open.isPending}

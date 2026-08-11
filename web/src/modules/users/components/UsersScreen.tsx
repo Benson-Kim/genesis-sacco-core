@@ -15,10 +15,14 @@
  */
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Pill } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Card,
+  Pill,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { fmtDateTime, initials, relTime } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
 import dynamic from "next/dynamic";

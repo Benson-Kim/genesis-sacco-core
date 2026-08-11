@@ -148,3 +148,64 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Recent activity strip (RecentActivityCard) — the prototype's
+   dashboard ledger affordance. */
+.activityHead {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.viewLedger {
+    font-size: 11.5px;
+    color: var(--navy);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.viewLedger:hover,
+.viewLedger:focus-visible {
+    text-decoration: underline;
+}
+
+.dateTime {
+    display: flex;
+    flex-direction: column;
+}
+
+.date {
+    color: var(--ink);
+}
+
+.time {
+    font-size: var(--fs-meta);
+    color: var(--sub);
+}
+
+.cellStrong {
+    font-weight: 700;
+}
+
+.cellSub {
+    font-size: var(--fs-meta);
+    color: var(--sub);
+}
+
+/* Sign carries the meaning; colour reinforces it (never colour alone). */
+.amountDebit {
+    font-weight: 700;
+    color: var(--brick);
+}
+
+.amountCredit {
+    font-weight: 700;
+    color: var(--emerald);
+}
+
+.activityEmpty {
+    padding: 16px;
+    color: var(--sub);
+    font-size: var(--fs-meta);
+}

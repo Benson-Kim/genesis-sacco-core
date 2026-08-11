@@ -23,35 +23,56 @@
  * - MONEY (blocker (a)): no figure exists on this screen at all —
  *   every money string renders inside the drawers, verbatim from the
  *   API.
+ *
+ * Layout: the two registers (adjustments, write-offs) are separate TABS
+ * (design-system TabList/TabPanel, reuse-first, the guarantors-screen
+ * precedent) — each keyset hook mounts ONLY while its tab is active.
+ * The catalogue/lookup cards above are not tables and stay outside the
+ * tabs.
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Button,
+  Card,
+  KeysetTable,
+  type Column,
+  type TabDef,
+  TabList,
+  TabPanel,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { FormField } from "@/modules/forms/FormField";
-import { fmtDateTime, fmtKes, isUuid } from "@/lib/format";
-import grid from "@/modules/layout/grid.module.css";
+import { getOwnUserId } from "@/modules/auth/session";
+import {
+  fmtAmount,
+  fmtDateTime,
+  fmtDateTimeParts,
+  fmtKes,
+} from "@/lib/format";
 import { fetchAdjustmentsPage, fetchWriteOffsPage } from "../api";
 import type { AdjustmentRecord, WriteOffRecord } from "../schemas";
 import { adjustmentStatusPill, writeOffStatusPill } from "./pills";
 import styles from "./Corrections.module.css";
 
-
 // Drawer-level code splitting (speed): drawer chunks load
 // on first open, not with the console route.
 const AdjustmentRequestDrawer = dynamic(
-  () => import("./AdjustmentRequestDrawer").then((m) => m.AdjustmentRequestDrawer),
+  () =>
+    import("./AdjustmentRequestDrawer").then((m) => m.AdjustmentRequestDrawer),
   { ssr: false },
 );
 const AdjustmentDetailDrawer = dynamic(
-  () => import("./AdjustmentDetailDrawer").then((m) => m.AdjustmentDetailDrawer),
+  () =>
+    import("./AdjustmentDetailDrawer").then((m) => m.AdjustmentDetailDrawer),
   { ssr: false },
 );
-const FeeDrawer = dynamic(() => import("./FeeDrawer").then((m) => m.FeeDrawer), { ssr: false });
+const FeeDrawer = dynamic(
+  () => import("./FeeDrawer").then((m) => m.FeeDrawer),
+  { ssr: false },
+);
 const WriteOffRequestDrawer = dynamic(
   () => import("./WriteOffRequestDrawer").then((m) => m.WriteOffRequestDrawer),
   { ssr: false },
@@ -74,61 +95,41 @@ type DrawerState =
   | { mode: "write-off-detail"; writeOffId: string }
   | { mode: "receipt"; writeOffId: string };
 
-export function CorrectionsScreen() {
-  const permissions = usePermissions();
-  const [drawer, setDrawer] = useState<DrawerState>(null);
-  const [adjustmentLookup, setAdjustmentLookup] = useState("");
-  const [adjustmentLookupError, setAdjustmentLookupError] = useState("");
-  const [writeOffLookup, setWriteOffLookup] = useState("");
-  const [writeOffLookupError, setWriteOffLookupError] = useState("");
-
-
-  const mayCreate = can(permissions.data, "corrections", "create");
-
-  // The two registers: server-ordered
-  // keyset pages (pending-first / live-first) — never re-sorted or
-  // filtered locally.
-  const adjustmentsPagination = useKeysetPagination();
+/**
+ * Pending-adjustments checker register (tab 1). A separate component so
+ * its keyset hook and pagination mount/reset ONLY while this tab is
+ * active (the useKeysetList primitive is consumed unmodified, reuse-first).
+ */
+function AdjustmentsRegister({
+  onOpen,
+}: Readonly<{ onOpen: (adjustmentId: string) => void }>) {
+  const pagination = useKeysetPagination();
   const adjustments = useKeysetList<AdjustmentRecord>({
-    queryKey: ["corrections", "adjustments-register", adjustmentsPagination.pageSize],
-    fetchPage: (cursor) => fetchAdjustmentsPage(cursor, adjustmentsPagination.pageSize),
-  });
-  const writeOffsPagination = useKeysetPagination();
-  const writeOffs = useKeysetList<WriteOffRecord>({
-    queryKey: ["corrections", "write-offs-register", writeOffsPagination.pageSize],
-    fetchPage: (cursor) => fetchWriteOffsPage(cursor, writeOffsPagination.pageSize),
+    queryKey: ["corrections", "adjustments-register", pagination.pageSize],
+    fetchPage: (cursor) => fetchAdjustmentsPage(cursor, pagination.pageSize),
   });
 
-  const adjustmentColumns: Column<AdjustmentRecord>[] = [
+  const ownId = getOwnUserId();
+  const columns: Column<AdjustmentRecord>[] = [
     {
       key: "status",
       header: "Status",
       render: (row) => adjustmentStatusPill(row.status),
-
-    },
-    {
-      key: "adjustment",
-      header: "Adjustment",
-      render: (row) => (
-        <span className={styles.mono} title={row.id}>
-          {row.id.slice(0, 8)}
-        </span>
-      ),
     },
     {
       key: "member",
       header: "Member",
+      // Identifier doctrine: number — name, resolved server-side on
+      // the row. NEVER a uuid fallback — an unresolved leg renders
+      // honest text, never a raw id.
       render: (row) =>
-        // Identifier doctrine: number — name, resolved server-side on
-        // the row (via the loan); the loan uuid stays on the title.
         row.member_no !== null ? (
-          <span title={row.loan_id}>
-            {row.member_no} — {row.member_name}
-          </span>
+          <div>
+            <div className={styles.cellStrong}>{row.member_name}</div>
+            <div className={styles.cellSub}>{row.member_no}</div>
+          </div>
         ) : (
-          <span className={styles.mono} title={row.loan_id}>
-            {row.loan_id.slice(0, 8)}
-          </span>
+          <span className={styles.muted}>Unresolved member</span>
         ),
     },
     {
@@ -138,75 +139,98 @@ export function CorrectionsScreen() {
         row.original_txn_ref !== null ? (
           <span className={styles.mono}>{row.original_txn_ref}</span>
         ) : (
-          <span className={styles.mono} title={row.original_transaction_id}>
-            {row.original_transaction_id.slice(0, 8)}
-          </span>
+          <span className={styles.muted}>Not referenced</span>
         ),
     },
     {
       key: "amount",
-      header: "Amount",
+      header: "Amount (KES)",
       align: "right",
-      // The SERVER's figure, verbatim (blocker (a)).
-      render: (row) => <span className={styles.amountCell}>{fmtKes(row.amount)}</span>,
+      render: (row) => (
+        <span className={styles.amountCell}>{fmtAmount(row.amount)}</span>
+      ),
     },
     {
       key: "maker",
-      header: "Maker",
-      // Bare staff UUID under least disclosure (short-id render).
+      header: "Requested by",
+      // Least disclosure WITHOUT a raw staff uuid anywhere: only the
+      // signed-in viewer's OWN request is distinguished; every other
+      // maker renders as an honest, non-identifying label.
       render: (row) => (
-        <span className={styles.mono} title={row.maker_id}>
-          {row.maker_id.slice(0, 8)}
+        <span className={styles.muted}>
+          {row.maker_id === ownId ? "You" : "Different officer"}
         </span>
       ),
     },
     {
       key: "requested",
       header: "Requested",
-      render: (row) => <span className={styles.muted}>{fmtDateTime(row.created_at)}</span>,
+      render: (row) => {
+        const { date, time } = fmtDateTimeParts(row.created_at);
+        return (
+          <div className={styles.dateTime}>
+            <span className={styles.date}>{date}</span>
+            {time && <span className={styles.time}>{time}</span>}
+          </div>
+        );
+      },
     },
-
   ];
 
-  const writeOffColumns: Column<WriteOffRecord>[] = [
+  return (
+    <Card padded={false}>
+      <KeysetTable
+        columns={columns}
+        query={adjustments}
+        rowKey={(row) => row.id}
+        emptyMessage="No repayment adjustments yet — nothing awaits a checker."
+        onRowClick={(row) => onOpen(row.id)}
+        pagination={{
+          pageIndex: pagination.pageIndex,
+          pageSize: pagination.pageSize,
+          onPageChange: pagination.setPageIndex,
+          onPageSizeChange: pagination.setPageSize,
+          rowLabel: "adjustments",
+        }}
+      />
+    </Card>
+  );
+}
+
+/**
+ * Write-off committee register (tab 2). A separate component so its
+ * keyset hook and pagination mount/reset ONLY while this tab is active
+ * (the useKeysetList primitive is consumed unmodified, reuse-first).
+ */
+function WriteOffsRegister({
+  onOpen,
+}: Readonly<{ onOpen: (writeOffId: string) => void }>) {
+  const pagination = useKeysetPagination();
+  const writeOffs = useKeysetList<WriteOffRecord>({
+    queryKey: ["corrections", "write-offs-register", pagination.pageSize],
+    fetchPage: (cursor) => fetchWriteOffsPage(cursor, pagination.pageSize),
+  });
+
+  const columns: Column<WriteOffRecord>[] = [
     {
       key: "status",
       header: "Status",
       render: (row) => writeOffStatusPill(row.status),
-
-    },
-    {
-      key: "write_off",
-      header: "Write-off",
-      render: (row) => (
-        <span className={styles.mono} title={row.id}>
-          {row.id.slice(0, 8)}
-        </span>
-      ),
-    },
-    {
-      key: "loan",
-      header: "Loan",
-      render: (row) => (
-        <span className={styles.mono} title={row.loan_id}>
-          {row.loan_id.slice(0, 8)}
-        </span>
-      ),
     },
     {
       key: "member",
       header: "Member",
+      // Identifier doctrine: number — name, resolved server-side on
+      // the row. NEVER a uuid fallback — an unresolved leg renders
+      // honest text, never a raw id.
       render: (row) =>
-        // Identifier doctrine: number — name, resolved server-side on
-        // the row; the uuid stays machine identity (title).
         row.member_no !== null ? (
-          <span title={row.member_id}>
-            {row.member_no} — {row.member_name}
-          </span>
+          <div>
+            <div className={styles.cellStrong}>{row.member_name}</div>
+            <div className={styles.cellSub}>{row.member_no}</div>
+          </div>
         ) : (
-          <span className={styles.mono} title={row.member_id}>
-            {row.member_id.slice(0, 8)}
-          </span>
+          <span className={styles.muted}>Unresolved member</span>
         ),
     },
     {
@@ -214,204 +238,117 @@ export function CorrectionsScreen() {
       header: "Total written off",
       align: "right",
       // The write-once snapshot figure, verbatim — never summed.
-      render: (row) => <span className={styles.amountCell}>{fmtKes(row.total_written_off)}</span>,
+      render: (row) => (
+        <span className={styles.amountCell}>
+          {fmtKes(row.total_written_off)}
+        </span>
+      ),
     },
     {
       key: "requested",
       header: "Requested",
-      render: (row) => <span className={styles.muted}>{fmtDateTime(row.created_at)}</span>,
+      render: (row) => (
+        <span className={styles.muted}>{fmtDateTime(row.created_at)}</span>
+      ),
     },
-
   ];
 
+  return (
+    <Card padded={false}>
+      <KeysetTable
+        columns={columns}
+        query={writeOffs}
+        rowKey={(row) => row.id}
+        emptyMessage="No write-offs yet — nothing awaits the committee."
+        onRowClick={(row) => onOpen(row.id)}
+        pagination={{
+          pageIndex: pagination.pageIndex,
+          pageSize: pagination.pageSize,
+          onPageChange: pagination.setPageIndex,
+          onPageSizeChange: pagination.setPageSize,
+          rowLabel: "write-offs",
+        }}
+      />
+    </Card>
+  );
+}
 
-  function openAdjustment() {
-    const id = adjustmentLookup.trim();
-    if (!isUuid(id)) {
-      setAdjustmentLookupError("Enter the full adjustment UUID (8-4-4-4-12 hex).");
-      return;
-    }
-    setAdjustmentLookupError("");
-    setDrawer({ mode: "adjustment-detail", adjustmentId: id });
-  }
+type CorrectionsTabId = "adjustments" | "write-offs";
 
-  function openWriteOff() {
-    const id = writeOffLookup.trim();
-    if (!isUuid(id)) {
-      setWriteOffLookupError("Enter the full write-off UUID (8-4-4-4-12 hex).");
-      return;
-    }
-    setWriteOffLookupError("");
-    setDrawer({ mode: "write-off-detail", writeOffId: id });
-  }
+const TABS: TabDef[] = [
+  { id: "adjustments", label: "Adjustments" },
+  { id: "write-offs", label: "Write-offs" },
+];
+
+export function CorrectionsScreen() {
+  const permissions = usePermissions();
+  const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [activeTab, setActiveTab] = useState<CorrectionsTabId>("adjustments");
+
+  const mayCreate = can(permissions.data, "corrections", "create");
 
   return (
     <div>
-      <div className={grid.cards4}>
-        <Card className={grid.half}>
-          <div className={styles.cardTitle}>Repayment adjustments</div>
-          <div className={styles.cardBody}>
-            Two-phase maker-checker reversal of a repayment&apos;s COMPLETE
-            allocation: a maker requests, a DIFFERENT checker approves the
-            persisted snapshot — only then does the reversal post. No amounts
-            are ever entered; every figure derives server-side from the
-            original ledger legs.
-          </div>
-          <div className={styles.cardActions}>
-            {mayCreate && (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => setDrawer({ mode: "adjustment-request" })}
-              >
-                + Request adjustment
-              </Button>
-            )}
-          </div>
-          <div className={styles.lookupRow}>
-            <div className={styles.lookupField}>
-              <FormField
-                id="adjustment-lookup"
-                label="Review adjustment by id"
-                error={adjustmentLookupError === "" ? undefined : adjustmentLookupError}
-                hint="Fallback lookup (e.g. an id from the audit trail) — the checker register below lists pending requests first."
-              >
-                {(control) => (
-                  <input
-                    {...control}
-                    className={styles.input}
-                    value={adjustmentLookup}
-                    onChange={(event) => setAdjustmentLookup(event.target.value)}
-                    spellCheck={false}
-                  />
-                )}
-              </FormField>
-            </div>
-            <Button type="button" onClick={openAdjustment}>
-              Open adjustment
-            </Button>
-          </div>
-        </Card>
+      {mayCreate && (
+        <div className={styles.actions}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setDrawer({ mode: "adjustment-request" })}
+          >
+            + Request adjustment
+          </Button>
 
-        <Card className={grid.half}>
-          <div className={styles.cardTitle}>Misc fees</div>
-          <div className={styles.cardBody}>
-            Post a tenant-configured fee against a member (FE- ledger ref).
-            The fee AMOUNT is code-owned configuration resolved by the server
-            — it cannot be entered here.
-          </div>
-          <div className={styles.cardActions}>
-            {mayCreate && (
-              <Button type="button" variant="primary" onClick={() => setDrawer({ mode: "fee" })}>
-                + Post fee
-              </Button>
-            )}
-            {!mayCreate && (
-              <div className={styles.formNote}>
-                Your role has no corrections create permission — posting
-                affordances are not offered.
-              </div>
-            )}
-          </div>
-        </Card>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setDrawer({ mode: "fee" })}
+          >
+            + Post fee
+          </Button>
 
-        <Card className={grid.wide}>
-          <div className={styles.cardTitle}>Loan write-offs &amp; recoveries</div>
-          <div className={styles.cardBody}>
-            Committee-approved derecognition of an NPL loan bound to a
-            write-once snapshot — write-off is NOT forgiveness: the legal claim
-            survives, and recovery receipts are the only money-in
-            path against it. Votes, void, posting and the recovery trail live
-            on the record drawer.
-          </div>
-          <div className={styles.cardActions}>
-            {mayCreate && (
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => setDrawer({ mode: "write-off-request" })}
-              >
-                + Request write-off
-              </Button>
-            )}
-          </div>
-          <div className={styles.lookupRow}>
-            <div className={styles.lookupField}>
-              <FormField
-                id="write-off-lookup"
-                label="Open write-off by id"
-                error={writeOffLookupError === "" ? undefined : writeOffLookupError}
-                hint="Fallback lookup (e.g. an id from the audit trail) — the committee register below lists live write-offs first."
-              >
-                {(control) => (
-                  <input
-                    {...control}
-                    className={styles.input}
-                    value={writeOffLookup}
-                    onChange={(event) => setWriteOffLookup(event.target.value)}
-                    spellCheck={false}
-                  />
-                )}
-              </FormField>
-            </div>
-            <Button type="button" onClick={openWriteOff}>
-              Open write-off
-            </Button>
-          </div>
-        </Card>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setDrawer({ mode: "write-off-request" })}
+          >
+            + Request write-off
+          </Button>
+        </div>
+      )}
+
+      <div className={styles.registerTabs}>
+        <TabList
+          idPrefix="corrections"
+          tabs={TABS}
+          activeId={activeTab}
+          onChange={(next) => setActiveTab(next as CorrectionsTabId)}
+          ariaLabel="Correction registers"
+        />
       </div>
 
-      <Card padded={false}>
-        <div className={styles.registerHead}>
-          <span>Pending-adjustments checker register</span>
-          <span className={styles.registerNote}>
-            Pending requests first, newest first — the server&apos;s
-            order; figures are the persisted snapshot, verbatim
-          </span>
-        </div>
-        <KeysetTable
-          columns={adjustmentColumns}
-          query={adjustments}
-          rowKey={(row) => row.id}
-          emptyMessage="No repayment adjustments yet — nothing awaits a checker."
-          onRowClick={(row) => setDrawer({ mode: "adjustment-detail", adjustmentId: row.id })}
-          pagination={{
-            pageIndex: adjustmentsPagination.pageIndex,
-            pageSize: adjustmentsPagination.pageSize,
-            onPageChange: adjustmentsPagination.setPageIndex,
-            onPageSizeChange: adjustmentsPagination.setPageSize,
-            rowLabel: "adjustments",
-          }}
-        />
-      </Card>
-
-      <Card padded={false}>
-        <div className={styles.registerHead}>
-          <span>Write-off committee register</span>
-          <span className={styles.registerNote}>
-            Live write-offs (awaiting votes or posting) first, newest first —
-            the server&apos;s order; snapshot figures verbatim
-          </span>
-        </div>
-        <KeysetTable
-          columns={writeOffColumns}
-          query={writeOffs}
-          rowKey={(row) => row.id}
-          emptyMessage="No write-offs yet — nothing awaits the committee."
-          onRowClick={(row) => setDrawer({ mode: "write-off-detail", writeOffId: row.id })}
-          pagination={{
-            pageIndex: writeOffsPagination.pageIndex,
-            pageSize: writeOffsPagination.pageSize,
-            onPageChange: writeOffsPagination.setPageIndex,
-            onPageSizeChange: writeOffsPagination.setPageSize,
-            rowLabel: "write-offs",
-          }}
-        />
-      </Card>
+      <TabPanel idPrefix="corrections" activeTabId={activeTab}>
+        {activeTab === "adjustments" && (
+          <AdjustmentsRegister
+            onOpen={(adjustmentId) =>
+              setDrawer({ mode: "adjustment-detail", adjustmentId })
+            }
+          />
+        )}
+        {activeTab === "write-offs" && (
+          <WriteOffsRegister
+            onOpen={(writeOffId) =>
+              setDrawer({ mode: "write-off-detail", writeOffId })
+            }
+          />
+        )}
+      </TabPanel>
 
       {drawer !== null && drawer.mode === "adjustment-request" && (
         <AdjustmentRequestDrawer
-          onReview={(adjustmentId) => setDrawer({ mode: "adjustment-detail", adjustmentId })}
+          onReview={(adjustmentId) =>
+            setDrawer({ mode: "adjustment-detail", adjustmentId })
+          }
           onClose={() => setDrawer(null)}
         />
       )}
@@ -421,17 +358,23 @@ export function CorrectionsScreen() {
           onClose={() => setDrawer(null)}
         />
       )}
-      {drawer !== null && drawer.mode === "fee" && <FeeDrawer onClose={() => setDrawer(null)} />}
+      {drawer !== null && drawer.mode === "fee" && (
+        <FeeDrawer onClose={() => setDrawer(null)} />
+      )}
       {drawer !== null && drawer.mode === "write-off-request" && (
         <WriteOffRequestDrawer
-          onReview={(writeOffId) => setDrawer({ mode: "write-off-detail", writeOffId })}
+          onReview={(writeOffId) =>
+            setDrawer({ mode: "write-off-detail", writeOffId })
+          }
           onClose={() => setDrawer(null)}
         />
       )}
       {drawer !== null && drawer.mode === "write-off-detail" && (
         <WriteOffDetailDrawer
           writeOffId={drawer.writeOffId}
-          onRecordReceipt={() => setDrawer({ mode: "receipt", writeOffId: drawer.writeOffId })}
+          onRecordReceipt={() =>
+            setDrawer({ mode: "receipt", writeOffId: drawer.writeOffId })
+          }
           onClose={() => setDrawer(null)}
         />
       )}

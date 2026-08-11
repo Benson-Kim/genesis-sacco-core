@@ -8,7 +8,8 @@
  * Renders nothing for every other error so callers can pair it with
  * ErrorBanner without double-reporting.
  */
-import { Banner, Button } from "@genesis/design-system";
+import { Banner } from "../components/Banner";
+import { Button } from "../components/Button";
 import { isConflict } from "@/lib/errors";
 import styles from "./ConflictBanner.module.css";
 

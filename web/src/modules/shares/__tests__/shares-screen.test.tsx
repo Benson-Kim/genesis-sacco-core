@@ -8,9 +8,14 @@
  * <Providers>.
  *
  * Centrepieces (the corrections/recovery reference-harness pyramid):
- * - MAKER phase moves NO money: the request success panel states
- *   PENDING and the (m) register refetches — no balance figure exists
- *   anywhere in the request response to render.
+ * - The MAKER phase lives in its OWN modal (RequestTransferDrawer),
+ *   opened by the "Transfer shares…" button — never inline on the
+ *   screen. It moves NO money: the request success panel states
+ *   PENDING and the (m) register refetches.
+ * - MEMBER IDENTIFICATION (#35 item 14): both legs are resolved by
+ *   member NUMBER (or national ID) via the same lookup the teller
+ *   posting drawer uses — never a raw uuid typed or shown anywhere on
+ *   this screen or its drawers.
  * - REGISTER: the server's pending-first order renders verbatim
  *   (never re-sorted); a row opens the review drawer.
  * - STRUCTURAL SoD (blocker (f)): when the signed-in user IS the
@@ -25,11 +30,11 @@
  *   renders the server's three figures exactly; the fixture is
  *   deliberately NON-ADDITIVE and every plausible sum is asserted
  *   ABSENT.
- * - Deny-by-default: members:view-only gets NO request form (the
+ * - Deny-by-default: members:view-only gets NO request button (the
  *   register still renders — it is the (m) read surface).
  * - XSS inertness on the server-influenced strings (ledger refs).
  */
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "@genesis/api-client";
 import { Providers } from "@/app/providers";
@@ -38,6 +43,7 @@ import { usePermissions } from "@/modules/authz/usePermissions";
 import { ShareTransfersScreen } from "../components/ShareTransfersScreen";
 import type { ShareTransferRecord, ShareTransferResult } from "../schemas";
 import * as sharesApi from "../api";
+import * as membersApi from "@/modules/members/api";
 
 jest.mock("../api", () => {
   const actual = jest.requireActual<typeof import("../api")>("../api");
@@ -51,21 +57,63 @@ jest.mock("../api", () => {
   };
 });
 
+// #35 item 14 lookup pattern (RequestTransferDrawer): both members are
+// resolved by member number / national ID — never a raw uuid typed or
+// shown.
+jest.mock("@/modules/members/api", () => ({
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
+}));
+
 jest.mock("@/modules/authz/usePermissions", () => ({
   usePermissions: jest.fn(),
 }));
 
 const mocked = jest.mocked(sharesApi);
+const mockedMembers = jest.mocked(membersApi);
 const mockedPermissions = jest.mocked(usePermissions);
 
 const ADMIN_ID = "99999999-9999-9999-9999-999999999999";
 const MAKER_ID = "88888888-8888-8888-8888-888888888888";
 const FROM_ID = "11111111-1111-1111-1111-111111111111";
 const TO_ID = "22222222-2222-2222-2222-222222222222";
-const PHRASE = FROM_ID.slice(0, 8);
+// The typed-confirmation phrase is the TRANSFERRING member's NUMBER —
+// never a uuid fragment (the RequestTransferDrawer/TransferDetailDrawer
+// convention).
+const PHRASE = "M-0001";
 
 const PENDING_ID = "aaaabbbb-1111-2222-3333-444444444444";
 const POSTED_ID = "ccccdddd-1111-2222-3333-444444444444";
+
+/** The two members resolved by the #35 item 14 lookup (member number
+ * only, in these tests) — never a raw uuid typed or shown. */
+const FROM_MEMBER = {
+  id: FROM_ID,
+  member_no: "M-0001",
+  type: "person" as const,
+  name: "Jane Wanjiku",
+  phone: null,
+  email: null,
+  status: "active" as const,
+  version: 1,
+  branch_id: null,
+  dividend_payout: null,
+  id_number_masked: null,
+};
+
+const TO_MEMBER = {
+  id: TO_ID,
+  member_no: "M-0002",
+  type: "person" as const,
+  name: "Peter Otieno",
+  phone: null,
+  email: null,
+  status: "active" as const,
+  version: 1,
+  branch_id: null,
+  dividend_payout: null,
+  id_number_masked: null,
+};
 
 /** The maker's request response / the register's pending row —
  * created by a DIFFERENT officer so the signed-in user is an eligible
@@ -165,10 +213,23 @@ function mountScreen() {
   );
 }
 
-/** Fill the three-field request form with valid values. */
-async function fillEntry(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("Transferring member id"), FROM_ID);
-  await user.type(screen.getByLabelText("Receiving member id"), TO_ID);
+/** Open the "Transfer shares…" modal (the maker phase never lives
+ * inline on the screen). */
+async function openRequestModal(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: "Transfer shares…" }));
+  return screen.findByRole("dialog", { name: "Transfer shares" });
+}
+
+/** Resolve BOTH legs by member number (blur-triggered lookup — #35
+ * item 14) and fill the amount. */
+async function fillEntry(user: ReturnType<typeof userEvent.setup>, drawer: HTMLElement) {
+  const [fromInput, toInput] = within(drawer).getAllByLabelText("Member number");
+  await user.type(fromInput!, FROM_MEMBER.member_no);
+  await user.tab();
+  await within(drawer).findByText(new RegExp(`Member found: ${FROM_MEMBER.name}`));
+  await user.type(toInput!, TO_MEMBER.member_no);
+  await user.tab();
+  await within(drawer).findByText(new RegExp(`Member found: ${TO_MEMBER.name}`));
   await user.type(screen.getByLabelText("Amount (KES)"), "5000.10");
 }
 
@@ -185,6 +246,11 @@ beforeEach(() => {
   clearSession();
   setSession({ accessToken: fakeJwt(ADMIN_ID), refreshToken: "refresh-1" });
   grantPermissions(FULL_PERMS);
+  mockedMembers.lookupMemberByNo.mockImplementation((memberNo: string) => {
+    if (memberNo === FROM_MEMBER.member_no) return Promise.resolve(FROM_MEMBER);
+    if (memberNo === TO_MEMBER.member_no) return Promise.resolve(TO_MEMBER);
+    return Promise.resolve(null);
+  });
   mocked.requestShareTransfer.mockResolvedValue(PENDING_RECORD);
   mocked.fetchShareTransfersPage.mockResolvedValue({
     items: [PENDING_RECORD, POSTED_RECORD],
@@ -205,32 +271,34 @@ afterEach(() => {
   clearSession();
 });
 
-test("deny-by-default: members:view ONLY gets NO request form (the honest note renders instead) — but the (m) register STILL renders (the read surface)", async () => {
+test("deny-by-default: members:view ONLY gets NO request button (the honest note renders instead) — but the (m) register STILL renders (the read surface)", async () => {
   grantPermissions(VIEW_ONLY_PERMS);
   mountScreen();
 
   expect(await screen.findByText(/no members approval permission/)).toBeInTheDocument();
-  expect(screen.queryByLabelText("Transferring member id")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Request transfer…" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Transfer shares…" })).toBeNull();
   expect(mocked.requestShareTransfer).not.toHaveBeenCalled();
   // The register is members:view — it renders for this role.
   expect(await screen.findByRole("table")).toBeInTheDocument();
   expect(screen.getByText("Pending approval")).toBeInTheDocument();
 });
 
-test("the register renders the SERVER's pending-first order verbatim (never re-sorted): the pending row precedes the older posted row exactly as served", async () => {
+test("the register renders the SERVER's pending-first order verbatim (never re-sorted), with NO raw uuid anywhere: the pending row precedes the older posted row exactly as served", async () => {
   mountScreen();
 
   const table = await screen.findByRole("table");
   const rows = table.querySelectorAll("tbody tr");
   expect(rows).toHaveLength(2);
   expect(rows[0]?.textContent).toContain("Pending approval");
-  expect(rows[0]?.textContent).toContain(PENDING_ID.slice(0, 8));
   expect(rows[1]?.textContent).toContain("Posted");
-  expect(rows[1]?.textContent).toContain(POSTED_ID.slice(0, 8));
-  // Server figures verbatim in the rows.
-  expect(rows[0]?.textContent).toContain("KES 5,000.10");
-  expect(rows[1]?.textContent).toContain("KES 120.55");
+  // Server figures verbatim in the rows (money-only, no "KES" repeat —
+  // the column header already carries the unit).
+  expect(rows[0]?.textContent).toContain("5,000.10");
+  expect(rows[1]?.textContent).toContain("120.55");
+  // NEVER a raw uuid fragment anywhere in the register.
+  expect(table.textContent).not.toContain(PENDING_ID.slice(0, 8));
+  expect(table.textContent).not.toContain(POSTED_ID.slice(0, 8));
+  expect(table.textContent).not.toContain(MAKER_ID.slice(0, 8));
   expect(mocked.fetchShareTransfersPage).toHaveBeenCalledWith(null, 10);
 });
 
@@ -244,7 +312,8 @@ test("MAKER phase: typed confirmation starts DISARMED; a triple-clicked confirm 
       }),
   );
   mountScreen();
-  await fillEntry(user);
+  const drawer = await openRequestModal(user);
+  await fillEntry(user, drawer);
 
   await user.click(screen.getByRole("button", { name: "Request transfer…" }));
   // Disarmed until the byte-identical phrase — a reflex click writes
@@ -259,7 +328,7 @@ test("MAKER phase: typed confirmation starts DISARMED; a triple-clicked confirm 
   await user.click(confirm);
   await user.click(confirm);
   expect(mocked.requestShareTransfer).toHaveBeenCalledTimes(1);
-  // The typed decimal STRING travels verbatim — never a float.
+  // The RESOLVED ids travel — never the typed member number.
   expect(mocked.requestShareTransfer.mock.calls[0]?.[0]).toBe(FROM_ID);
   expect(mocked.requestShareTransfer.mock.calls[0]?.[1]).toBe(TO_ID);
   expect(mocked.requestShareTransfer.mock.calls[0]?.[2]).toBe("5000.10");
@@ -268,7 +337,7 @@ test("MAKER phase: typed confirmation starts DISARMED; a triple-clicked confirm 
 
   // The SPENT panel replaces the form and states PENDING/no-money.
   expect(await screen.findByText(/Transfer request recorded · PENDING approval/)).toBeInTheDocument();
-  expect(screen.queryByLabelText("Transferring member id")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Request transfer…" })).toBeNull();
   expect(screen.getByText(/NO money moved/)).toBeInTheDocument();
   expect(mocked.requestShareTransfer).toHaveBeenCalledTimes(1);
 });
@@ -282,14 +351,14 @@ test("CHECKER phase (eligible checker): a register row opens the drawer; approve
   await user.click(firstRow as HTMLElement);
 
   // The drawer loads the FRESH record; the maker is a DIFFERENT
-  // officer, so checker controls mount (structural SoD).
-  expect(await screen.findByText(/Requesting officer 88888888/)).toBeInTheDocument();
+  // officer, so checker controls mount (structural SoD) — and NO
+  // staff uuid is ever rendered, only the honest "different officer"
+  // attribution.
+  expect(
+    await screen.findByText(/A different officer requested this transfer/),
+  ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Approve & post transfer…" }));
-  const drawerPhrase = PENDING_ID.slice(0, 8);
-  await user.type(
-    await screen.findByLabelText(`Type "${drawerPhrase}" to confirm`),
-    drawerPhrase,
-  );
+  await user.type(await screen.findByLabelText(`Type "${PHRASE}" to confirm`), PHRASE);
   const confirm = screen.getByRole("button", { name: "Approve & post transfer" });
   await user.click(confirm);
   await user.click(confirm);
@@ -331,7 +400,9 @@ test("rejection REQUIRES the rationale (!52 F2): an empty reason never arms the 
 
   const table = await screen.findByRole("table");
   await user.click(table.querySelectorAll("tbody tr")[0] as HTMLElement);
-  expect(await screen.findByText(/Requesting officer 88888888/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/A different officer requested this transfer/),
+  ).toBeInTheDocument();
 
   // Empty rationale: refused BEFORE any confirmation arms.
   await user.click(screen.getByRole("button", { name: "Reject transfer…" }));
@@ -345,11 +416,7 @@ test("rejection REQUIRES the rationale (!52 F2): an empty reason never arms the 
     "Amount keyed against the wrong member.",
   );
   await user.click(screen.getByRole("button", { name: "Reject transfer…" }));
-  const drawerPhrase = PENDING_ID.slice(0, 8);
-  await user.type(
-    await screen.findByLabelText(`Type "${drawerPhrase}" to confirm`),
-    drawerPhrase,
-  );
+  await user.type(await screen.findByLabelText(`Type "${PHRASE}" to confirm`), PHRASE);
   await user.click(screen.getByRole("button", { name: "Reject transfer" }));
   await waitFor(() => expect(mocked.rejectShareTransfer).toHaveBeenCalledTimes(1));
   // id, FRESH version, the trimmed rationale.
@@ -379,7 +446,8 @@ test("409 on the request (balance shortfall / inactive member): EXACTLY ONE atte
     .mockRejectedValueOnce(new ApiError(409, "conflict", "corr-shortfall"))
     .mockResolvedValue(PENDING_RECORD);
   mountScreen();
-  await fillEntry(user);
+  const drawer = await openRequestModal(user);
+  await fillEntry(user, drawer);
 
   await user.click(await armRequestConfirm(user));
   expect(await screen.findByText(/Your change was NOT applied/)).toBeInTheDocument();
@@ -400,19 +468,23 @@ test("409 on the request (balance shortfall / inactive member): EXACTLY ONE atte
   expect(hasSession()).toBe(true);
 });
 
-test("a legitimate identical SECOND request (Record another) is a NEW intent with a ROTATED key — never served the first request's stored response", async () => {
+test("a legitimate identical SECOND request (Record another) is a NEW intent with a ROTATED key — never served the first request's stored response; the member fields reset alongside the form", async () => {
   const user = userEvent.setup();
   mountScreen();
-  await fillEntry(user);
+  const drawer = await openRequestModal(user);
+  await fillEntry(user, drawer);
   await user.click(await armRequestConfirm(user));
 
   expect(await screen.findByText(/Transfer request recorded/)).toBeInTheDocument();
   const firstKey = mocked.requestShareTransfer.mock.calls[0]?.[3];
 
   await user.click(screen.getByRole("button", { name: "Record another request" }));
-  // The form returns EMPTY (a new intent, not a prefilled replay).
-  expect(screen.getByLabelText("Transferring member id")).toHaveValue("");
-  await fillEntry(user);
+  // The form returns EMPTY (a new intent, not a prefilled replay) — the
+  // member-lookup fields reset too, never showing a stale resolution.
+  const [fromInputAgain] = within(drawer).getAllByLabelText("Member number");
+  expect(fromInputAgain).toHaveValue("");
+  expect(screen.queryByText(/Member found: Jane Wanjiku/)).toBeNull();
+  await fillEntry(user, drawer);
   await user.click(await armRequestConfirm(user));
   await waitFor(() => expect(mocked.requestShareTransfer).toHaveBeenCalledTimes(2));
   expect(mocked.requestShareTransfer.mock.calls[1]?.[3]).not.toBe(firstKey);
@@ -429,13 +501,11 @@ test("XSS inertness: hostile ledger refs in the approval response render as iner
 
   const table = await screen.findByRole("table");
   await user.click(table.querySelectorAll("tbody tr")[0] as HTMLElement);
-  expect(await screen.findByText(/Requesting officer 88888888/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/A different officer requested this transfer/),
+  ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Approve & post transfer…" }));
-  const drawerPhrase = PENDING_ID.slice(0, 8);
-  await user.type(
-    await screen.findByLabelText(`Type "${drawerPhrase}" to confirm`),
-    drawerPhrase,
-  );
+  await user.type(await screen.findByLabelText(`Type "${PHRASE}" to confirm`), PHRASE);
   await user.click(screen.getByRole("button", { name: "Approve & post transfer" }));
 
   expect(await screen.findByText(/Transfer posted/)).toBeInTheDocument();

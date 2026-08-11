@@ -36,10 +36,16 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+} from "@genesis/design-system";
 import { getOwnUserId } from "@/modules/auth/session";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";

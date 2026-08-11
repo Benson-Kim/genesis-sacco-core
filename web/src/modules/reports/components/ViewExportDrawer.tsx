@@ -25,8 +25,7 @@
  * - Read-only surface: light dismissal is intentional (the exit- statement drawer precedent, X7) — nothing can be lost.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
+import { Modal, ErrorBanner } from "@genesis/design-system";
 import { fmtDateTime } from "@/lib/format";
 import { fetchArtifactText, type ArtifactText } from "../api";
 import { parseCsv } from "../csv";

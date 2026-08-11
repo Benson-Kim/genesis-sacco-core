@@ -4,14 +4,17 @@
  * modules/layout/grid.module.css — no private page grid lives here.
  */
 
-.muted {
+.cellStrong {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.cellSub {
+    font-size: 12px;
     color: var(--sub);
 }
 
-/* Opaque record ids (member/transfer UUIDs, ledger refs). */
-.mono {
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+.muted {
     color: var(--sub);
 }
 
@@ -27,20 +30,13 @@
     line-height: 1.5;
 }
 
-.input {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.input:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
+.cardActions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-top: 12px;
+    margin-bottom: 16px;
 }
 
 .actions {
@@ -57,9 +53,30 @@
     margin: 10px 0;
 }
 
+.dateTime {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.date {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 450;
+}
+
+.time {
+    color: var(--sub);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+
 /* Money figures — server strings verbatim, tabular. */
 .amountCell {
-    font-weight: 800;
+    font-weight: 600;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
 }
@@ -90,23 +107,6 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 0;
-}
-
-.textarea {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 10px 12px;
-    min-height: 76px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-    resize: vertical;
-}
-
-.textarea:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
 }
 
 .voteActions {

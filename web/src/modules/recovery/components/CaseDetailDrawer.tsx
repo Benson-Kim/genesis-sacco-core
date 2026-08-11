@@ -34,18 +34,28 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal, Pill } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  Pill,
+  FormField,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  useKeysetList,
+  Input,
+  Select,
+  Textarea,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
 import { loanClassPill } from "@/modules/loans/components/pills";
 import { addCaseNote, addOutcomeNote, assignCase, fetchCase, fetchCaseNotesPage, setDisposition } from "../api";
 import {
@@ -432,9 +442,8 @@ export function CaseDetailDrawer({
                 hint="The user's UUID from Access control (least disclosure: no directory is fetched here)."
               >
                 {(control) => (
-                  <input
+                  <Input
                     {...control}
-                    className={styles.input}
                     value={assigneeId}
                     onChange={(event) => setAssigneeId(event.target.value)}
                     disabled={anyPending}
@@ -461,9 +470,8 @@ export function CaseDetailDrawer({
             hint="Only staff-settable moves are offered; cured / written-off closes are job-only from loan facts."
           >
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={target}
                 onChange={(event) => setTarget(event.target.value)}
                 disabled={anyPending}
@@ -474,7 +482,7 @@ export function CaseDetailDrawer({
                     {DISPOSITION_TARGET_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           {(target === "disputed" || target === "irrecoverable_pending_write_off") && (
@@ -485,9 +493,8 @@ export function CaseDetailDrawer({
               hint="Captured into the audit record — the case stays LIVE and keeps blocking a duplicate case."
             >
               {(control) => (
-                <textarea
+                <Textarea
                   {...control}
-                  className={styles.textarea}
                   maxLength={500}
                   value={dispositionReason}
                   onChange={(event) => setDispositionReason(event.target.value)}
@@ -504,9 +511,8 @@ export function CaseDetailDrawer({
               hint="THE one outcome note, written atomically with the close — or nothing happens at all."
             >
               {(control) => (
-                <textarea
+                <Textarea
                   {...control}
-                  className={styles.textarea}
                   maxLength={2000}
                   value={dispositionNote}
                   onChange={(event) => setDispositionNote(event.target.value)}
@@ -576,9 +582,8 @@ export function CaseDetailDrawer({
             hint="Every call, promise and visit goes on the record — permanently."
           >
             {(control) => (
-              <textarea
+              <Textarea
                 {...control}
-                className={styles.textarea}
                 maxLength={2000}
                 value={noteText}
                 onChange={(event) => setNoteText(event.target.value)}
@@ -603,9 +608,8 @@ export function CaseDetailDrawer({
             hint="Exactly one, permanent, at/after closure only — the server refuses a second."
           >
             {(control) => (
-              <textarea
+              <Textarea
                 {...control}
-                className={styles.textarea}
                 maxLength={2000}
                 value={outcomeText}
                 onChange={(event) => setOutcomeText(event.target.value)}

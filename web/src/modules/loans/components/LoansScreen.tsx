@@ -20,15 +20,30 @@
  *   are deliberately NOT reproduced — the summary strip renders
  *   GET /portfolio/summary, the same server model that feeds the
  *   dashboard slice.
+ *
+ * Layout: the register and the disbursement queue are separate TABS
+ * (design-system TabList/TabPanel, reuse-first, the guarantors-screen
+ * precedent) — the queue's keyset hook mounts ONLY while its tab is
+ * active. The portfolio summary strip is not a table and stays outside
+ * the tabs as a persistent overview.
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { Card, FilterControl, Stat } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
+import {
+  Card,
+  FilterControl,
+  Stat,
+  KeysetTable,
+  type Column,
+  type TabDef,
+  TabList,
+  TabPanel,
+  useKeysetList,
+  useKeysetPagination,
+  ErrorBanner,
+  grid,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtKes } from "@/lib/format";
@@ -48,7 +63,6 @@ import {
   type LoanStatus,
 } from "../schemas";
 import { loanClassPill, loanStatusPill } from "./pills";
-import grid from "@/modules/layout/grid.module.css";
 import styles from "./Loans.module.css";
 
 // Drawer-level code splitting (speed): drawer chunks load on
@@ -98,7 +112,7 @@ function PortfolioSummaryStrip() {
         <Stat label="Provisions" value={fmtKes(data.provisions)} />
         <div className={styles.statSub}>Penalties due {fmtKes(data.penalties_due)}</div>
       </Card>
-      {data.by_classification.length > 0 && (
+      {/* {data.by_classification.length > 0 && (
         <Card className={grid.wide}>
           <div className={styles.resultTitle}>By classification</div>
           <div className={styles.sliceList}>
@@ -110,7 +124,7 @@ function PortfolioSummaryStrip() {
             ))}
           </div>
         </Card>
-      )}
+      )} */}
     </div>
   );
 }
@@ -121,9 +135,90 @@ type DrawerState =
   | { mode: "disburse"; applicationId: string };
 
 /**
- * Approved-applications queue. A separate component so its keyset hook
- * mounts ONLY for operators holding loan_book:create AND
- * applications:view — a stripped role fetches NOTHING (the useKeysetList primitive is consumed unmodified, reuse-first).
+ * The filtered loan register (tab 1). A separate component so its
+ * keyset hook, filters and pagination mount/reset ONLY while this tab
+ * is active (the useKeysetList primitive is consumed unmodified,
+ * reuse-first).
+ */
+function LoansRegister({
+  columns,
+  onOpenLoan,
+}: Readonly<{
+  columns: Column<Loan>[];
+  onOpenLoan: (loanId: string) => void;
+}>) {
+  const [status, setStatusRaw] = useState<LoanStatus | "">("");
+  const [classification, setClassificationRaw] = useState<LoanClass | "">("");
+  const pagination = useKeysetPagination();
+
+  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
+  function setStatus(next: LoanStatus | "") {
+    setStatusRaw(next);
+    pagination.setPageIndex(0);
+  }
+  function setClassification(next: LoanClass | "") {
+    setClassificationRaw(next);
+    pagination.setPageIndex(0);
+  }
+
+  const filters: LoanListFilters = { status, classification };
+  const list = useKeysetList<Loan>({
+    queryKey: ["loans", "list", filters, pagination.pageSize],
+    fetchPage: (cursor) => fetchLoansPage(filters, cursor, pagination.pageSize),
+  });
+
+  return (
+    <>
+      <div className={styles.toolbar}>
+        <div className={styles.filters}>
+          <FilterControl
+            id="loan-status-filter"
+            label="Status"
+            value={status}
+            onChange={setStatus}
+            options={LOAN_STATUSES.map((option) => ({
+              value: option,
+              label: LOAN_STATUS_LABELS[option],
+            }))}
+          />
+          <FilterControl
+            id="loan-class-filter"
+            label="Classification"
+            value={classification}
+            onChange={setClassification}
+            options={LOAN_CLASSES.map((option) => ({
+              value: option,
+              label: LOAN_CLASS_LABELS[option],
+            }))}
+          />
+        </div>
+      </div>
+      <Card padded={false}>
+        <KeysetTable
+          columns={columns}
+          query={list}
+          rowKey={(loan) => loan.id}
+          emptyMessage="No loans match this filter."
+          onRowClick={(loan) => onOpenLoan(loan.id)}
+          pagination={{
+            pageIndex: pagination.pageIndex,
+            pageSize: pagination.pageSize,
+            onPageChange: pagination.setPageIndex,
+            onPageSizeChange: pagination.setPageSize,
+            rowLabel: "loans",
+          }}
+        />
+      </Card>
+    </>
+  );
+}
+
+/**
+ * Approved-applications queue (tab 2). A separate component so its
+ * keyset hook mounts ONLY while this tab is active AND for operators
+ * holding loan_book:create AND applications:view — a stripped role or
+ * a hidden tab fetches NOTHING (the useKeysetList primitive is
+ * consumed unmodified, reuse-first).
  */
 function DisburseQueue({
   columns,
@@ -138,12 +233,6 @@ function DisburseQueue({
   });
   return (
     <Card padded={false}>
-      <div className={styles.queueHead}>
-        <span>Disbursement queue</span>
-        <span className={styles.queueNote}>
-          Committee-approved applications awaiting funding
-        </span>
-      </div>
       <KeysetTable
         columns={columns}
         query={queue}
@@ -155,29 +244,13 @@ function DisburseQueue({
   );
 }
 
+type LoansTabId = "all" | "queue";
+
 export function LoansScreen() {
   const permissions = usePermissions();
   const products = useProducts();
-  const [status, setStatusRaw] = useState<LoanStatus | "">("");
-  const [classification, setClassificationRaw] = useState<LoanClass | "">("");
-  const pagination = useKeysetPagination();
-
-  // Filter changes restart from page 0 (the fetch starts a new keyset walk).
-  function setStatus(next: LoanStatus | "") {
-    setStatusRaw(next);
-    pagination.setPageIndex(0);
-  }
-  function setClassification(next: LoanClass | "") {
-    setClassificationRaw(next);
-    pagination.setPageIndex(0);
-  }
+  const [activeTab, setActiveTab] = useState<LoansTabId>("all");
   const [drawer, setDrawer] = useState<DrawerState>(null);
-
-  const filters: LoanListFilters = { status, classification };
-  const list = useKeysetList<Loan>({
-    queryKey: ["loans", "list", filters, pagination.pageSize],
-    fetchPage: (cursor) => fetchLoansPage(filters, cursor, pagination.pageSize),
-  });
 
   // The disbursement queue consumes the approved-applications list
   // READ-ONLY from the applications module; the POST itself is guarded
@@ -200,9 +273,10 @@ export function LoansScreen() {
         // Identifier doctrine: number — name, resolved server-side on
         // the row; the uuid stays machine identity (title).
         loan.member_no !== null ? (
-          <span title={loan.member_id}>
-            {loan.member_no} — {loan.member_name}
-          </span>
+          <div title={loan.member_id}>
+            <div className={styles.cellStrong}>{loan.member_name}</div>
+            <div className={styles.cellSub}>{loan.member_no}</div>
+          </div>
         ) : (
           <span className={styles.mono} title={loan.member_id}>
             {loan.member_id.slice(0, 8)}
@@ -254,9 +328,10 @@ export function LoansScreen() {
       header: "Member",
       render: (app) =>
         app.member_no !== null ? (
-          <span title={app.member_id}>
-            {app.member_no} — {app.member_name}
-          </span>
+          <div title={app.member_id}>
+            <div className={styles.cellStrong}>{app.member_name}</div>
+            <div className={styles.cellSub}>{app.member_no}</div>
+          </div>
         ) : (
           <span className={styles.mono} title={app.member_id}>
             {app.member_id.slice(0, 8)}
@@ -296,76 +371,61 @@ export function LoansScreen() {
     },
   ];
 
+  const tabs: TabDef[] = mayDisburse
+    ? [
+      { id: "all", label: "All loans" },
+      { id: "queue", label: "Disbursement queue" },
+    ]
+    : [{ id: "all", label: "All loans" }];
+
   return (
-    <Card>
+    <div>
       <div className={styles.section}>
         <PortfolioSummaryStrip />
       </div>
 
-      {mayDisburse && (
-        <div className={styles.section}>
-          <DisburseQueue
-            columns={queueColumns}
-            onDisburse={(applicationId) => setDrawer({ mode: "disburse", applicationId })}
-          />
-        </div>
-      )}
-
-      <div className={styles.toolbar}>
-        <div className={styles.filters}>
-          <FilterControl
-            id="loan-status-filter"
-            label="Status"
-            value={status}
-            onChange={setStatus}
-            options={LOAN_STATUSES.map((option) => ({
-              value: option,
-              label: LOAN_STATUS_LABELS[option],
-            }))}
-          />
-          <FilterControl
-            id="loan-class-filter"
-            label="Classification"
-            value={classification}
-            onChange={setClassification}
-            options={LOAN_CLASSES.map((option) => ({
-              value: option,
-              label: LOAN_CLASS_LABELS[option],
-            }))}
-          />
-        </div>
+      <div className={styles.section}>
+        <TabList
+          idPrefix="loans"
+          tabs={tabs}
+          activeId={activeTab}
+          onChange={(next) => setActiveTab(next as LoansTabId)}
+          ariaLabel="Loan views"
+        />
       </div>
-      <Card padded={false}>
-        <KeysetTable
-          columns={loanColumns}
-          query={list}
-          rowKey={(loan) => loan.id}
-          emptyMessage="No loans match this filter."
-          onRowClick={(loan) => setDrawer({ mode: "loan", loanId: loan.id })}
-          pagination={{
-            pageIndex: pagination.pageIndex,
-            pageSize: pagination.pageSize,
-            onPageChange: pagination.setPageIndex,
-            onPageSizeChange: pagination.setPageSize,
-            rowLabel: "loans",
-          }}
-        />
-      </Card>
+      <Card>
 
-      {drawer !== null && drawer.mode === "loan" && (
-        <LoanDetailDrawer
-          loanId={drawer.loanId}
-          products={products.data ?? []}
-          onClose={() => setDrawer(null)}
-        />
-      )}
-      {drawer !== null && drawer.mode === "disburse" && (
-        <DisburseDialog
-          applicationId={drawer.applicationId}
-          products={products.data ?? []}
-          onClose={() => setDrawer(null)}
-        />
-      )}
-    </Card>
+        <TabPanel idPrefix="loans" activeTabId={activeTab}>
+          {activeTab === "all" && (
+            <LoansRegister
+              columns={loanColumns}
+              onOpenLoan={(loanId) => setDrawer({ mode: "loan", loanId })}
+            />
+          )}
+
+          {activeTab === "queue" && mayDisburse && (
+            <DisburseQueue
+              columns={queueColumns}
+              onDisburse={(applicationId) => setDrawer({ mode: "disburse", applicationId })}
+            />
+          )}
+        </TabPanel>
+
+        {drawer !== null && drawer.mode === "loan" && (
+          <LoanDetailDrawer
+            loanId={drawer.loanId}
+            products={products.data ?? []}
+            onClose={() => setDrawer(null)}
+          />
+        )}
+        {drawer !== null && drawer.mode === "disburse" && (
+          <DisburseDialog
+            applicationId={drawer.applicationId}
+            products={products.data ?? []}
+            onClose={() => setDrawer(null)}
+          />
+        )}
+      </Card>
+    </div>
   );
 }

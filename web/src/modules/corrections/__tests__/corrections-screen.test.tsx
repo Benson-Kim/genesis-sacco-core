@@ -39,6 +39,8 @@ import { clearVotedWriteOffs, hasVotedOnWriteOff, recordVotedWriteOff } from "..
 import { adjustmentSchema, writeOffSchema, type AdjustmentRecord, type WriteOffRecord } from "../schemas";
 import * as correctionsApi from "../api";
 import * as membersApi from "@/modules/members/api";
+import * as loansApi from "@/modules/loans/api";
+import type { Loan } from "@/modules/loans/schemas";
 
 jest.mock("../api", () => {
   const actual = jest.requireActual<typeof import("../api")>("../api");
@@ -63,7 +65,16 @@ jest.mock("../api", () => {
 
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
   fetchMember: jest.fn(),
+}));
+
+// #35 item 14 loan picker (WriteOffRequestDrawer): the write-off
+// request drawer selects a loan from a keyset list — never a typed
+// raw uuid.
+jest.mock("@/modules/loans/api", () => ({
+  fetchLoansPage: jest.fn(),
 }));
 
 jest.mock("@/modules/authz/usePermissions", () => ({
@@ -72,6 +83,7 @@ jest.mock("@/modules/authz/usePermissions", () => ({
 
 const mocked = jest.mocked(correctionsApi);
 const mockedMembers = jest.mocked(membersApi);
+const mockedLoans = jest.mocked(loansApi);
 const mockedPermissions = jest.mocked(usePermissions);
 
 const ADMIN_ID = "99999999-9999-9999-9999-999999999999";
@@ -82,8 +94,10 @@ const REPAYMENT_ID = "33333333-4444-5555-6666-777777777777";
 const ADJ_ID = "aaaaaaaa-1111-2222-3333-444444444444";
 const WO_ID = "bbbbbbbb-1111-2222-3333-444444444444";
 
-const ADJ_PHRASE = ADJ_ID.slice(0, 8);
-const WO_PHRASE = WO_ID.slice(0, 8);
+// The typed-confirmation phrase is the affected MEMBER's number — never
+// a uuid fragment (both fixtures below carry member_no "M-0001").
+const ADJ_PHRASE = "M-0001";
+const WO_PHRASE = "M-0001";
 
 // Attacker-influenced free text on this module (the reason fields) —
 // must render as inert text (named XSS threat). Built without the
@@ -238,6 +252,31 @@ const MEMBER = {
   version: 3,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
+};
+
+/** The #35 item 14 loan picker's candidate (WriteOffRequestDrawer) —
+ * the operator SELECTS this, never types the uuid. */
+const LOAN: Loan = {
+  id: LOAN_ID,
+  application_id: "55555555-5555-5555-5555-555555555555",
+  member_id: MEMBER_ID,
+  product_id: "66666666-6666-6666-6666-666666666666",
+  principal: "50000.00",
+  balance: "40000.00",
+  rate_pct: "12.00",
+  term_months: 24,
+  status: "active",
+  classification: "loss",
+  days_past_due: 400,
+  provision_pct: "100.00",
+  penalty_due: "1500.10",
+  disbursed_at: "2026-01-01T00:00:00Z",
+  closed_at: null,
+  version: 2,
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
+  product_name: "Development Loan",
 };
 
 const FULL_PERMS = {
@@ -277,23 +316,23 @@ function mountScreen() {
   );
 }
 
-/** Open the adjustment review drawer through the by-id lookup (cleared
- * first — the field keeps its value across drawer opens). */
+/** Open the adjustment review drawer by clicking its REGISTER ROW.
+ * The by-id lookup card is gone: it took a raw UUID, which #35 item 14
+ * removed from every operator surface. The register is now the only
+ * way in — which is also how a checker actually works (pending first). */
 async function openAdjustmentDetail(user: ReturnType<typeof userEvent.setup>) {
-  const lookup = await screen.findByLabelText("Review adjustment by id");
-  await user.clear(lookup);
-  await user.type(lookup, ADJ_ID);
-  await user.click(screen.getByRole("button", { name: "Open adjustment" }));
+  const rows = await screen.findAllByRole("button", { name: /500\.00/ });
+  await user.click(rows[0]!);
   return await screen.findByRole("dialog", { name: "Repayment adjustment" });
 }
 
 /** Open the write-off drawer through the by-id lookup (cleared first —
  * the field keeps its value across drawer opens within one mount). */
 async function openWriteOffDetail(user: ReturnType<typeof userEvent.setup>) {
-  const lookup = await screen.findByLabelText("Open write-off by id");
-  await user.clear(lookup);
-  await user.type(lookup, WO_ID);
-  await user.click(screen.getByRole("button", { name: "Open write-off" }));
+  // The write-offs register lives behind its own tab.
+  await user.click(await screen.findByRole("tab", { name: "Write-offs" }));
+  const rows = await screen.findAllByRole("button", { name: /77,777\.77/ });
+  await user.click(rows[0]!);
   return await screen.findByRole("dialog", { name: "Loan write-off" });
 }
 
@@ -315,9 +354,18 @@ beforeEach(() => {
   clearVotedWriteOffs();
   grantPermissions(FULL_PERMS);
   mocked.fetchAdjustment.mockResolvedValue(pendingAdjustment());
-  // Registers default EMPTY: the register tests seed their own pages.
-  mocked.fetchAdjustmentsPage.mockResolvedValue({ items: [], nextCursor: null });
-  mocked.fetchWriteOffsPage.mockResolvedValue({ items: [], nextCursor: null });
+  // Registers default POPULATED: with the by-id lookup cards retired
+  // (#35 item 14), the register row IS the way into a record — so the
+  // shared open helpers need a row to click. Tests that assert empty
+  // or bespoke pages override these.
+  mocked.fetchAdjustmentsPage.mockResolvedValue({
+    items: [pendingAdjustment()],
+    nextCursor: null,
+  });
+  mocked.fetchWriteOffsPage.mockResolvedValue({
+    items: [requestedWriteOff()],
+    nextCursor: null,
+  });
   mocked.requestAdjustment.mockResolvedValue(pendingAdjustment());
   mocked.approveAdjustment.mockResolvedValue(ADJUSTMENT_RESULT);
   mocked.rejectAdjustment.mockResolvedValue(
@@ -332,28 +380,24 @@ beforeEach(() => {
   mocked.fetchRecoveryReceiptsPage.mockResolvedValue(EMPTY_RECEIPTS_PAGE);
   mocked.postFee.mockResolvedValue(FEE_RESULT);
   mockedMembers.fetchMembersPage.mockResolvedValue({ items: [MEMBER], nextCursor: null });
+  mockedMembers.lookupMemberByNo.mockResolvedValue(MEMBER);
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
   mockedMembers.fetchMember.mockResolvedValue(MEMBER);
+  mockedLoans.fetchLoansPage.mockResolvedValue({ items: [LOAN], nextCursor: null });
 });
 
 afterEach(() => {
   clearSession();
 });
 
-test("lookup fields validate the UUID shape BEFORE any fetch — garbage never leaves the screen", async () => {
-  const user = userEvent.setup();
-  mountScreen();
-
-  await user.type(await screen.findByLabelText("Review adjustment by id"), "not-a-uuid");
-  await user.click(screen.getByRole("button", { name: "Open adjustment" }));
-  expect(await screen.findByText(/full adjustment UUID/)).toBeInTheDocument();
-  expect(mocked.fetchAdjustment).not.toHaveBeenCalled();
-
-  await user.type(screen.getByLabelText("Open write-off by id"), "also-garbage");
-  await user.click(screen.getByRole("button", { name: "Open write-off" }));
-  expect(await screen.findByText(/full write-off UUID/)).toBeInTheDocument();
-  expect(mocked.fetchWriteOff).not.toHaveBeenCalled();
-});
-
+/*
+ * RETIRED: "lookup fields validate the UUID shape BEFORE any fetch".
+ * Both by-id lookup cards were removed with #35 item 14 — an operator
+ * never types a raw UUID anywhere, so there is no shape to validate and
+ * no garbage to keep off the wire. The replacement guarantee (records
+ * are reached from the register, never by typed id) is exercised by
+ * openAdjustmentDetail / openWriteOffDetail in every drawer test below.
+ */
 test("hostile reason renders as inert TEXT in the adjustment drawer (named XSS threat)", async () => {
   const user = userEvent.setup();
   mocked.fetchAdjustment.mockResolvedValue(pendingAdjustment({ reason: HOSTILE_REASON }));
@@ -397,12 +441,14 @@ test("deny-by-default: a view-only role gets NO maker affordances and NO checker
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("Repayment adjustments");
+  await screen.findByRole("tab", { name: "Adjustments" });
   expect(screen.queryByRole("button", { name: "+ Request adjustment" })).toBeNull();
   expect(screen.queryByRole("button", { name: "+ Post fee" })).toBeNull();
   expect(screen.queryByRole("button", { name: "+ Request write-off" })).toBeNull();
-  // Structural: the stripped role never even fetches the member picker.
+  // Structural: the stripped role never probes for a member at all —
+  // neither the register list nor the picker's exact-match lookup.
   expect(mockedMembers.fetchMembersPage).not.toHaveBeenCalled();
+  expect(mockedMembers.lookupMemberByNo).not.toHaveBeenCalled();
 
   const adjDrawer = await openAdjustmentDetail(user);
   expect(
@@ -442,15 +488,19 @@ test("SoD SERVER TRUTH (the !70 pattern): a maker_id matching the signed-in chec
   expect(mocked.approveAdjustment).not.toHaveBeenCalled();
 });
 
-test("attribution (the !70 pattern): maker/checker render as the bare-UUID SHORT id with the full UUID on title; NULL checker is the honest '— (undecided)'; NO directory record is ever fetched", async () => {
+test("attribution (the !70 pattern): maker/checker render WITHOUT a raw staff uuid anywhere — only the viewer's OWN attribution is ever distinguished; NULL checker is the honest '— (undecided)'; NO directory record is ever fetched", async () => {
   const user = userEvent.setup();
   mountScreen();
 
   const drawer = await openAdjustmentDetail(user);
   await within(drawer).findByText("Record version");
-  const makerCell = within(drawer).getAllByTitle(OTHER_OFFICER_ID)[0];
-  expect(makerCell).toHaveTextContent(OTHER_OFFICER_ID.slice(0, 8));
+  // The maker is a DIFFERENT officer (OTHER_OFFICER_ID !== the signed-in
+  // ADMIN_ID) — the row reads "A different officer", never a uuid
+  // fragment and never a title attribute carrying the full id.
+  expect(within(drawer).getByText("A different officer")).toBeInTheDocument();
   expect(within(drawer).getByText("— (undecided)")).toBeInTheDocument();
+  expect(within(drawer).queryByText(OTHER_OFFICER_ID.slice(0, 8))).toBeNull();
+  expect(within(drawer).queryByTitle(OTHER_OFFICER_ID)).toBeNull();
   // Least disclosure: the staff UUID is NEVER resolved to a person.
   expect(mockedMembers.fetchMember).not.toHaveBeenCalled();
   expect(within(drawer).queryByText(/@/)).toBeNull();
@@ -734,8 +784,10 @@ test("FEE: NO amount field exists anywhere (FM5/v1.1 rule 1); the result renders
   // The one thing this drawer must never offer: an amount entry.
   expect(within(drawer).queryByLabelText(new RegExp("amount", "i"))).toBeNull();
 
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
-  await within(drawer).findByText(/Member verified: Jane Wanjiku · M-0001/);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
+  await within(drawer).findByText(/Jane Wanjiku · M-0001/, { selector: "div.formNote" });
   await user.selectOptions(within(drawer).getByLabelText("Channel"), "mpesa");
   await user.click(within(drawer).getByRole("button", { name: "Post fee…" }));
   const confirm = await armDanger(user, "Post fee", "M-0001");
@@ -757,7 +809,9 @@ test("FEE: NO amount field exists anywhere (FM5/v1.1 rule 1); the result renders
   mountScreen();
   await user.click(await screen.findByRole("button", { name: "+ Post fee" }));
   const drawer2 = await screen.findByRole("dialog", { name: "Post misc fee" });
-  await user.selectOptions(await within(drawer2).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer2).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer2).findByText(/Member found: Jane Wanjiku/);
   expect(await within(drawer2).findByText(/This member has EXITED/)).toBeInTheDocument();
   expect(within(drawer2).getByRole("button", { name: "Post fee…" })).toBeDisabled();
   expect(mocked.postFee).toHaveBeenCalledTimes(1);
@@ -779,9 +833,10 @@ test("MAKER REQUEST (adjustment): one write per intent; the result panel renders
   await waitFor(() => expect(mocked.requestAdjustment).toHaveBeenCalledTimes(1));
   expect(mocked.requestAdjustment.mock.calls[0]?.[0]).toBe(REPAYMENT_ID);
   expect(await screen.findByText(/Adjustment requested · awaiting a distinct checker/)).toBeInTheDocument();
-  // The record id renders, and the panel points the checker at the
-  // register the (a).1 contract expansion delivered.
-  expect(within(drawer).getByText(ADJ_ID)).toBeInTheDocument();
+  // The affected MEMBER renders (never the adjustment's own raw uuid),
+  // and the panel points the checker at the register the (a).1
+  // contract expansion delivered.
+  expect(within(drawer).getByText(/M-0001/)).toBeInTheDocument();
   expect(
     within(drawer).getByText(/leads the pending-adjustments\s+checker register/),
   ).toBeInTheDocument();
@@ -794,10 +849,13 @@ test("MAKER REQUEST (write-off): success records the per-tab SoD witness for THI
 
   await user.click(await screen.findByRole("button", { name: "+ Request write-off" }));
   const drawer = await screen.findByRole("dialog", { name: "Request loan write-off" });
-  await user.type(within(drawer).getByLabelText("Loan id"), LOAN_ID);
+  // #35 item 14: the loan is SELECTED from the keyset picker — never a
+  // typed raw uuid.
+  await user.selectOptions(await within(drawer).findByLabelText("Loan"), LOAN_ID);
+  await within(drawer).findByText(/Selected: Jane Wanjiku/);
   await user.type(within(drawer).getByLabelText("Reason"), "Member absconded");
   await user.click(within(drawer).getByRole("button", { name: "Request write-off…" }));
-  await user.click(await armDanger(user, "Request write-off", LOAN_ID.slice(0, 8)));
+  await user.click(await armDanger(user, "Request write-off", "M-0001"));
 
   await waitFor(() => expect(mocked.requestWriteOff).toHaveBeenCalledTimes(1));
   expect(await screen.findByText(/Write-off requested · awaiting committee votes/)).toBeInTheDocument();
@@ -856,40 +914,48 @@ mocked.fetchWriteOffsPage.mockResolvedValue({
 });
 mountScreen();
 
-// Adjustments register: server order preserved row-for-row.
-const adjRows = await screen.findAllByRole("button", { name: new RegExp("KES 500.00") });
+// Adjustments register (the default tab): server order preserved row-for-row.
+const adjRows = await screen.findAllByRole("button", { name: new RegExp("500.00") });
 expect(adjRows.length).toBeGreaterThan(0);
-const tables = screen.getAllByRole("region", { name: "Table" });
-const adjTable = tables[0]!;
+const adjTable = screen.getByRole("region", { name: "Table" });
 const rows = within(adjTable).getAllByRole("button");
 expect(rows[0]).toHaveTextContent("Pending approval");
-expect(rows[0]).toHaveTextContent("KES 500.00");
+expect(rows[0]).toHaveTextContent("500.00");
 expect(rows[1]).toHaveTextContent("Posted");
-expect(rows[1]).toHaveTextContent("KES 999.99");
+expect(rows[1]).toHaveTextContent("999.99");
 // Non-additive fixture (blocker (a)): the component sum is nowhere.
 expect(screen.queryByText("KES 450.10")).toBeNull();
-
-// Write-off register: snapshot figure verbatim, never summed.
-expect(screen.getByText("KES 77,777.77")).toBeInTheDocument();
-expect(screen.queryByText("KES 41,500.10")).toBeNull();
-// Maker attribution: bare-UUID short id (!70 render), full on title.
-expect(within(adjTable).getAllByTitle(OTHER_OFFICER_ID)[0]).toHaveTextContent(
-    OTHER_OFFICER_ID.slice(0, 8),
-);
+// Maker attribution (#35 item 14): "Requested by" renders WITHOUT a
+// raw staff uuid anywhere — both rows' maker is a different officer.
+expect(within(adjTable).getAllByText("Different officer").length).toBeGreaterThan(0);
+expect(within(adjTable).queryByTitle(OTHER_OFFICER_ID)).toBeNull();
 
 // Row click drills into the SAME detail drawer the lookup opens.
 await user.click(rows[0]!);
 expect(await screen.findByRole("dialog", { name: "Repayment adjustment" })).toBeInTheDocument();
 expect(mocked.fetchAdjustment).toHaveBeenCalledWith(ADJ_ID);
+await user.click(screen.getByRole("button", { name: "Close" }));
+
+// Write-off register (its own tab): snapshot figure verbatim, never summed.
+await user.click(screen.getByRole("tab", { name: "Write-offs" }));
+expect(await screen.findByText("KES 77,777.77")).toBeInTheDocument();
+expect(screen.queryByText("KES 41,500.10")).toBeNull();
 });
 
 test("REGISTERS: empty pages render the honest empty message; a failed page renders the shared error alert — never a fabricated register", async () => {
+  const user = userEvent.setup();
+  // This leg is ABOUT the empty page, so it states that explicitly
+  // rather than leaning on the shared default (now populated).
+  mocked.fetchAdjustmentsPage.mockResolvedValue({ items: [], nextCursor: null });
   mocked.fetchWriteOffsPage.mockRejectedValue(new ApiError(500, "internal_error", "corr-reg"));
   mountScreen();
 
   expect(
     await screen.findByText("No repayment adjustments yet — nothing awaits a checker."),
 ).toBeInTheDocument();
+
+  // The write-offs register (its own tab) failed to load.
+  await user.click(screen.getByRole("tab", { name: "Write-offs" }));
   // The Providers default retries queries ONCE (~1s backoff) before
   // surfacing the error state — allow for it (the house pattern; this
   // leg flaked at the default 1s timeout on a loaded runner).

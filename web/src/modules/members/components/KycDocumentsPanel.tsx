@@ -27,15 +27,19 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Pill } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Button,
+  Pill,
+  ErrorBanner,
+  ConflictBanner,
+  announce,
+  useKeysetList,
+  FormField,
+  Input,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
-import { useKeysetList } from "@/modules/table/useKeysetList";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { FormField } from "@/modules/forms/FormField";
 import { createKycDocument, fetchKycDocumentsPage, updateKycDocument } from "../kycApi";
 import {
   DOCUMENT_ACTION_LABELS,
@@ -239,9 +243,8 @@ export function KycDocumentsPanel({
                       error={expiryError === "" ? undefined : expiryError}
                     >
                       {(control) => (
-                        <input
+                        <Input
                           {...control}
-                          className={styles.input}
                           type="date"
                           value={expiryEdit.value}
                           onChange={(event) =>

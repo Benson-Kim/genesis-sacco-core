@@ -38,6 +38,12 @@ describe("Content-Security-Policy", () => {
     expect(scriptSrc).not.toContain("unsafe-eval");
   });
 
+  it("script-src omits unsafe-eval in non-development environments", () => {
+    // buildContentSecurityPolicy reads NODE_ENV internally; the test runner
+    // does not set NODE_ENV=development, so unsafe-eval must be absent here.
+    expect(policy.get("script-src")).not.toContain("unsafe-eval");
+  });
+
   it("denies framing (clickjacking): frame-ancestors 'none'", () => {
     expect(policy.get("frame-ancestors")).toBe("'none'");
     expect(policy.get("frame-src")).toBe("'none'");

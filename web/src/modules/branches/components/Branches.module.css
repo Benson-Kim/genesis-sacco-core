@@ -57,26 +57,6 @@
     margin: 18px 0 8px;
 }
 
-.select {
-    width: 100%;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    font-size: 13px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.input {
-    width: 100%;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    font-size: 13px;
-    background: var(--card);
-    color: var(--ink);
-}
-
 .detailGrid {
     margin: 14px 0;
 }

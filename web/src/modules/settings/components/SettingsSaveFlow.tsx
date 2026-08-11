@@ -20,10 +20,14 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal } from "@genesis/design-system";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { updateSettings, type UpdateSettingsInput } from "../api";
 import type { Settings } from "../schemas";

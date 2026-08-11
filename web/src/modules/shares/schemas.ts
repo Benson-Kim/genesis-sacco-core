@@ -30,8 +30,10 @@ import { moneySchema } from "@/lib/schemas";
  * two different members and are never summed, netted or reconciled
  * client-side.
  *
- * LEAST DISCLOSURE: register rows carry bare UUIDs (the / short-id convention) and NO balance snapshot — the audit rows hold
- * the exact figures server-side.
+ * LEAST DISCLOSURE: the UI never renders a raw member/transfer UUID —
+ * rows and drawers identify members by member_no/name (resolved
+ * SERVER-side in the same read statement) and carry NO balance
+ * snapshot; the audit rows hold the exact figures server-side.
  */
 
 export const TRANSFER_STATUSES = ["pending", "posted", "rejected"] as const;
@@ -93,21 +95,18 @@ export const shareTransferResultSchema = z.object({
 
 export type ShareTransferResult = z.infer<typeof shareTransferResultSchema>;
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Client-side pre-validation of the maker's request form (the server re-validates and is the enforcer — least disclosure: 2dp bound at the contract, balance check under the full lock set, active-member and distinct-members checks server-side; self-transfer is ALSO a 0020 DB CHECK).
+ *
+ * Both member ids are RESOLVED ids (the #35 item 14 lookup-by-number/
+ * id-number pattern — the operator never types or sees a raw UUID);
+ * the fields still carry the id VALUE for the wire, just never as
+ * free-typed or displayed operator input.
  */
 export const transferEntrySchema = z
   .object({
-    from_member_id: z
-      .string()
-      .min(1, "The transferring member id is required.")
-      .regex(UUID_RE, "Enter the full member UUID (8-4-4-4-12 hex)."),
-    to_member_id: z
-      .string()
-      .min(1, "The receiving member id is required.")
-      .regex(UUID_RE, "Enter the full member UUID (8-4-4-4-12 hex)."),
+    from_member_id: z.string().min(1, "Look up and select the transferring member."),
+    to_member_id: z.string().min(1, "Look up and select the receiving member."),
     amount: z
       .string()
       .min(1, "Enter the amount to transfer.")
@@ -121,9 +120,11 @@ export const transferEntrySchema = z
   })
   .superRefine((entry, ctx) => {
     // The server refuses a self-transfer regardless; refusing it here
-    // saves the operator a pointless armed confirmation.
+    // saves the operator a pointless armed confirmation. Case-insensitive
+    // (defense in depth): resolved ids are always consistently cased in
+    // practice, but the comparison stays robust regardless.
     if (
-      UUID_RE.test(entry.from_member_id) &&
+      entry.from_member_id !== "" &&
       entry.from_member_id.toLowerCase() === entry.to_member_id.toLowerCase()
     ) {
       ctx.addIssue({

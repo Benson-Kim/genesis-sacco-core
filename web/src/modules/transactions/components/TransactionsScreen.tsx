@@ -24,26 +24,28 @@
  *   reproduced (no API endpoint serves ledger totals; recorded as an
  *   honest limitation).
  */
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card, FilterControl } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Button,
+  Card,
+  FilterControl,
+  SelectFilter,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+  Input,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { fmtDateTime, fmtKes } from "@/lib/format";
-import { FormField } from "@/modules/forms/FormField";
-import { fetchMembersPage } from "@/modules/members/api";
-import type { Member } from "@/modules/members/schemas";
+import { fmtAmount, fmtDateTimeParts } from "@/lib/format";
 import type { ExportFilterDraft } from "@/modules/reports/schemas";
 import { EMPTY_TXN_FILTERS, fetchTransactionsPage, type TxnListFilters } from "../api";
 import {
   CHANNELS,
   CHANNEL_LABELS,
   DATE_RE,
-  SIDES,
-  SIDE_LABELS,
   TXN_TYPES,
   TXN_TYPE_LABELS,
   type Transaction,
@@ -106,58 +108,36 @@ export function exportDraftFromFilters(filters: TxnListFilters): Partial<ExportF
   return draft;
 }
 
+
 /**
- * Member filter — a separate component so its keyset hook mounts ONLY
- * for operators holding members:view (a stripped role fetches NOTHING;
- * the useKeysetList primitive is consumed unmodified, reuse-first).
+ * Hand-computable preset window: [today - (N-1) days, today] on the
+ * local clock. Module-level so the MOUNT default and the change handler
+ * derive the window from ONE rule — the selected preset and the filters
+ * actually sent can never disagree.
  */
-function MemberFilter({
-  value,
-  onChange,
-}: Readonly<{
-  value: string;
-  onChange: (memberId: string) => void;
-}>) {
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "", type: "" }, cursor),
-  });
-  const options = members.data?.pages.flatMap((page) => page.items) ?? [];
-  return (
-    <div className={styles.filterGroup}>
-      <FormField id="txn-filter-member" label="Member">
-        {(control) => (
-          <select
-            {...control}
-            className={`${styles.select} ${styles.filterControl}`}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          >
-            <option value="">All members</option>
-            {options.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name} · {member.member_no}
-              </option>
-            ))}
-          </select>
-        )}
-      </FormField>
-      {members.hasNextPage && (
-        <Button
-          type="button"
-          onClick={() => void members.fetchNextPage()}
-          disabled={members.isFetchingNextPage}
-        >
-          {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-        </Button>
-      )}
-    </div>
-  );
+function presetWindow(preset: "today" | "7d" | "30d"): { from: string; to: string } {
+  const spanDays = preset === "today" ? 1 : preset === "7d" ? 7 : 30;
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(to.getDate() - (spanDays - 1));
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { from: iso(from), to: iso(to) };
 }
 
 export function TransactionsScreen() {
   const permissions = usePermissions();
-  const [filters, setFiltersRaw] = useState<TxnListFilters>(EMPTY_TXN_FILTERS);
+
+  // The default "today" window, from the SAME rule the change handler
+  // uses — so the selected preset and the filters actually sent agree.
+  const todayIso = presetWindow("today").to;
+
+  // Default to today's date range so the list opens on current day's activity.
+  const [filters, setFiltersRaw] = useState<TxnListFilters>({
+    ...EMPTY_TXN_FILTERS,
+    date_from: todayIso,
+    date_to: todayIso,
+  });
   const pagination = useKeysetPagination();
 
   // Filter changes restart from page 0 (the fetch starts a new keyset walk).
@@ -167,18 +147,22 @@ export function TransactionsScreen() {
   };
   // Text/date filters stage locally and apply on submit (one server
   // round-trip per applied filter set, not per keystroke).
-  const [refDraft, setRefDraft] = useState("");
   // Free-text search (ref prefix / member number / name
   // prefix) — a SERVER query parameter, staged and applied like the
   // other drafts; nothing is filtered locally.
   const [searchDraft, setSearchDraft] = useState("");
-  const [fromDraft, setFromDraft] = useState("");
-  const [toDraft, setToDraft] = useState("");
   const [draftError, setDraftError] = useState("");
-  // Date presets. Presets are a CLIENT-SIDE convenience
-  // that compute the two existing declared params (date_from/date_to);
-  // the server never sees a preset token. "" (All) sends no date keys.
-  const [datePreset, setDatePreset] = useState<"" | "today" | "7d" | "30d" | "custom">("");
+
+  // Date presets — CLIENT-SIDE convenience that populates date_from/date_to;
+  // the server never sees a preset token. Starts on "today".
+  const [datePreset, setDatePreset] = useState<"" | "today" | "7d" | "30d" | "custom">("today");
+  // Anchor for the custom-range panel's outside-click dismissal. The
+  // panel's visibility is its OWN state, not the preset: dismissing the
+  // panel must not change which filter is selected.
+  const datePanelRef = useRef<HTMLDivElement | null>(null);
+  const [datePanelOpen, setDatePanelOpen] = useState(false);
+  const [fromDraft, setFromDraft] = useState(todayIso);
+  const [toDraft, setToDraft] = useState(todayIso);
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   const list = useKeysetList<Transaction>({
@@ -197,8 +181,26 @@ export function TransactionsScreen() {
   // reports:view) — hidden, not disabled, for unentitled roles.
   const mayExport = can(permissions.data, "reports", "view");
 
-  function applyDrafts(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
+    if (!datePanelOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      const anchor = datePanelRef.current;
+      if (anchor !== null && !anchor.contains(event.target as Node)) {
+        // Dismissal only CLOSES the panel: whatever is staged stays
+        // staged, and drafts still become server params exclusively on
+        // an explicit apply.
+        setDatePanelOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [datePanelOpen]);
+
+  // The event is optional so the custom-range panel's own button can
+  // drive the SAME apply path as the toolbar form's submit — one
+  // validation/staging rule, never a second copy.
+  function applyDrafts(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     // Manual entry can bypass type="date" in some browsers (review T4)
     // — validate the ISO shape before it becomes a server query param.
     const fromValue = fromDraft.trim();
@@ -216,7 +218,6 @@ export function TransactionsScreen() {
     setDatePreset(fromValue === "" && toValue === "" ? "" : "custom");
     setFilters((current) => ({
       ...current,
-      ref: refDraft.trim(),
       search: searchDraft.trim(),
       date_from: fromValue,
       date_to: toValue,
@@ -225,22 +226,21 @@ export function TransactionsScreen() {
 
   function applyDatePreset(preset: "" | "today" | "7d" | "30d" | "custom") {
     setDatePreset(preset);
-    if (preset === "custom") return; // manual from/to inputs take over
+    setDatePanelOpen(false);
+    if (preset === "custom") {
+      // Opening the panel pre-sets the END of the range to today, so the
+      // operator only picks a start date in the common "since X" case.
+      if (toDraft.trim() === "") setToDraft(presetWindow("today").to);
+      setDatePanelOpen(true);
+      return; // the panel's from/to inputs take over from here
+    }
     if (preset === "") {
       setFromDraft("");
       setToDraft("");
       setFilters((current) => ({ ...current, date_from: "", date_to: "" }));
       return;
     }
-    // Hand-computable window: [today - (N-1) days, today], local clock.
-    const spanDays = preset === "today" ? 1 : preset === "7d" ? 7 : 30;
-    const to = new Date();
-    const from = new Date(to);
-    from.setDate(to.getDate() - (spanDays - 1));
-    const iso = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const fromValue = iso(from);
-    const toValue = iso(to);
+    const { from: fromValue, to: toValue } = presetWindow(preset);
     setFromDraft(fromValue);
     setToDraft(toValue);
     setDraftError("");
@@ -251,7 +251,15 @@ export function TransactionsScreen() {
     {
       key: "date",
       header: "Date",
-      render: (txn) => <span className={styles.muted}>{fmtDateTime(txn.occurred_at)}</span>,
+      render: (txn) => {
+        const { date, time } = fmtDateTimeParts(txn.occurred_at);
+        return (
+          <div className={styles.dateTime}>
+            <span className={styles.date}>{date}</span>
+            {time && <span className={styles.time}>{time}</span>}
+          </div>
+        );
+      },
     },
     {
       key: "ref",
@@ -272,15 +280,13 @@ export function TransactionsScreen() {
       key: "member",
       header: "Member",
       render: (txn) =>
-        // Identifier doctrine: rows label the member as number — name,
-        // resolved server-side on the row itself; the uuid stays the
-        // machine identity on the title attribute.
         txn.member_id === null ? (
           <span className={styles.muted}>—</span>
         ) : txn.member_no !== null ? (
-          <span title={txn.member_id}>
-            {txn.member_no} — {txn.member_name}
-          </span>
+          <div title={txn.member_id}>
+            <div className={styles.cellStrong}>{txn.member_name}</div>
+            <div className={styles.cellSub}>{txn.member_no} </div>
+          </div>
         ) : (
           <span className={styles.mono} title={txn.member_id}>
             {txn.member_id.slice(0, 8)}
@@ -303,24 +309,24 @@ export function TransactionsScreen() {
     },
     {
       key: "debit",
-      header: "Debit",
+      header: "Debit (KES)",
       align: "right",
       render: (txn) =>
         // The SERVER-reported direction places the amount; the other
         // column stays em-dash. Never netted, never summed (blocker (a)).
         txn.direction === "debit" ? (
-          <span className={styles.drCell}>{fmtKes(txn.amount)}</span>
+          <span className={styles.drCell}>{fmtAmount(txn.amount)}</span>
         ) : (
           <span className={styles.emptyCell}>—</span>
         ),
     },
     {
       key: "credit",
-      header: "Credit",
+      header: "Credit (KES)",
       align: "right",
       render: (txn) =>
         txn.direction === "credit" ? (
-          <span className={styles.crCell}>{fmtKes(txn.amount)}</span>
+          <span className={styles.crCell}>{fmtAmount(txn.amount)}</span>
         ) : (
           <span className={styles.emptyCell}>—</span>
         ),
@@ -328,196 +334,181 @@ export function TransactionsScreen() {
   ];
 
   return (
-    <Card>
-      <div className={styles.toolbar}>
-        <div className={styles.filters}>
-          <FilterControl
-            id="txn-filter-type"
-            label="Type"
-            value={filters.type}
-            onChange={(next) =>
-              setFilters((current) => ({
-                ...current,
-                type: next as TxnListFilters["type"],
-              }))
-            }
-            options={TXN_TYPES.map((option) => ({
-              value: option,
-              label: TXN_TYPE_LABELS[option],
-            }))}
-            allLabel="All types"
-          />
-          <FilterControl
-            id="txn-filter-channel"
-            label="Channel"
-            value={filters.channel}
-            onChange={(next) =>
-              setFilters((current) => ({
-                ...current,
-                channel: next as TxnListFilters["channel"],
-              }))
-            }
-            options={CHANNELS.map((option) => ({
-              value: option,
-              label: CHANNEL_LABELS[option],
-            }))}
-            allLabel="All channels"
-          />
-          <FilterControl
-            id="txn-filter-direction"
-            label="Direction"
-            value={filters.direction}
-            onChange={(next) =>
-              setFilters((current) => ({
-                ...current,
-                direction: next as TxnListFilters["direction"],
-              }))
-            }
-            options={SIDES.map((option) => ({
-              value: option,
-              label: SIDE_LABELS[option],
-            }))}
-          />
-          {mayViewMembers && (
-            <MemberFilter
-              value={filters.member_id}
-              onChange={(memberId) =>
-                setFilters((current) => ({ ...current, member_id: memberId }))
+    <div>
+      <div className={styles.toolbarActions}>
+        {mayExport && (
+          <Button type="button" onClick={() => setDrawer({ mode: "export" })}>
+            Export
+          </Button>
+        )}
+        {mayRunInterest && (
+          <Button type="button" onClick={() => setDrawer({ mode: "interest" })}>
+            Run deposit interest
+          </Button>
+        )}
+        {mayPost && (
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setDrawer({ mode: "post" })}
+          >
+            + Post transaction
+          </Button>
+        )}
+      </div>
+      <Card>
+        <div className={styles.toolbar}>
+          <div className={styles.filters}>
+            <FilterControl
+              id="txn-filter-type"
+              label="Type"
+              value={filters.type}
+              onChange={(next) =>
+                setFilters((current) => ({
+                  ...current,
+                  type: next as TxnListFilters["type"],
+                }))
               }
+              options={TXN_TYPES.map((option) => ({
+                value: option,
+                label: TXN_TYPE_LABELS[option],
+              }))}
+              allLabel="All types"
             />
-          )}
-          <FilterControl
-            id="txn-filter-date-preset"
-            label="Date"
-            value={datePreset}
-            onChange={(next) => applyDatePreset(next)}
-            options={(
-              [
-                ["today", "Today"],
-                ["7d", "Last 7 days"],
-                ["30d", "Last 30 days"],
-                ["custom", "Custom range"],
-              ] as const
-            ).map(([preset, label]) => ({ value: preset, label }))}
-          />
-          <form className={styles.filters} onSubmit={applyDrafts} noValidate>
-            <FormField id="txn-filter-search" label="Search (ref or member)">
-              {(control) => (
-                <input
-                  {...control}
-                inputMode="search"
-                  className={`${styles.input} ${styles.filterControl}`}
+            <SelectFilter
+              id="txn-filter-channel"
+              label="Channel"
+              value={filters.channel}
+              onChange={(next) =>
+                setFilters((current) => ({
+                  ...current,
+                  channel: next as TxnListFilters["channel"],
+                }))
+              }
+              options={CHANNELS.map((option) => ({
+                value: option,
+                label: CHANNEL_LABELS[option],
+              }))}
+              allLabel="All channels"
+            />
+
+            {/* "Custom range" opens the two date fields in a panel
+                anchored to this control (the select's own panel
+                metaphor) instead of expanding the toolbar row. */}
+            <div className={styles.datePanelAnchor} ref={datePanelRef}>
+              <SelectFilter
+                id="txn-filter-date-preset"
+                label="Date"
+                value={datePreset}
+                onChange={(next) => applyDatePreset(next as "" | "today" | "7d" | "30d" | "custom")}
+                options={(
+                  [
+                    ["today", "Today"],
+                    ["7d", "Last 7 days"],
+                    ["30d", "Last 30 days"],
+                    ["custom", "Custom range"],
+                  ] as const
+                ).map(([preset, label]) => ({ value: preset, label }))}
+                allLabel="All"
+              />
+              {datePreset === "custom" && datePanelOpen && (
+                <div className={styles.datePanel} role="group" aria-label="Custom date range">
+                  <div className={styles.datePanelRow}>
+                    <label className={styles.datePanelLabel} htmlFor="txn-date-from">
+                      From
+                    </label>
+                    <Input
+                      id="txn-date-from"
+                      type="date"
+                      value={fromDraft}
+                      onChange={(e) => setFromDraft(e.target.value)}
+                      aria-label="Date from"
+                    />
+                  </div>
+                  <div className={styles.datePanelRow}>
+                    <label className={styles.datePanelLabel} htmlFor="txn-date-to">
+                      To
+                    </label>
+                    <Input
+                      id="txn-date-to"
+                      type="date"
+                      value={toDraft}
+                      onChange={(e) => setToDraft(e.target.value)}
+                      aria-label="Date to"
+                    />
+                  </div>
+                  {/* Same submit path as the toolbar form: the drafts
+                      only become server params on an explicit apply. */}
+                  <Button type="button" onClick={() => applyDrafts()}>
+                    Apply range
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <form className={styles.searchForm} onSubmit={applyDrafts} noValidate>
+              {/* Search — always visible */}
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel} htmlFor="txn-filter-search">Search</label>
+                <Input
+                  id="txn-filter-search"
+                  type="search"
+                  inputMode="search"
+                  className={styles.filterCompact}
                   maxLength={64}
+                  placeholder="Search by ref, member no. or name…"
                   value={searchDraft}
                   onChange={(event) => setSearchDraft(event.target.value)}
+                  aria-label="Search by ref, member number or name"
                 />
+              </div>
+              {/* Staged drafts become SERVER query params only here —
+                  never per keystroke. */}
+              <Button type="submit">Apply</Button>
+              {draftError !== "" && (
+                <span className={styles.formNote} role="alert">
+                  {draftError}
+                </span>
               )}
-            </FormField>
-            <FormField id="txn-filter-ref" label="Reference (exact)">
-              {(control) => (
-                <input
-                  {...control}
-                inputMode="search"
-                  className={`${styles.input} ${styles.filterControl}`}
-                  maxLength={32}
-                  value={refDraft}
-                  onChange={(event) => setRefDraft(event.target.value)}
-                />
-              )}
-            </FormField>
-            <FormField id="txn-filter-from" label="From date">
-              {(control) => (
-                <input
-                  {...control}
-                type="date"
-                  className={`${styles.input} ${styles.filterControl}`}
-                  value={fromDraft}
-                  onChange={(event) => setFromDraft(event.target.value)}
-                />
-              )}
-            </FormField>
-            <FormField id="txn-filter-to" label="To date">
-              {(control) => (
-                <input
-                  {...control}
-                type="date"
-                  className={`${styles.input} ${styles.filterControl}`}
-                  value={toDraft}
-                  onChange={(event) => setToDraft(event.target.value)}
-                />
-              )}
-            </FormField>
-            <Button type="submit">Apply</Button>
-            {draftError !== "" && (
-              <span className={styles.formNote} role="alert">
-                {draftError}
-              </span>
-            )}
-          </form>
-        </div>
-        <div className={styles.toolbarActions}>
-          {mayExport && (
-            <Button type="button" onClick={() => setDrawer({ mode: "export" })}>
-              Export
-            </Button>
-          )}
-          {mayRunInterest && (
-            <Button type="button" onClick={() => setDrawer({ mode: "interest" })}>
-              Run deposit interest
-            </Button>
-          )}
-          {mayPost && (
-            <Button
-              type="button"
-              variant="primary"
-              onClick={() => setDrawer({ mode: "post" })}
-            >
-              + Post transaction
-            </Button>
-          )}
-        </div>
-      </div>
+            </form>
+          </div>
 
-      <Card padded={false}>
-        <div className={styles.ledgerHead}>
-          <span>Transactions ledger</span>
-          <span className={styles.ledgerNote}>
-            Append-only server ledger — amounts render verbatim; totals are
-            not computed in this screen
-          </span>
         </div>
-        <KeysetTable
-          columns={columns}
-          query={list}
-          rowKey={(txn) => txn.id}
-          emptyMessage="No transactions match this filter."
-          onRowClick={(txn) => setDrawer({ mode: "detail", txn })}
-          pagination={{
-            pageIndex: pagination.pageIndex,
-            pageSize: pagination.pageSize,
-            onPageChange: pagination.setPageIndex,
-            onPageSizeChange: pagination.setPageSize,
-            rowLabel: "transactions",
-          }}
-        />
+
+        <Card padded={false}>
+          <KeysetTable
+            columns={columns}
+            query={list}
+            rowKey={(txn) => txn.id}
+            emptyMessage="No transactions match this filter."
+            onRowClick={(txn) => setDrawer({ mode: "detail", txn })}
+            pagination={{
+              pageIndex: pagination.pageIndex,
+              pageSize: pagination.pageSize,
+              onPageChange: pagination.setPageIndex,
+              onPageSizeChange: pagination.setPageSize,
+              rowLabel: "transactions",
+            }}
+          />
+        </Card>
+
+        {drawer !== null && drawer.mode === "detail" && (
+          <TransactionDetailDrawer txn={drawer.txn} onClose={() => setDrawer(null)} />
+        )}
+        {drawer !== null && drawer.mode === "post" && (
+          <PostTransactionDrawer onClose={() => setDrawer(null)} />
+        )}
+        {drawer !== null && drawer.mode === "interest" && (
+          <InterestRunDialog onClose={() => setDrawer(null)} />
+        )}
+        {drawer !== null && drawer.mode === "export" && (
+          <RequestExportDrawer
+            report="transactions_ledger"
+            initial={exportDraftFromFilters(filters)}
+            onClose={() => setDrawer(null)}
+          />
+        )}
       </Card>
-
-      {drawer !== null && drawer.mode === "detail" && (
-        <TransactionDetailDrawer txn={drawer.txn} onClose={() => setDrawer(null)} />
-      )}
-      {drawer !== null && drawer.mode === "post" && (
-        <PostTransactionDrawer onClose={() => setDrawer(null)} />
-      )}
-      {drawer !== null && drawer.mode === "interest" && (
-        <InterestRunDialog onClose={() => setDrawer(null)} />
-      )}
-      {drawer !== null && drawer.mode === "export" && (
-        <RequestExportDrawer
-          report="transactions_ledger"
-          initial={exportDraftFromFilters(filters)}
-          onClose={() => setDrawer(null)}
-        />
-      )}
-    </Card>
+    </div>
   );
 }

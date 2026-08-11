@@ -32,12 +32,19 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Textarea,
+} from "@genesis/design-system";
 import { MakerCheckerPanel } from "@/modules/authz/components/MakerCheckerPanel";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
@@ -52,16 +59,6 @@ import {
 } from "../schemas";
 import { adjustmentStatusPill } from "./pills";
 import styles from "./Corrections.module.css";
-
-/** Bare staff UUID under least disclosure: 8-char prefix, full UUID on
- * title — never a name or email (the short-id convention). */
-function ShortId({ id }: Readonly<{ id: string }>) {
-  return (
-    <span className={styles.mono} title={id}>
-      {id.slice(0, 8)}
-    </span>
-  );
-}
 
 export function AdjustmentDetailDrawer({
   adjustmentId,
@@ -204,11 +201,20 @@ export function AdjustmentDetailDrawer({
 
   // SERVER TRUTH (the pattern): maker_id is the CONTRACT's maker —
   // required, never null (0025 NOT NULL); no per-tab fallback exists or
-  // is needed on this surface. Least disclosure: the bare UUID only.
+  // is needed on this surface. Least disclosure: NO raw staff uuid is
+  // ever rendered — only the viewer's OWN attribution is distinguished
+  // from "a different officer".
   const makerLabel =
     record.maker_id === ownId
       ? "You requested this adjustment (server attribution)."
-      : `Requesting officer ${record.maker_id.slice(0, 8)} (server attribution).`;
+      : "A different officer requested this adjustment (server attribution).";
+  const makerShortLabel = record.maker_id === ownId ? "You" : "A different officer";
+  const checkerLabel =
+    record.checker_id === null
+      ? "— (undecided)"
+      : record.checker_id === ownId
+        ? "You"
+        : "A different officer";
 
   function reloadRecord() {
     // Explicit reload flow: refetch the record (its snapshot
@@ -248,31 +254,29 @@ export function AdjustmentDetailDrawer({
 
       <div className={styles.detailGrid}>
         <Kv label="Status">{adjustmentStatusPill(record.status)}</Kv>
-        <Kv label="Adjustment id">
-          <span className={styles.mono}>{record.id}</span>
+        <Kv label="Member">
+          {/* Identifier doctrine: number — name, resolved server-side
+              on the record. NEVER a uuid fallback. */}
+          {record.member_no !== null ? (
+            <span>
+              {record.member_no} — {record.member_name}
+            </span>
+          ) : (
+            <span className={styles.muted}>Unresolved member</span>
+          )}
         </Kv>
-        <Kv label="Repayment">
-          <ShortId id={record.repayment_id} />
+        <Kv label="Original posting">
+          {record.original_txn_ref !== null ? (
+            <span className={styles.mono}>{record.original_txn_ref}</span>
+          ) : (
+            <span className={styles.muted}>Not referenced</span>
+          )}
         </Kv>
-        <Kv label="Loan">
-          <ShortId id={record.loan_id} />
-        </Kv>
-        <Kv label="Original ledger row">
-          <ShortId id={record.original_transaction_id} />
-        </Kv>
-        {record.reversal_transaction_id !== null && (
-          <Kv label="Reversal ledger row">
-            <ShortId id={record.reversal_transaction_id} />
-          </Kv>
-        )}
         <Kv label="Maker">
-          {/* Contract attribution (the pattern): bare staff UUID,
-              short-id convention — never resolved to a name/email. */}
-          <ShortId id={record.maker_id} />
+          {/* Least disclosure WITHOUT a raw staff uuid anywhere. */}
+          {makerShortLabel}
         </Kv>
-        <Kv label="Checker">
-          {record.checker_id !== null ? <ShortId id={record.checker_id} /> : "— (undecided)"}
-        </Kv>
+        <Kv label="Checker">{checkerLabel}</Kv>
         <Kv label="Reason">{record.reason}</Kv>
         <Kv label="Requested">{fmtDateTime(record.created_at)}</Kv>
         <Kv label="Decided">{fmtDateTime(record.decided_at)}</Kv>
@@ -346,9 +350,6 @@ export function AdjustmentDetailDrawer({
           </Kv>
           <Kv label="Loan status">{approveResult.loan_status}</Kv>
           <Kv label="Loan reopened">{approveResult.reopened ? "Yes" : "No"}</Kv>
-          <Kv label="Reversal ledger row">
-            <span className={styles.mono}>{approveResult.reversal_txn_id}</span>
-          </Kv>
           <div className={styles.formNote}>
             Every figure above came from the approval response — nothing was
             computed in this screen. The reversal row appears in the
@@ -394,9 +395,8 @@ export function AdjustmentDetailDrawer({
                     hint="Four-eyes practice: the checker's reason goes on the audit record; a rejected slot frees for a fresh request."
                   >
                     {(control) => (
-                      <textarea
+                      <Textarea
                         {...control}
-                        className={styles.textarea}
                         maxLength={500}
                         value={rejectReason}
                         onChange={(event) => setRejectReason(event.target.value)}
@@ -441,7 +441,7 @@ export function AdjustmentDetailDrawer({
       {confirmApprove && (
         <ConfirmDangerModal
           title="Approve adjustment"
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.member_no ?? "ADJUSTMENT"}
           confirmLabel="Approve & post reversal"
           pending={approve.isPending}
           onConfirm={() => {
@@ -463,7 +463,7 @@ export function AdjustmentDetailDrawer({
       {confirmReject && (
         <ConfirmDangerModal
           title="Reject adjustment"
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.member_no ?? "ADJUSTMENT"}
           confirmLabel="Reject adjustment"
           pending={reject.isPending}
           onConfirm={() => {

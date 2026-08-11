@@ -19,14 +19,23 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, fromZodError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { fetchMembersPage } from "@/modules/members/api";
+import {
+  Button,
+  Modal,
+  FormField,
+  fromApiError,
+  fromZodError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ErrorBanner,
+  ErrorMessage,
+  announce,
+  Input,
+  Select,
+  Textarea,
+} from "@genesis/design-system";
 import type { Member } from "@/modules/members/schemas";
+import { MemberLookupField } from "@/modules/members/components/MemberLookupField";
 import { createApplication } from "../api";
 import {
   applicationCreateSchema,
@@ -46,7 +55,6 @@ export function ApplicationCreateDrawer({
   onCreated: (application: Application) => void;
 }>) {
   const queryClient = useQueryClient();
-  const [memberId, setMemberId] = useState("");
   const [productId, setProductId] = useState("");
   const [amount, setAmount] = useState("");
   const [term, setTerm] = useState("");
@@ -54,14 +62,11 @@ export function ApplicationCreateDrawer({
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
-  // Member picker: ACTIVE members via the keyset contract (scalability) —
-  // pages of 20 with an explicit "load more". The P8 list has no search
-  // parameter; recorded honestly as a UX limitation in the MR.
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "active", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "active", type: "" }, cursor),
-  });
-  const memberOptions = members.data?.pages.flatMap((page) => page.items) ?? [];
+  // Member picker: ONE exact-match lookup by the identifier the operator
+  // types (number or national ID) — never a paged dump of the whole
+  // membership into a <select>. The resolved member IS the selection.
+  const [member, setMember] = useState<Member | null>(null);
+  const memberId = member?.id ?? "";
 
   const create = useMutation({
     mutationFn: (input: ApplicationCreateInput) =>
@@ -117,37 +122,18 @@ export function ApplicationCreateDrawer({
       dismissOnOverlay={false}
     >
       <form onSubmit={submit} noValidate>
-        <FormField id="app-member" label="Member" error={fieldErrors["member_id"]}>
-          {(control) => (
-            <select
-              {...control}
-              className={styles.select}
-              value={memberId}
-              onChange={(event) => setMemberId(event.target.value)}
-            >
-              <option value="">Select a member…</option>
-              {memberOptions.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name} · {member.member_no}
-                </option>
-              ))}
-            </select>
-          )}
-        </FormField>
-        {members.hasNextPage && (
-          <Button
-            type="button"
-            onClick={() => void members.fetchNextPage()}
-            disabled={members.isFetchingNextPage}
-          >
-            {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-          </Button>
+        <MemberLookupField
+          idPrefix="app-member"
+          hint="Search by member number or national ID"
+          onResolved={setMember}
+        />
+        {fieldErrors["member_id"] !== undefined && (
+          <ErrorMessage id="app-member-error">{fieldErrors["member_id"]}</ErrorMessage>
         )}
         <FormField id="app-product" label="Loan product" error={fieldErrors["product_id"]}>
           {(control) => (
-            <select
+            <Select
               {...control}
-              className={styles.select}
               value={productId}
               onChange={(event) => setProductId(event.target.value)}
             >
@@ -157,19 +143,18 @@ export function ApplicationCreateDrawer({
                   {product.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </FormField>
         <FormField
           id="app-amount"
           label="Amount (KES)"
           error={fieldErrors["amount"]}
-          hint="Decimal amount, e.g. 250000 or 250000.00 — eligibility and cover are computed by the server."
+          hint="Decimal amount, e.g. 250000 or 250000.00"
         >
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               inputMode="decimal"
               maxLength={18}
               value={amount}
@@ -179,9 +164,8 @@ export function ApplicationCreateDrawer({
         </FormField>
         <FormField id="app-term" label="Term (months)" error={fieldErrors["term_months"]}>
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               inputMode="numeric"
               maxLength={3}
               value={term}
@@ -191,24 +175,14 @@ export function ApplicationCreateDrawer({
         </FormField>
         <FormField id="app-purpose" label="Purpose (optional)" error={fieldErrors["purpose"]}>
           {(control) => (
-            <textarea
+            <Textarea
               {...control}
-              className={styles.textarea}
               maxLength={500}
               value={purpose}
               onChange={(event) => setPurpose(event.target.value)}
             />
           )}
         </FormField>
-        <div className={styles.formNote}>
-          The interest rate comes from the selected product and the installment
-          schedule, cover and eligibility are computed by the server — nothing
-          monetary is calculated in this form.
-        </div>
-        {/* Create conflicts (409 duplicate) and every other failure render
-            the least-disclosure ErrorBanner — a create has no version to
-            reload (finding F-B4 rationale). 422 fields ALSO render
-            inline above via form-errors. */}
         {create.isError && !renderedInline && <ErrorBanner error={create.error} />}
         <div className={styles.actions}>
           <Button type="button" onClick={onClose} disabled={create.isPending}>

@@ -37,12 +37,19 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Textarea,
+} from "@genesis/design-system";
 import { MakerCheckerPanel } from "@/modules/authz/components/MakerCheckerPanel";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
@@ -57,16 +64,6 @@ import {
 } from "../schemas";
 import { transferStatusPill } from "./pills";
 import styles from "./Shares.module.css";
-
-/** Bare UUID under least disclosure: 8-char prefix, full UUID on
- * title — never a name or email (the short-id convention). */
-function ShortId({ id }: Readonly<{ id: string }>) {
-  return (
-    <span className={styles.mono} title={id}>
-      {id.slice(0, 8)}
-    </span>
-  );
-}
 
 export function TransferDetailDrawer({
   transferId,
@@ -208,14 +205,27 @@ export function TransferDetailDrawer({
 
   // SERVER TRUTH (the pattern): created_by is the CONTRACT's
   // maker. NULL only on pre-0040 history rows (which are terminal —
-  // no checker surface exists for them). Least disclosure: the bare
-  // UUID only.
+  // no checker surface exists for them). Least disclosure: NO raw
+  // staff uuid is ever rendered — only the viewer's OWN attribution is
+  // distinguished from "a different officer".
   const makerLabel =
     record.created_by === null
       ? "Pre-workflow history row (no maker attribution recorded)."
       : record.created_by === ownId
         ? "You requested this transfer (server attribution)."
-        : `Requesting officer ${record.created_by.slice(0, 8)} (server attribution).`;
+        : "A different officer requested this transfer (server attribution).";
+  const makerShortLabel =
+    record.created_by === null
+      ? "— (pre-workflow)"
+      : record.created_by === ownId
+        ? "You"
+        : "A different officer";
+  const checkerLabel =
+    record.approved_by === null
+      ? "— (undecided)"
+      : record.approved_by === ownId
+        ? "You"
+        : "A different officer";
 
   function reloadRecord() {
     // Explicit reload flow: refetch the record (its snapshot
@@ -255,56 +265,43 @@ export function TransferDetailDrawer({
 
       <div className={styles.detailGrid}>
         <Kv label="Status">{transferStatusPill(record.status)}</Kv>
-        <Kv label="Transfer id">
-          <span className={styles.mono}>{record.id}</span>
-        </Kv>
         <Kv label="From member">
           {/* Identifier doctrine: number — name, resolved server-side
-              on the record; the uuid stays machine identity. */}
+              on the record. NEVER a uuid fallback — an unresolved leg
+              (should not happen; the server resolves both in the same
+              statement) renders honest text, never a raw id. */}
           {record.from_member_no !== null ? (
-            <span title={record.from_member_id}>
+            <span>
               {record.from_member_no} — {record.from_member_name}
             </span>
           ) : (
-            <ShortId id={record.from_member_id} />
+            <span className={styles.muted}>Unresolved member</span>
           )}
         </Kv>
         <Kv label="To member">
           {record.to_member_no !== null ? (
-            <span title={record.to_member_id}>
+            <span>
               {record.to_member_no} — {record.to_member_name}
             </span>
           ) : (
-            <ShortId id={record.to_member_id} />
+            <span className={styles.muted}>Unresolved member</span>
           )}
         </Kv>
         <Kv label="Amount">
           <span className={styles.amountCell}>{fmtKes(record.amount)}</span>
         </Kv>
-        <Kv label="Maker">
-          {record.created_by !== null ? <ShortId id={record.created_by} /> : "— (pre-workflow)"}
-        </Kv>
-        <Kv label="Checker">
-          {record.approved_by !== null ? <ShortId id={record.approved_by} /> : "— (undecided)"}
-        </Kv>
-        {record.out_transaction_id !== null && (
-          <Kv label="OUT ledger row">
-            <ShortId id={record.out_transaction_id} />
-          </Kv>
-        )}
-        {record.in_transaction_id !== null && (
-          <Kv label="IN ledger row">
-            <ShortId id={record.in_transaction_id} />
-          </Kv>
-        )}
+        <Kv label="Maker">{makerShortLabel}</Kv>
+        <Kv label="Checker">{checkerLabel}</Kv>
         <Kv label="Requested">{fmtDateTime(record.created_at)}</Kv>
         <Kv label="Decided">{fmtDateTime(record.decided_at)}</Kv>
         <Kv label="Record version">{record.version}</Kv>
       </div>
       <div className={styles.formNote}>
-        Every figure above is the SERVER&apos;s, rendered verbatim. The
-        record deliberately carries NO balance snapshot (least disclosure)
-        — approval re-verifies the persisted snapshot component-by-component
+        Every figure above is the SERVER&apos;s, rendered verbatim — no
+        raw record/member/staff id is ever shown, only member
+        number/name and your-own-request attribution. The record
+        deliberately carries NO balance snapshot (least disclosure) —
+        approval re-verifies the persisted snapshot component-by-component
         under the full lock set server-side and returns a conflict on any
         drift, posting nothing.
       </div>
@@ -377,9 +374,8 @@ export function TransferDetailDrawer({
                     hint="Four-eyes practice: the checker's reason goes on the audit record; no money moves on a rejection."
                   >
                     {(control) => (
-                      <textarea
+                      <Textarea
                         {...control}
-                        className={styles.textarea}
                         maxLength={500}
                         value={rejectReason}
                         onChange={(event) => setRejectReason(event.target.value)}
@@ -421,8 +417,8 @@ export function TransferDetailDrawer({
           >
             <div className={styles.formNote}>
               Pending transfer of {fmtKes(record.amount)} from member{" "}
-              {record.from_member_no ?? record.from_member_id.slice(0, 8)} to member{" "}
-              {record.to_member_no ?? record.to_member_id.slice(0, 8)} (server snapshot,
+              {record.from_member_no ?? "(unresolved)"} to member{" "}
+              {record.to_member_no ?? "(unresolved)"} (server snapshot,
               re-verified component-by-component at approval).
             </div>
           </MakerCheckerPanel>
@@ -432,7 +428,7 @@ export function TransferDetailDrawer({
       {confirmApprove && (
         <ConfirmDangerModal
           title="Approve share transfer"
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.from_member_no ?? "TRANSFER"}
           confirmLabel="Approve & post transfer"
           pending={approve.isPending}
           onConfirm={() => {
@@ -442,8 +438,8 @@ export function TransferDetailDrawer({
         >
           <Banner>
             This moves {fmtKes(record.amount)} of share capital from member{" "}
-            {record.from_member_no ?? record.from_member_id.slice(0, 8)} to member{" "}
-            {record.to_member_no ?? record.to_member_id.slice(0, 8)} — both ledger legs post
+            {record.from_member_no ?? "(unresolved)"} to member{" "}
+            {record.to_member_no ?? "(unresolved)"} — both ledger legs post
             atomically and BOTH members are notified. The server re-verifies
             the persisted snapshot under the full lock set — any drift is a
             conflict with NOTHING posted. The wire body is empty by
@@ -455,7 +451,7 @@ export function TransferDetailDrawer({
       {confirmReject && (
         <ConfirmDangerModal
           title="Reject share transfer"
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.from_member_no ?? "TRANSFER"}
           confirmLabel="Reject transfer"
           pending={reject.isPending}
           onConfirm={() => {

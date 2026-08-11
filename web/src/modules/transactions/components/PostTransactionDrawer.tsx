@@ -36,12 +36,23 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, fromZodError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  fromZodError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
@@ -283,9 +294,8 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
         <form onSubmit={submitEntry} noValidate>
           <FormField id="txn-kind" label="Type" error={fieldErrors["kind"]}>
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={kind}
                 onChange={(event) => setKind(event.target.value)}
                 disabled={post.isPending}
@@ -295,7 +305,7 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
                     {TXN_WRITE_KIND_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <div className={styles.formNote}>
@@ -305,9 +315,8 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
           </div>
           <FormField id="txn-id-kind" label="Look up by">
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={idKind}
                 onChange={(event) => {
                   setIdKind(event.target.value as "member_no" | "id_number");
@@ -322,7 +331,7 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
               >
                 <option value="member_no">Member number</option>
                 <option value="id_number">National ID number</option>
-              </select>
+              </Select>
             )}
           </FormField>
           <FormField
@@ -336,9 +345,8 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
             }
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="search"
                 maxLength={32}
                 value={memberNoInput}
@@ -392,9 +400,8 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
             hint="Decimal amount, e.g. 5000 or 5000.50 — no leading zeros. The resulting balance comes from the server."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={18}
                 value={amount}
@@ -405,9 +412,8 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
           </FormField>
           <FormField id="txn-channel" label="Channel" error={fieldErrors["channel"]}>
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={channel}
                 onChange={(event) => setChannel(event.target.value)}
                 disabled={post.isPending}
@@ -418,7 +424,7 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
                     {CHANNEL_LABELS[option]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <FormField
@@ -428,9 +434,8 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
             hint="M-Pesa confirmation code or bank slip reference — required; the server refuses a duplicate per channel."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={40}
                 value={externalRef}
                 onChange={(event) => setExternalRef(event.target.value)}

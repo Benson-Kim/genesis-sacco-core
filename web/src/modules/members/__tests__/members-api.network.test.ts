@@ -63,6 +63,7 @@ const memberOut = {
   // always on the wire; null is the honest unassigned state.
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 // The DETAIL read (#31 batch 3): the same GET also carries the four

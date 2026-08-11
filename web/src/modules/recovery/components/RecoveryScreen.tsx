@@ -28,14 +28,20 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card, FilterControl, Pill } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Button,
+  Card,
+  FilterControl,
+  Pill,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTimeParts } from "@/lib/format";
 import { loanClassPill } from "@/modules/loans/components/pills";
 import { LOAN_CLASS_LABELS } from "@/modules/loans/schemas";
 import { fetchWorklistPage, type WorklistFilters } from "../api";
@@ -122,12 +128,11 @@ export function RecoveryScreen() {
       key: "member",
       header: "Member",
       render: (row) =>
-        // Identifier doctrine: number — name, resolved server-side on
-        // the row; the uuid stays machine identity (title).
         row.member_no !== null ? (
-          <span title={row.member_id}>
-            {row.member_no} — {row.member_name}
-          </span>
+          <div title={row.member_id}>
+            <div className={styles.cellStrong}>{row.member_name}</div>
+            <div className={styles.cellSub}>{row.member_no}</div>
+          </div>
         ) : (
           <span className={styles.mono} title={row.member_id}>
             {row.member_id.slice(0, 8)}
@@ -160,12 +165,28 @@ export function RecoveryScreen() {
     {
       key: "opened",
       header: "Opened",
-      render: (row) => <span className={styles.muted}>{fmtDateTime(row.opened_at)}</span>,
+      render: (row) => {
+        const {date, time} = fmtDateTimeParts(row.opened_at)
+        return(
+          <div className={styles.dateTime}>
+            <span className={styles.date}>{date}</span>
+            {time && <span className={styles.time}>{time}</span>}
+          </div> 
+        )
+      }
     },
     {
       key: "first_assigned",
       header: "First assigned",
-      render: (row) => <span className={styles.muted}>{fmtDateTime(row.first_assigned_at)}</span>,
+      render: (row) => {
+        const {date, time} = fmtDateTimeParts(row.first_assigned_at);
+        return(
+          <div className={styles.dateTime}>
+            <span className={styles.date}>{date}</span>
+            {time && <span className={styles.time}>{time}</span>}
+          </div>
+        )
+      }
     },
   ];
 
@@ -210,6 +231,9 @@ export function RecoveryScreen() {
       </div>
 
       <Card padded={false}>
+        {/* Least-disclosure caption: states plainly that the worklist
+            carries workflow facts only, so the absence of money columns
+            reads as deliberate rather than as missing data. */}
         <div className={styles.registerHead}>
           <span>Recovery worklist</span>
           <span className={styles.registerNote}>

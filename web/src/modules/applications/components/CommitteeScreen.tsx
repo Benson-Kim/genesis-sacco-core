@@ -25,17 +25,25 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Card, ConfirmDangerModal, Kv, Pill } from "@genesis/design-system";
+import {
+  Banner,
+  Button,
+  Card,
+  ConfirmDangerModal,
+  Kv,
+  Pill,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  useKeysetList,
+  grid,
+} from "@genesis/design-system";
 import { MakerCheckerPanel } from "@/modules/authz/components/MakerCheckerPanel";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
 import { fetchMember } from "@/modules/members/api";
 import { fetchApplication, fetchApplicationsPage, voteOnApplication } from "../api";
 import { committeeMakerOf, MAKER_UNKNOWN } from "../makerRegistry";
@@ -44,7 +52,6 @@ import { getOwnUserId } from "@/modules/auth/session";
 import type { Application, Vote, VoteResult } from "../schemas";
 import { useProducts } from "../useProducts";
 import { coverPill } from "./pills";
-import grid from "@/modules/layout/grid.module.css";
 import styles from "./Applications.module.css";
 
 const AGENDA_FILTERS = { stage: "committee" } as const;
@@ -301,15 +308,9 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
         checkerActions={
           mayApprove ? (
             <>
-              <div className={styles.formNote}>
-                One vote per committee member (enforced by the server); the quorum
-                is resolved server-side at vote time. Approve votes are capped by
-                your approval-authority band.
-              </div>
               {alreadyVoted && result === null && (
                 <div className={styles.formNote}>
-                  This tab already recorded your vote on this application —
-                  one vote per committee member; the buttons stay spent.
+                  This tab already recorded your vote on this application 
                 </div>
               )}
               <div className={styles.voteActions}>
@@ -331,8 +332,7 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
             </>
           ) : (
             <div className={styles.formNote}>
-              Your role has no committee approval permission — voting controls are
-              not offered.
+              Your role has no committee approval permission
             </div>
           )
         }

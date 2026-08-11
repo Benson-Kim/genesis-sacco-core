@@ -17,14 +17,23 @@
  *   entitlement regardless.
  */
 import { useState, type FormEvent } from "react";
-import { Banner, Button, Card, Kv, Modal, Pill } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Banner,
+  Button,
+  Card,
+  Kv,
+  Modal,
+  Pill,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+  FormField,
+  Input,
+} from "@genesis/design-system";
 import { fmtDateTime, isUuid, prettyJson } from "@/lib/format";
 import { fetchAuditPage } from "../api";
 import { EMPTY_AUDIT_FILTERS, type AuditEntry, type AuditFilters } from "../schemas";
-import { FormField } from "@/modules/forms/FormField";
 import styles from "./Audit.module.css";
 
 export function AuditScreen() {
@@ -120,9 +129,8 @@ export function AuditScreen() {
         <div className={styles.filters}>
           <FormField id="audit-filter-entity" label="Entity">
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={100}
                 placeholder="e.g. users"
                 value={draft.entity}
@@ -134,9 +142,8 @@ export function AuditScreen() {
           </FormField>
           <FormField id="audit-filter-action" label="Action">
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={100}
                 placeholder="e.g. user.role"
                 value={draft.action}
@@ -148,9 +155,8 @@ export function AuditScreen() {
           </FormField>
           <FormField id="audit-filter-actor" label="Actor">
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={36}
                 placeholder="actor UUID"
                 value={draft.actorId}
@@ -162,9 +168,8 @@ export function AuditScreen() {
           </FormField>
           <FormField id="audit-filter-from" label="From">
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 type="date"
                 value={draft.dateFrom}
                 onChange={(event) =>
@@ -175,9 +180,8 @@ export function AuditScreen() {
           </FormField>
           <FormField id="audit-filter-to" label="To">
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 type="date"
                 value={draft.dateTo}
                 onChange={(event) =>

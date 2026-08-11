@@ -18,23 +18,6 @@
   flex-wrap: wrap;
 }
 
-.input {
-  padding: 0 12px;
-  min-height: 44px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  font-size: 13.5px;
-  font-family: inherit;
-  background: var(--card);
-  color: var(--ink);
-  min-width: 130px;
-}
-
-.input:focus-visible {
-  outline: 2px solid var(--navy);
-  outline-offset: 1px;
-}
-
 .formStack {
   display: grid;
   gap: 4px;
@@ -63,12 +46,12 @@
 }
 
 .cellStrong {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
 .cellSub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--sub);
   overflow-wrap: anywhere;
 }

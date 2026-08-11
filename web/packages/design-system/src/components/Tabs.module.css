@@ -1,0 +1,47 @@
+/* Conforming ARIA tabs row (W57-4) — promoted verbatim from the
+   settings-screen module-local copy (reuse-first). */
+
+.tabs {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+}
+
+.tab {
+    padding: 11px 16px;
+    min-height: var(--touch-target-min);
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: var(--fs-body);
+    font-weight: 700;
+    color: var(--sub);
+    cursor: pointer;
+    transition:
+        background var(--duration-fast) ease,
+        color var(--duration-fast) ease,
+        border var(--duration-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tab {
+        transition: none;
+    }
+}
+
+.tab:hover {
+    background: var(--panel);
+    color: var(--ink);
+}
+
+.tab.tabActive {
+    background: var(--navySoft);
+    color: var(--navy);
+    border-bottom: 1.5px solid var(--ink);
+    border-radius: 0;
+}
+
+.tab:focus-visible {
+    outline: 2px solid var(--navy);
+    outline-offset: -2px;
+}
