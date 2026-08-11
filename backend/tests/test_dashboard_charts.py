@@ -75,6 +75,7 @@ def _book(
     return PortfolioSummary(
         active_loans=len(slices),
         outstanding_balance=Decimal(outstanding),
+        performing_balance=Decimal(outstanding) - Decimal(npl),
         npl_balance=Decimal(npl),
         npl_ratio_pct=Decimal("0.00"),
         par30_balance=Decimal("0"),

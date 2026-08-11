@@ -1200,17 +1200,18 @@ HARDENED (v1.2) — merge blockers:
 (f) Phase B primitives — MANDATORY USAGE (binding on every remaining
     module batch; delivered on !56 with falsifiable tests — one copy
     each, gate 1.1; re-implementing any of them is a rejected MR):
-    - Shared page grids `@/modules/layout/grid.module.css`
-      (`grid.cards4` 4→2→1, `grid.half`/`grid.wide` spans,
-      `grid.sideMain` side+main stacking ≤960px; breakpoint convention
+    - Shared page grids `grid` (`@genesis/design-system`, sourced from
+      `layout/grid.module.css`) (`grid.cards4` 4→2→1, `grid.half`/`grid.wide`
+      spans, `grid.sideMain` side+main stacking ≤960px; breakpoint convention
       640/960px) — NO private page-grid CSS in module stylesheets
       (`responsive.test.ts` asserts consumers).
-    - `KeysetTable` + `useKeysetList` (`@/modules/table/*`): keyset
+    - `KeysetTable` + `useKeysetList` (`@genesis/design-system`, sourced from
+      `table/*`): keyset
       `{items, next_cursor}` ONLY (gate 1.3 — no offset pagination),
       keyboard-activatable row drill-down, focusable labelled scroll
       region for narrow viewports. Paging UI: the shared
       `KeysetPaginator` + `useKeysetPagination`
-      (`@/modules/table/KeysetPaginator`) — page-slices the rows the
+      (`@genesis/design-system`, sourced from `table/KeysetPaginator`) — page-slices the
       infinite query has accumulated (10/20/50 per page), auto-fetches
       forward via the opaque cursor (never parsed client-side) and
       shows honest `n+` page counts while the server reports more;
@@ -1221,7 +1222,8 @@ HARDENED (v1.2) — merge blockers:
       group (aria-pressed) at ≤4 options / labelled select at ≥5,
       persistent visible labels, optional advisory count badges;
       no hand-rolled filter markup in module screens.
-    - `FormField` + `form-errors.ts` (`@/modules/forms/*`) for EVERY
+    - `FormField` + `form-errors.ts` (`@genesis/design-system`, sourced
+      from `forms/*`) for EVERY
       form field: persistent label, aria-describedby/aria-invalid
       wiring, inline errors merging client Zod issues with server 422
       `ApiError.fields` (server verdict wins) — no hand-rolled
@@ -1234,7 +1236,8 @@ HARDENED (v1.2) — merge blockers:
       known principal (`getOwnUserId`); self-approval is structurally
       impossible — there is no override prop; the server enforces
       regardless (gate 1.6).
-    - `ConflictBanner` (`@/modules/layout/ConflictBanner`) for every
+    - `ConflictBanner` (`@genesis/design-system`, sourced from
+      `layout/ConflictBanner`) for every
       409: explicit reload-and-re-enter, never a silent overwrite,
       never an auto-retry; pair with `ErrorBanner` for non-409s.
     - `downloadExport` (`@/lib/file-export`) for every file download:
@@ -1242,8 +1245,9 @@ HARDENED (v1.2) — merge blockers:
       failures; transient revoked object URL — no hand-written fetch.
     - `ErrorBanner` + `ApiError.fields` for least-disclosure errors
       ({category, correlation_id} only); `announce()`
-      (`@/modules/layout/announcer`) for async success/error AT
-      announcements (operator-facing copy only, never raw API data).
+      (`@genesis/design-system`, sourced from `layout/announcer`) for
+      async success/error AT announcements (operator-facing copy only,
+      never raw API data).
     - Focus-trapped `Modal` (drawer/dialog variants, Escape + return
       focus, full-screen ≤640px) — never a bespoke overlay.
     - `idempotencyKeyFor` slot on EVERY mutation (stable across

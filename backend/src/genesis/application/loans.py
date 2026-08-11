@@ -144,6 +144,11 @@ class PortfolioSummary:
 
     active_loans: int
     outstanding_balance: Decimal
+    #: outstanding_balance minus npl_balance (the book's complement of
+    #: the NPL classes) — computed HERE, once, so the dashboard's
+    #: "Performing" figure is never re-derived client-side (the money
+    #: rule stays absolute in web/).
+    performing_balance: Decimal
     npl_balance: Decimal
     npl_ratio_pct: Decimal
     par30_balance: Decimal
@@ -593,6 +598,7 @@ async def portfolio_summary(session: AsyncSession, tenant_id: uuid.UUID) -> Port
     return PortfolioSummary(
         active_loans=active_loans,
         outstanding_balance=outstanding,
+        performing_balance=outstanding - npl_balance,
         npl_balance=npl_balance,
         npl_ratio_pct=ratio(npl_balance),
         par30_balance=par30_balance,

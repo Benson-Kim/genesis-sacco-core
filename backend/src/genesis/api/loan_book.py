@@ -151,6 +151,7 @@ class ClassificationSliceOut(BaseModel):
 class PortfolioSummaryOut(BaseModel):
     active_loans: int
     outstanding_balance: str
+    performing_balance: str
     npl_balance: str
     npl_ratio_pct: str
     par30_balance: str
@@ -327,6 +328,7 @@ def portfolio_summary_out(summary: loans_service.PortfolioSummary) -> PortfolioS
     return PortfolioSummaryOut(
         active_loans=summary.active_loans,
         outstanding_balance=str(summary.outstanding_balance),
+        performing_balance=str(summary.performing_balance),
         npl_balance=str(summary.npl_balance),
         npl_ratio_pct=str(summary.npl_ratio_pct),
         par30_balance=str(summary.par30_balance),
