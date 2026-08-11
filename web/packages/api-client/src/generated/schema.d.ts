@@ -3716,6 +3716,8 @@ export interface components {
             email: string | null;
             /** Id */
             id: string;
+            /** Id Number Masked */
+            id_number_masked?: string | null;
             /** Member No */
             member_no: string;
             /** Name */
@@ -3759,6 +3761,8 @@ export interface components {
             email: string | null;
             /** Id */
             id: string;
+            /** Id Number Masked */
+            id_number_masked?: string | null;
             /** Member No */
             member_no: string;
             /** Name */
@@ -4054,6 +4058,8 @@ export interface components {
             par30_ratio_pct: string;
             /** Penalties Due */
             penalties_due: string;
+            /** Performing Balance */
+            performing_balance: string;
             /** Provisions */
             provisions: string;
         };
