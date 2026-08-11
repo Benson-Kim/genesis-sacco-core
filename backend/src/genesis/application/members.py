@@ -84,6 +84,13 @@ class MemberRecord:
     #: honest "not chosen" state. Preference ONLY — the
     #: distribution engine does not consume it (the preference-only fence).
     dividend_payout: DividendPayout | None
+    #: Identity-document number MASKED in SQL (last four characters
+    #: only): exists so a member picker can confirm a resolution by the
+    #: identifier the operator did NOT search on. Defaulted because
+    #: _row_to_record is shared with statements that do not select the
+    #: column (the id-number lookup, the single-member read) — those
+    #: legitimately yield None rather than a KeyError.
+    id_number_masked: str | None = None
 
 
 @dataclass(frozen=True)
@@ -260,7 +267,8 @@ MEMBER_LIST_AGGREGATES_SQL = (
     "CAST(COALESCE(d.balance, 0) AS numeric(18,2)) AS deposits_total, "
     "CAST(COALESCE(s.balance, 0) AS numeric(18,2)) AS shares_total, "
     "CAST(COALESCE(l.total, 0) AS numeric(18,2)) AS loans_outstanding, "
-    "CAST(COALESCE(g.total, 0) AS numeric(18,2)) AS guarantees_pledged "
+    "CAST(COALESCE(g.total, 0) AS numeric(18,2)) AS guarantees_pledged, "
+    "p.id_number_masked "
     "FROM members m "
     "LEFT JOIN LATERAL (SELECT balance FROM deposit_accounts "
     "WHERE tenant_id = CAST(:tid AS uuid) AND member_id = m.id) d ON true "
@@ -272,6 +280,22 @@ MEMBER_LIST_AGGREGATES_SQL = (
     "LEFT JOIN LATERAL (SELECT COALESCE(SUM(amount), 0) AS total FROM guarantees "
     "WHERE tenant_id = CAST(:tid AS uuid) AND guarantor_member_id = m.id "
     "AND status IN (:live0, :live1)) g ON true "
+    # Identity-document confirmation for the member PICKERS: the
+    # operator searches by one identifier and must be able to confirm
+    # they resolved the right person by the OTHER one. Masked HERE, in
+    # SQL, so the full credential never leaves the database — only the
+    # last four characters ever reach the application, let alone the
+    # wire (least disclosure; the flag pattern, not a new disclosure).
+    # Probed through the 0018 UNIQUE (tenant_id, member_id) key, so it
+    # is one bounded index lookup per page row like the four aggregate
+    # probes above. NULL for members with no profile and for
+    # company/group/vehicle profiles (no bio.id_number).
+    "LEFT JOIN LATERAL (SELECT CASE "
+    "WHEN (profile -> 'bio' ->> 'id_number') IS NULL THEN NULL "
+    "ELSE repeat('*', GREATEST(char_length(profile -> 'bio' ->> 'id_number') - 4, 0)) "
+    "|| right(profile -> 'bio' ->> 'id_number', 4) END AS id_number_masked "
+    "FROM member_profiles "
+    "WHERE tenant_id = CAST(:tid AS uuid) AND member_id = m.id) p ON true "
     "WHERE {where} "
     "ORDER BY length(m.member_no), m.member_no LIMIT :limit"
 )
@@ -334,6 +358,14 @@ def _row_to_record(row: RowMapping) -> MemberRecord:
             DividendPayout(str(row["dividend_payout"]))
             if row["dividend_payout"] is not None
             else None
+        ),
+        # Deliberately a .get, unlike every field above: this column is
+        # selected ONLY by the list statement that feeds the member
+        # pickers. The other statements sharing this mapper never select
+        # it, so its absence is a legitimate None — not the misaligned-
+        # column error the named-access rule above guards against.
+        id_number_masked=(
+            str(masked) if (masked := row.get("id_number_masked")) is not None else None
         ),
     )
 

@@ -22,10 +22,12 @@ captured to backend/perf/explain_txn_search.txt BEFORE any assertion.
 """
 
 import asyncio
+import json
 import os
 import uuid
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import text
@@ -41,7 +43,9 @@ from genesis.application.transactions import (
     _search_params,
 )
 from genesis.domain.ledger import Channel
+from genesis.domain.members import MemberType
 from genesis.infrastructure.tenancy import tenant_session
+from kyc_payloads import VALID_PROFILES
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"), reason="requires a migrated database"
@@ -85,6 +89,67 @@ async def _seed_search_tenant() -> tuple[uuid.UUID, str, uuid.UUID, uuid.UUID]:
             session, tid, None, bob, amount=Decimal("300.00"), channel=Channel.BANK
         )
     return tid, token, alice, bob
+
+
+async def _attach_id_number(tid: uuid.UUID, mid: uuid.UUID, id_number: str) -> None:
+    """Attach a shape-valid person KYC profile (0018 CHECK) whose
+    bio.id_number is the seeded value — the test_idnumber_lookup
+    seeding precedent, reused rather than re-derived."""
+    profile: dict[str, Any] = {
+        **VALID_PROFILES[MemberType.PERSON],
+        "bio": {**VALID_PROFILES[MemberType.PERSON]["bio"], "id_number": id_number},
+    }
+    async with tenant_session(factory(), tid) as session:
+        await session.execute(
+            text(
+                "INSERT INTO member_profiles "
+                "(id, tenant_id, member_id, member_type, category, profile) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:mid AS uuid), "
+                "'person', 'Ordinary', CAST(:profile AS jsonb))"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "tid": str(tid),
+                "mid": str(mid),
+                "profile": json.dumps(profile),
+            },
+        )
+
+
+def test_search_matches_identity_document_number_exactly() -> None:
+    """The search probe also resolves a member by IDENTITY DOCUMENT
+    number (the third TXN_SEARCH_CLAUSE branch).
+
+    Hand-computed oracle from the seed: Alice holds 2 postings and Bob
+    1. Searching Bob's ID number must return EXACTLY Bob's single
+    posting — never Alice's, and never the whole page.
+
+    Falsifiable on both edges: drop the id_number branch and the exact
+    probe returns zero rows; make it a prefix/LIKE probe and the
+    truncated-ID leg below stops returning empty.
+    """
+
+    async def run() -> None:
+        tid, token, _alice, bob = await _seed_search_tenant()
+        await _attach_id_number(tid, bob, "31415926")
+        async with api_client() as client:
+            res = await client.get(
+                "/transactions", headers=_headers(token), params={"search": "31415926"}
+            )
+            assert res.status_code == 200
+            items = res.json()["items"]
+            assert len(items) == 1
+            assert items[0]["member_id"] == str(bob)
+
+            # EXACT, not prefix: an identity credential is never
+            # enumerable by fragment (least disclosure).
+            res = await client.get(
+                "/transactions", headers=_headers(token), params={"search": "3141"}
+            )
+            assert res.status_code == 200
+            assert res.json()["items"] == []
+
+    asyncio.run(run())
 
 
 def test_search_matches_ref_prefix_member_no_exact_and_name_prefix() -> None:
