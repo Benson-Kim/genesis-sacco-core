@@ -56,11 +56,48 @@ CREATE POLICY registry_scan ON tenants
 CREATE POLICY registry_scan ON outbox_events
     FOR SELECT
     USING (current_setting('app.registry_scan', true) = 'on');
+
+-- The isolation policies on these two tables must also tolerate an
+-- UNSET app.tenant_id. Policies are OR'ed, but every one of them is
+-- EVALUATED, and 0001 wrote these without the missing_ok flag:
+--     current_setting('app.tenant_id')::uuid
+-- On a connection that has not scoped a tenant — exactly the registry
+-- scan above — that RAISES
+--     unrecognized configuration parameter "app.tenant_id"
+-- before the scan policy can grant anything, so registry_scan alone is
+-- inert. Re-created with missing_ok so an unset GUC yields NULL, the
+-- comparison is NULL, and the policy simply does not match.
+--
+-- Trade-off, stated plainly: an unscoped query against these two tables
+-- used to fail LOUDLY and now returns zero rows. Both are fail-closed —
+-- no row ever escapes its tenant — but the loud form catches a
+-- forgotten scope faster. Limited to tenants and outbox_events (the two
+-- the registries read); every other table keeps the loud behaviour.
+DROP POLICY tenant_self ON tenants;
+CREATE POLICY tenant_self ON tenants
+    USING (id = current_setting('app.tenant_id', true)::uuid)
+    WITH CHECK (id = current_setting('app.tenant_id', true)::uuid);
+
+DROP POLICY tenant_isolation ON outbox_events;
+CREATE POLICY tenant_isolation ON outbox_events
+    USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
 """
 
 _DOWN = """
 DROP POLICY IF EXISTS registry_scan ON outbox_events;
 DROP POLICY IF EXISTS registry_scan ON tenants;
+
+-- Restore 0001's exact (non-missing_ok) isolation predicates.
+DROP POLICY IF EXISTS tenant_isolation ON outbox_events;
+CREATE POLICY tenant_isolation ON outbox_events
+    USING (tenant_id = current_setting('app.tenant_id')::uuid)
+    WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid);
+
+DROP POLICY IF EXISTS tenant_self ON tenants;
+CREATE POLICY tenant_self ON tenants
+    USING (id = current_setting('app.tenant_id')::uuid)
+    WITH CHECK (id = current_setting('app.tenant_id')::uuid);
 """
 
 
