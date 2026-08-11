@@ -3735,6 +3735,17 @@
             "title": "Id",
             "type": "string"
           },
+          "id_number_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Number Masked"
+          },
           "member_no": {
             "title": "Member No",
             "type": "string"
@@ -3878,6 +3889,17 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "id_number_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Number Masked"
           },
           "member_no": {
             "title": "Member No",
@@ -4670,6 +4692,10 @@
             "title": "Penalties Due",
             "type": "string"
           },
+          "performing_balance": {
+            "title": "Performing Balance",
+            "type": "string"
+          },
           "provisions": {
             "title": "Provisions",
             "type": "string"
@@ -4678,6 +4704,7 @@
         "required": [
           "active_loans",
           "outstanding_balance",
+          "performing_balance",
           "npl_balance",
           "npl_ratio_pct",
           "par30_balance",

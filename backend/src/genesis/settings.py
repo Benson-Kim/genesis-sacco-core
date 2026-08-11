@@ -1,15 +1,27 @@
 """Environment-only configuration (no literal secrets)."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Absolute path to backend/.env — resolved relative to this file so it works
+# regardless of the working directory (uvicorn from backend/, script from root,
+# direct python invocation). pydantic-settings silently ignores a missing file,
+# so production deployments that inject vars through the OS environment are
+# unaffected. OS environment variables take precedence over the file.
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
     """All values come from the environment; nothing is hardcoded."""
 
-    model_config = SettingsConfigDict(frozen=True)
+    model_config = SettingsConfigDict(
+        frozen=True,
+        env_file=str(_ENV_FILE),
+        env_file_encoding="utf-8",
+    )
 
     database_url: str = ""
     redis_url: str = ""

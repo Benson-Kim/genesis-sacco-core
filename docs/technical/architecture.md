@@ -56,11 +56,13 @@ web/src/app/                    Next.js App Router routes
   (shell)/dashboard/            dashboard
   (shell)/modules/<module>/     one route tree per console module
 web/src/modules/<module>/       screens, api.ts, schemas.ts, __tests__/
-web/src/modules/layout/         AppShell, Sidebar (nav.ts), banners
 web/src/modules/authz/          client-side RBAC mirror (modules.ts, usePermissions.ts)
-web/src/modules/table/          KeysetTable + useKeysetList (shared list machinery)
 web/packages/api-client/        openapi.json snapshot + generated schema.d.ts
-web/packages/design-system/     shared UI primitives (ConfirmDangerModal, KeysetTable, …)
+web/packages/design-system/     shared UI primitives + cross-cutting app shell/table/form
+                                 machinery (ConfirmDangerModal, AppShell, Sidebar (nav.ts),
+                                 banners, KeysetTable + useKeysetList, FormField, …) — the
+                                 ONLY source of these; imported as named exports from
+                                 `@genesis/design-system` (no deep/subpath imports).
 ```
 
 Module conventions (every console module follows them):
@@ -76,7 +78,7 @@ Module conventions (every console module follows them):
   the UI hides what the API forbids; the API still enforces.
 
 The sidebar structure (Operations / Governance / Insights / Administration)
-is code-owned in `web/src/modules/layout/nav.ts`; prototype areas without
+is code-owned in `web/packages/design-system/src/layout/nav.ts`; prototype areas without
 their own RBAC module (guarantors, committee, member exit, dormancy, share
 transfers, dividends, accounting periods, recovery) live under their owning
 module's route tree and are gated by that module's permissions server-side.
