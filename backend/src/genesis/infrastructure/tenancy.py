@@ -28,6 +28,33 @@ async def tenant_session(
 
 
 @asynccontextmanager
+async def registry_session(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """Yield a session allowed to run the WORKER DISCOVERY registries.
+
+    The discovery functions (active_tenant_ids, outbox_due_tenant_ids,
+    outbox_purgeable_tenant_ids) are SECURITY DEFINER, which only
+    bypasses RLS when the defining role holds BYPASSRLS. Where the app
+    role OWNS the tables — every managed host — FORCE ROW LEVEL SECURITY
+    applies to owners too and those functions return ZERO rows, silently
+    stopping every worker. Migration 0049 adds a SELECT-only
+    `registry_scan` policy keyed on this GUC; this is the ONLY place
+    that sets it.
+
+    Scope is deliberately narrow: set_config(..., true) binds the GUC to
+    THIS transaction, so it can never leak to a pooled connection's next
+    user, and the policy grants SELECT only — no write path widens.
+    Request handlers use tenant_session and never set this.
+    """
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text("SELECT set_config('app.registry_scan', 'on', true)"),
+        )
+        yield session
+
+
+@asynccontextmanager
 async def tenant_snapshot_session(
     session_factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,

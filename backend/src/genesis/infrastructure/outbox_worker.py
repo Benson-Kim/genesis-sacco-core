@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from genesis.application.batch_runner import run_in_batches
 from genesis.infrastructure.providers import NotificationProvider
-from genesis.infrastructure.tenancy import tenant_session
+from genesis.infrastructure.tenancy import registry_session, tenant_session
 
 logger = logging.getLogger("genesis.infrastructure.outbox")
 
@@ -252,7 +252,7 @@ async def list_active_tenants(
     factory: async_sessionmaker[AsyncSession],
 ) -> list[uuid.UUID]:
     """Tenant registry via the SECURITY DEFINER function (migration 0003)."""
-    async with factory() as session:
+    async with registry_session(factory) as session:
         rows = (await session.execute(text("SELECT active_tenant_ids()"))).scalars().all()
     return [uuid.UUID(str(value)) for value in rows]
 
@@ -267,7 +267,7 @@ async def list_due_tenants(
     sweep: a tenant with no due work costs zero claim queries. The due
     set IS the pending set, so idx_outbox_pending (0001) serves it.
     """
-    async with factory() as session:
+    async with registry_session(factory) as session:
         rows = (await session.execute(text("SELECT outbox_due_tenant_ids()"))).scalars().all()
     return [uuid.UUID(str(value)) for value in rows]
 
@@ -281,7 +281,7 @@ async def list_purgeable_tenants(
     owned, module constant) — never caller-supplied. Served by
     idx_outbox_dispatched_purge (migration 0024).
     """
-    async with factory() as session:
+    async with registry_session(factory) as session:
         result = await session.execute(
             text("SELECT outbox_purgeable_tenant_ids(now() - make_interval(days => :days))"),
             {"days": DISPATCHED_RETENTION_DAYS},

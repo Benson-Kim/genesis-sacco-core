@@ -212,6 +212,30 @@ an admin can act on it immediately:
    uploaded code and env vars.
 8. Smoke test: `curl https://api.<domain>/healthz` and `/readyz`.
 
+### 3a-pre. Worker discovery needs migration 0049
+
+The worker registries (`active_tenant_ids`, `outbox_due_tenant_ids`,
+`outbox_purgeable_tenant_ids`) are SECURITY DEFINER, which bypasses RLS
+only when the DEFINING role holds BYPASSRLS. On managed hosting the app
+role owns the tables and FORCE ROW LEVEL SECURITY applies to owners, so
+before 0049 every registry returned zero rows and the workers **silently
+processed nothing** — `tenants=0`, exit code 0, no error, while the
+outbox went undispatched and dormancy never ran.
+
+Migration 0049 fixes this properly: a SELECT-only `registry_scan` policy
+keyed on `app.registry_scan`, set only by
+`infrastructure.tenancy.registry_session`. Confirm after migrating:
+
+```
+psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM active_tenant_ids()'
+# 0  -- correct: no GUC, nothing granted
+PGOPTIONS='-c app.registry_scan=on'   psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM active_tenant_ids()'
+# 1  -- correct: the scan sees your active tenant
+```
+
+If the second returns 0, the workers will no-op silently — do not put
+the deployment into service until it returns your tenant count.
+
 ### 3a. Background jobs (cron, not a daemon)
 
 cPanel → Cron Jobs. Use the same venv's `python` binary. Adjust the app
