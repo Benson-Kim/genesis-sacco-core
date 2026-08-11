@@ -29,6 +29,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Deployment/config surfaces the flag must never reach. Source and test
 # files are intentionally out of scope: the settings definition and the
 # behavioural suite legitimately name the variable.
+# *.env.example files are developer documentation (not runtime config) and
+# legitimately document the flag so new developers know to set it locally.
 _CONFIG_GLOBS = (
     ".gitlab-ci.yml",
     ".gitlab/**/*.yml",
@@ -42,8 +44,6 @@ _CONFIG_GLOBS = (
     "k8s/**/*",
     "deploy/**/*",
     "helm/**/*",
-    "*.env.example",
-    "**/*.env.example",
 )
 
 
