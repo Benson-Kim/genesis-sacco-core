@@ -149,6 +149,36 @@
     text-align: right !important;
 }
 
+/* Double-entry legs table (#31 ledger (g)) — one row per DR/CR leg,
+   verbatim server facts; deliberately NO footer/total row exists. */
+.legsTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.legsTable th {
+    text-align: left;
+    font-size: 12px;
+    color: var(--sub);
+    font-weight: 700;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.legsTable td {
+    padding: 7px 0;
+    border-bottom: 1px solid var(--panel);
+}
+
+.legsTable td:last-child {
+    text-align: right;
+}
+
+.legsAmountHead {
+    text-align: right !important;
+}
+
 /* Ledger table header card (prototype vTxn head). */
 .ledgerHead {
     padding: 14px;
