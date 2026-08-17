@@ -132,6 +132,12 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 
 ## 2. ARCHITECTURE
 
+Authoritative diagrams live under `docs/diagrams/` (P-DIAG series).
+The lock-ordering DAG — `docs/diagrams/lock-order.md` — is the single
+authority for every lock-order statement (concurrency gates in §1.4);
+MRs reference it instead of restating chains, and any MR that changes
+a lock-graph edge updates it in the same MR (BUILD_PROMPTS v1.2 rule 11).
+
 ### 2.1 Backend (Python 3.12, FastAPI)
 Layered/hexagonal, dependency direction inward:
 `api (routers/schemas) -> application (use-case services, owns transactions)

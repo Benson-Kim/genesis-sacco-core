@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     export_batch_size: int = 500
     export_artifact_ttl_hours: int = 24
     export_npl_trend_months: int = 6
+    # Dashboard configuration (P13.9): the monthly-series window and
+    # the guarantor-list size are server-resolved — the endpoint takes
+    # no caller input (v1.1 rule 1) and every scan stays bounded
+    # (gate 1.3). Hard caps live in application.dashboard.
+    dashboard_series_months: int = 6
+    dashboard_guarantor_cap: int = 20
 
 
 @lru_cache

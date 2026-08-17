@@ -1,6 +1,9 @@
 # Genesis Prestige
 
+## Documentation
 
+- [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md) — the engineering gates governing every MR.
+- [`docs/diagrams/`](docs/diagrams/) — architecture diagrams (P-DIAG series); [`docs/diagrams/lock-order.md`](docs/diagrams/lock-order.md) is the **authoritative lock-ordering DAG** (v1.2 rule 11).
 
 ## Getting started
 

@@ -1363,6 +1363,11 @@ unchanged; proven on !26–!30; apply to every prompt from here forward):
     lock-graph edge, or trust boundary MUST update the affected
     diagram(s) in the same MR. A stale diagram is a rejected MR — the
     diagrams are load-bearing review artifacts, not decoration.
+    `docs/diagrams/lock-order.md` (P-DIAG.0) is the AUTHORITATIVE
+    lock-ordering DAG: lock-order statements in MR descriptions must
+    match it verbatim or update it in the same MR; the per-MR default
+    is "no new lock-graph edges", and adding one requires updating the
+    DAG (edge + code citation + acyclicity note) in the same MR.
 12. Merge-sequencing / rebase-re-run rule: parallel-track MRs declare
     their merge order up front in the MR description (the !26/!27
     "merges FIRST" precedent). Before merging, a branch merges current

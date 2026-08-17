@@ -35,6 +35,61 @@ variables:
   npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
 
 # -----------------------------------------------------------------------------
+# Docs — architecture diagrams (P-DIAG series, docs/diagrams/ only)
+# Minimal, isolated job (P-DIAG.0): renders every standalone .mmd file
+# AND every ```mermaid fenced block inside docs/diagrams/*.md with
+# mermaid-cli, so an unrenderable diagram is a red pipeline. Scoped by
+# `rules:changes` to docs/diagrams/** exclusively — it can never
+# collide with the backend jobs of parallel tracks (P13.9/P13.13).
+# -----------------------------------------------------------------------------
+docs:diagrams:
+  stage: lint
+  needs: []
+  image:
+    # Official mermaid-cli image (bundles headless Chromium); pinned.
+    name: minlag/mermaid-cli:11.4.2
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - docs/diagrams/**/*
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - docs/diagrams/**/*
+  script:
+    - mkdir -p /tmp/mmd /tmp/rendered
+    # Standalone diagram sources.
+    - |
+      for f in docs/diagrams/*.mmd; do
+        [ -e "$f" ] || continue
+        cp "$f" "/tmp/mmd/$(basename "$f")"
+      done
+    # ```mermaid fenced blocks inside the markdown diagram documents.
+    - |
+      for f in docs/diagrams/*.md; do
+        [ -e "$f" ] || continue
+        awk -v base="/tmp/mmd/$(basename "${f%.md}")" '
+          /^```mermaid[[:space:]]*$/ { in_block = 1; n++; out = base "-block" n ".mmd"; next }
+          /^```[[:space:]]*$/ && in_block { in_block = 0; next }
+          in_block { print > out }
+        ' "$f"
+      done
+    - |
+      found=0
+      for m in /tmp/mmd/*.mmd; do
+        [ -e "$m" ] || continue
+        found=1
+        echo "rendering $m"
+        /home/mermaidcli/node_modules/.bin/mmdc -p /puppeteer-config.json \
+          -i "$m" -o "/tmp/rendered/$(basename "${m%.mmd}").svg"
+      done
+      if [ "$found" -ne 1 ]; then
+        echo "docs/diagrams changed but no mermaid sources found" >&2
+        exit 1
+      fi
+    - ls -l /tmp/rendered
+
+# -----------------------------------------------------------------------------
 # Backend — Python 3.12 / FastAPI
 # -----------------------------------------------------------------------------
 .backend:

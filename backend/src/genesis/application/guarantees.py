@@ -52,6 +52,30 @@ _PLEDGEABLE = frozenset(
     {ApplicationStage.SUBMITTED, ApplicationStage.APPRAISAL, ApplicationStage.COMMITTEE}
 )
 
+#: Statuses that make a guarantee LIVE, i.e. counted against the
+#: guarantor's capacity. Single source of truth (gate 1.1) shared by
+#: live_pledged_total (the P9 pledge / P11 withdrawal enforcement
+#: path) and the P13.9 dashboard aggregates (failure mode FM5): an
+#: aggregate filtering a different set would show members capacity the
+#: pledge endpoint then refuses.
+LIVE_GUARANTEE_STATUSES: tuple[str, str] = ("pledged", "active")
+
+#: SQL behind live_pledged_total, module-level so the P13.9 EXPLAIN
+#: capture can assert its plan (idx_guarantees_guarantor, 0001). Every
+#: value — the status set included — is a bound parameter (v1.1 rule 6).
+LIVE_PLEDGED_SQL = (
+    "SELECT COALESCE(SUM(amount), 0) FROM guarantees "
+    "WHERE guarantor_member_id = CAST(:g AS uuid) "
+    "AND tenant_id = CAST(:tid AS uuid) "
+    "AND status IN (:live0, :live1)"
+)
+
+
+def live_guarantee_params() -> dict[str, str]:
+    """Bound parameters for the LIVE status set (v1.1 rule 6)."""
+    return {"live0": LIVE_GUARANTEE_STATUSES[0], "live1": LIVE_GUARANTEE_STATUSES[1]}
+
+
 #: Undisbursed stages whose product cover rule guards an active-guarantee
 #: release (P13.14): while the application is in flight, releasing
 #: consented collateral must never drop remaining cover below the P7
@@ -93,13 +117,12 @@ async def live_pledged_total(
     """
     value = (
         await session.execute(
-            text(
-                "SELECT COALESCE(SUM(amount), 0) FROM guarantees "
-                "WHERE guarantor_member_id = CAST(:g AS uuid) "
-                "AND tenant_id = CAST(:tid AS uuid) "
-                "AND status IN ('pledged', 'active')"
-            ),
-            {"g": str(guarantor_member_id), "tid": str(tenant_id)},
+            text(LIVE_PLEDGED_SQL),
+            {
+                "g": str(guarantor_member_id),
+                "tid": str(tenant_id),
+                **live_guarantee_params(),
+            },
         )
     ).scalar_one()
     return Decimal(str(value))

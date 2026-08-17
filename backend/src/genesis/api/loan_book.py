@@ -299,12 +299,9 @@ async def post_repayment(
     )
 
 
-@router.get("/portfolio/summary")
-async def portfolio_summary(ctx: BookViewCtx) -> PortfolioSummaryOut:
-    """NPL / PAR-30 / provisioning aggregates feeding the dashboard."""
-    factory = get_sessionmaker(get_settings().database_url)
-    async with tenant_session(factory, ctx.tenant_id) as session:
-        summary = await loans_service.portfolio_summary(session, ctx.tenant_id)
+def portfolio_summary_out(summary: loans_service.PortfolioSummary) -> PortfolioSummaryOut:
+    """Shared serializer: /portfolio/summary and the P13.9 dashboard
+    loan-book slice render the SAME model (gate 1.1 — no forked shape)."""
     return PortfolioSummaryOut(
         active_loans=summary.active_loans,
         outstanding_balance=str(summary.outstanding_balance),
@@ -324,6 +321,15 @@ async def portfolio_summary(ctx: BookViewCtx) -> PortfolioSummaryOut:
             for s in summary.by_classification
         ],
     )
+
+
+@router.get("/portfolio/summary")
+async def portfolio_summary(ctx: BookViewCtx) -> PortfolioSummaryOut:
+    """NPL / PAR-30 / provisioning aggregates feeding the dashboard."""
+    factory = get_sessionmaker(get_settings().database_url)
+    async with tenant_session(factory, ctx.tenant_id) as session:
+        summary = await loans_service.portfolio_summary(session, ctx.tenant_id)
+    return portfolio_summary_out(summary)
 
 
 @router.post("/jobs/arrears")
