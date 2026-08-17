@@ -199,6 +199,20 @@ def test_application_cover_and_product_rules() -> None:
         assert over_term.status_code == 400
         assert over_term.json()["category"] == "validation_error"
 
+        async with api_client() as client:
+            over_multiplier = await client.post(
+                "/applications",
+                json={
+                    "member_id": member_id,
+                    "product_id": product_id,
+                    "amount": "75000.01",
+                    "term_months": 12,
+                },
+                headers=headers,
+            )
+        assert over_multiplier.status_code == 409
+        assert over_multiplier.json()["category"] == "conflict"
+
     asyncio.run(run())
 
 
@@ -398,7 +412,7 @@ def test_concurrent_over_pledge_capacity_never_exceeded() -> None:
         headers = _headers(token)
         borrower = await _make_member(headers, "Pledge Borrower")
         guarantor = await _make_member(headers, "Pledge Guarantor")
-        await _set_deposit_balance(tid, borrower, "1000.00")
+        await _set_deposit_balance(tid, borrower, "3000.00")
         await _set_deposit_balance(tid, guarantor, "1000.00")
         product_id = await _make_product(headers, "Pledge Product")
         app = await _make_application(headers, borrower, product_id, "9000.00")
@@ -457,6 +471,7 @@ def test_guarantee_consent_and_cover_recompute() -> None:
         headers = _headers(token)
         borrower = await _make_member(headers, "Cover Borrower")
         guarantor = await _make_member(headers, "Cover Guarantor")
+        await _set_deposit_balance(tid, borrower, "14000.00")
         await _set_deposit_balance(tid, guarantor, "30000.00")
         product_id = await _make_product(headers, "Cover Product")
         app = await _make_application(headers, borrower, product_id, "40000.00")
@@ -846,6 +861,7 @@ def test_vote_and_consent_and_guarantor_404s_and_409s() -> None:
         tid, _, token = await _seed_actor()
         headers = _headers(token)
         borrower = await _make_member(headers, "Error Borrower")
+        await _set_deposit_balance(tid, borrower, "4000.00")
         product_id = await _make_product(headers, "Error Product")
         app = await _make_application(headers, borrower, product_id, "10000.00")
         aid = app["id"]
@@ -906,6 +922,7 @@ def test_release_guarantees_for_loan_service() -> None:
         headers = _headers(token)
         borrower = await _make_member(headers, "Release Borrower")
         guarantor = await _make_member(headers, "Release Guarantor")
+        await _set_deposit_balance(tid, borrower, "2000.00")
         await _set_deposit_balance(tid, guarantor, "10000.00")
         product_id = await _make_product(headers, "Release Product")
         app = await _make_application(headers, borrower, product_id, "5000.00")
@@ -967,6 +984,7 @@ def test_direct_rejection_releases_pledges() -> None:
         headers = _headers(token)
         borrower = await _make_member(headers, "Reject Release Borrower")
         guarantor = await _make_member(headers, "Reject Release Guarantor")
+        await _set_deposit_balance(tid, borrower, "2000.00")
         await _set_deposit_balance(tid, guarantor, "10000.00")
         product_id = await _make_product(headers, "Reject Release Product")
         app = await _make_application(headers, borrower, product_id, "5000.00")

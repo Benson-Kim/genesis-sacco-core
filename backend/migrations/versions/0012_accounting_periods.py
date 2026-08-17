@@ -21,8 +21,11 @@ Additive only (expand phase):
   * transactions_closed_period trigger — the DB-level backstop
     (data integrity): even raw SQL that bypasses the application service
     cannot insert a transaction whose occurred_at falls inside a
-    closed period. The application guard gives clean 409 semantics;
-    this trigger makes the invariant hold at the database.
+    closed period. It takes the same shared period advisory lock as
+    ledger._post, so raw writers also serialize with close_period()
+    before checking committed closed-period rows. The application guard
+    gives clean 409 semantics; this trigger makes the invariant hold at
+    the database.
 
 Working downgrade drops only the new objects.
 """
@@ -56,12 +59,25 @@ CREATE POLICY tenant_isolation ON accounting_periods
     WITH CHECK (tenant_id = current_setting('app.tenant_id')::uuid);
 
 -- DB-level backstop (gate 1.5): no transaction may land inside a
--- closed period, regardless of the code path that inserts it. The
--- application guard (ledger._post) raises the user-facing 409 first;
--- this trigger enforces the invariant for anything that slips past it.
+-- closed period, regardless of the code path that inserts it. Raw SQL
+-- writers take the same shared advisory lock as ledger._post before
+-- reading accounting_periods, so they wait for any concurrent
+-- close_period() transaction to commit its closed row before the check.
+-- The application guard raises the user-facing 409 first; this trigger
+-- enforces the invariant for anything that slips past it.
 CREATE FUNCTION forbid_closed_period_posting() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
+DECLARE
+    lock_key integer;
 BEGIN
+    lock_key := ((
+        (get_byte(decode(replace(NEW.tenant_id::text, '-', ''), 'hex'), 0)::bigint << 24)
+        + (get_byte(decode(replace(NEW.tenant_id::text, '-', ''), 'hex'), 1)::bigint << 16)
+        + (get_byte(decode(replace(NEW.tenant_id::text, '-', ''), 'hex'), 2)::bigint << 8)
+        + get_byte(decode(replace(NEW.tenant_id::text, '-', ''), 'hex'), 3)::bigint
+    ) & 2147483647)::integer;
+    PERFORM pg_advisory_xact_lock_shared(740180831, lock_key);
+
     IF EXISTS (
         SELECT 1 FROM accounting_periods p
         WHERE p.tenant_id = NEW.tenant_id

@@ -4,10 +4,9 @@ Revision ID: 0006
 Revises: 0005
 Create Date: 2026-07-29
 
-The applications list paginates on (created_at, id) DESC. This composite
-index leads with tenant_id (matching the RLS predicate) so the keyset
-scan claimed in the MR's EXPLAIN output is actually index-backed at any
-page depth.
+The applications list supports optional stage filtering and paginates on (created_at, id) DESC.
+This composite index leads with tenant_id and stage (matching the RLS predicate + the stage filter)
+so the keyset scan claimed in the MR's EXPLAIN output is actually index-backed at any page depth.
 """
 
 from alembic import op
@@ -19,7 +18,7 @@ depends_on = None
 
 _UP = """
 CREATE INDEX idx_applications_created_keyset
-    ON loan_applications (tenant_id, created_at DESC, id DESC);
+    ON loan_applications (tenant_id, stage, created_at DESC, id DESC);
 """
 
 _DOWN = """

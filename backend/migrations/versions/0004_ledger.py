@@ -80,15 +80,23 @@ CREATE TRIGGER transactions_no_delete
 -- (consistent with the UNIQUE (tenant_id, txn_ref) pattern in 0001).
 -- -------------------------------------------------------------------------
 ALTER TABLE transactions
-    ADD COLUMN reversal_of_id uuid
-        REFERENCES transactions(id) ON DELETE RESTRICT;
+    ADD COLUMN reversal_of_id uuid;
+
+ALTER TABLE transactions
+    ADD CONSTRAINT uq_transactions_tenant_id_id UNIQUE (tenant_id, id);
+
+ALTER TABLE transactions
+    ADD CONSTRAINT fk_transactions_reversal_same_tenant
+    FOREIGN KEY (tenant_id, reversal_of_id)
+    REFERENCES transactions (tenant_id, id)
+    ON DELETE RESTRICT;
 
 CREATE UNIQUE INDEX uq_transactions_reversal_of
     ON transactions (tenant_id, reversal_of_id)
     WHERE reversal_of_id IS NOT NULL;
 
 -- -------------------------------------------------------------------------
--- Constraint trigger: balanced DR/CR enforced per transaction (gate 1.5)
+-- Constraint trigger: balanced DR/CR and transaction amount enforced per transaction (gate 1.5)
 --
 -- DEFERRABLE INITIALLY DEFERRED: the check runs at COMMIT, after all lines
 -- of a posting are inserted — regardless of how many statements were used.
@@ -101,7 +109,13 @@ LANGUAGE plpgsql AS $fn$
 DECLARE
     dr numeric;
     cr numeric;
+    tx_amount numeric;
 BEGIN
+    SELECT t.amount
+    INTO txn_amount
+    FROM transactions AS t
+    WHERE t.id = NEW.transacton_id;
+
     SELECT
         COALESCE(SUM(CASE WHEN side = 'debit'  THEN amount END), 0),
         COALESCE(SUM(CASE WHEN side = 'credit' THEN amount END), 0)
@@ -114,6 +128,14 @@ BEGIN
             'Unbalanced ledger for transaction %: DR=% CR=%',
             NEW.transaction_id, dr, cr;
     END IF;
+
+    IF dr <> txn_amount THEN
+        RAISE EXCEPTION
+            'Ledger totals for transactions % do not match transaction amount %: '
+            'DR=% CR=%',
+            NEW.transaction_id, txn_amount, dr, cr;
+    END IF;
+
     RETURN NULL;
 END
 $fn$;
@@ -132,6 +154,8 @@ DROP TRIGGER IF EXISTS transactions_no_update    ON transactions;
 DROP TRIGGER IF EXISTS transactions_no_delete    ON transactions;
 DROP FUNCTION IF EXISTS check_ledger_balanced();
 DROP INDEX IF EXISTS uq_transactions_reversal_of;
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS fk_transactions_reversal_same_tenant;
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS uq_transactions_tenant_id_id;
 ALTER TABLE transactions DROP COLUMN IF EXISTS reversal_of_id;
 DROP FUNCTION IF EXISTS ledger_append_only();
 DROP TABLE IF EXISTS txn_ref_sequences CASCADE;
