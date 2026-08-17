@@ -1,0 +1,48 @@
+/* Access control page — tab row + panel layout */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Tab row: tabs on the left, action button on the right ─────────────── */
+.tabsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab {
+  padding: 7px 16px;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--sub);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background 120ms var(--ease-standard), color 120ms var(--ease-standard);
+}
+
+.tab:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.tab.tabActive {
+  background: var(--navySoft);
+  color: var(--navy);
+}
+
+.tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

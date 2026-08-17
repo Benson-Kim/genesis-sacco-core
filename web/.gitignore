@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# testing
+coverage/
+
+# misc
+*.tsbuildinfo
+npm-debug.log*
+
+# NOTE: next-env.d.ts and packages/api-client/src/generated/ are committed
+# on purpose: CI runs tsc/eslint before any build step, and the generated
+# client is drift-checked against the committed OpenAPI snapshot.

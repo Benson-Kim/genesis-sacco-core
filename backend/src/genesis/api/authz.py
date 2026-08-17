@@ -36,10 +36,17 @@ class RequirePermission:
         ctx = get_auth_context(request)
         factory = get_sessionmaker(get_settings().database_url)
         async with tenant_session(factory, ctx.tenant_id) as session:
-            allowed = await rbac_service.has_permission(
-                session, ctx.role_id, self.module, self.action
+            access = await rbac_service.actor_access(
+                session, ctx.tenant_id, ctx.user_id, ctx.role_id, self.module, self.action
             )
-        if not allowed:
+        if access is None or not access.is_active:
+            # Review F3: a suspended (or vanished) user is refused
+            # immediately — the access token's remaining lifetime never
+            # bridges a committed suspension. 401, not 403: the session
+            # is dead, not under-privileged. Only the error category
+            # leaves the server (least disclosure, gate 1.6).
+            raise UnauthenticatedError("user is not active")
+        if not access.allowed:
             raise ForbiddenError(f"{self.module.value}:{self.action.value}")
         return ctx
 
@@ -70,7 +77,13 @@ class RequireAnyPermission(RequirePermission):
         factory = get_sessionmaker(get_settings().database_url)
         async with tenant_session(factory, ctx.tenant_id) as session:
             for module, action in self.grants:
-                if await rbac_service.has_permission(session, ctx.role_id, module, action):
+                access = await rbac_service.actor_access(
+                    session, ctx.tenant_id, ctx.user_id, ctx.role_id, module, action
+                )
+                if access is None or not access.is_active:
+                    # Review F3: same immediate refusal as the base class.
+                    raise UnauthenticatedError("user is not active")
+                if access.allowed:
                     return ctx
         raise ForbiddenError(
             " or ".join(f"{module.value}:{action.value}" for module, action in self.grants)

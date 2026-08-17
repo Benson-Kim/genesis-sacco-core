@@ -1,0 +1,127 @@
+/* P13.5 users screen — composes prototype table/card/pill styling. */
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.select,
+.input {
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1.5px solid var(--line);
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--card);
+  outline: none;
+  min-width: 150px;
+}
+
+.select:focus,
+.input:focus {
+  border-color: var(--navy);
+}
+
+.userCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--navySoft);
+  color: var(--navy);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex: none;
+}
+
+.cellStrong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cellSub {
+  font-size: 11.5px;
+  color: var(--sub);
+}
+
+.muted {
+  color: var(--sub);
+}
+
+.detailGrid {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.kvRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel);
+}
+
+.kvKey {
+  color: var(--sub);
+  font-weight: 700;
+}
+
+.kvVal {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.subhead {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--sub);
+  margin: 16px 0 8px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.formNote {
+  font-size: 11.5px;
+  color: var(--sub);
+  margin-top: 8px;
+}
+
+.formStack {
+  display: grid;
+  gap: 4px;
+}
+
+.wide {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.danger {
+  background: var(--brick);
+  border-color: var(--brick);
+  color: #fff;
+}

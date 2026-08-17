@@ -202,6 +202,9 @@ async def change_status(user_id: uuid.UUID, body: UserStatusBody, ctx: EditCtx) 
 @router.post("/{user_id}/role")
 async def assign_role(user_id: uuid.UUID, body: UserRoleBody, ctx: EditCtx) -> UserOut:
     """Audited role assignment; self-changes and last-admin re-roles refused."""
+    # Review F2: granting System Admin, or re-roling a current System
+    # Admin, additionally requires the ACTOR to be a System Admin —
+    # resolved server-side in the service, never from the JWT alone.
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         record = await users_service.assign_role(

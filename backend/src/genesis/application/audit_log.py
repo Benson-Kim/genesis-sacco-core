@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -54,6 +54,10 @@ ENTITY_MODULES: dict[str, Module] = {
     "transactions": Module.TRANSACTIONS,
     "accounting_periods": Module.TRANSACTIONS,
     "loan_products": Module.SETTINGS,
+    # P13.6 (!24) ships `entity="branches"` writers under settings:*
+    # routes; mapped here (review F4) so the registry's payloads are
+    # released per settings entitlement once !24 rebases onto this fix.
+    "branches": Module.SETTINGS,
     "exports": Module.REPORTS,
     "permissions": Module.ACCESS_CONTROL,
     "users": Module.ACCESS_CONTROL,
@@ -165,11 +169,15 @@ async def list_audit_log(
         params["actor"] = str(actor_id)
     if action is not None:
         params["action"] = action
+    # Date bounds are bound as explicit UTC datetimes (review F7):
+    # binding a bare `date` against the timestamptz `at` column would
+    # delegate the day boundary to the session time zone. Day filters
+    # are UTC days by contract, independent of any session setting.
     if date_from is not None:
-        params["d_from"] = date_from
+        params["d_from"] = datetime.combine(date_from, time.min, tzinfo=UTC)
     if date_to is not None:
         # Inclusive end date -> exclusive upper bound on the timestamp.
-        params["d_to_excl"] = date_to + timedelta(days=1)
+        params["d_to_excl"] = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC)
     rows = (
         await session.execute(
             text(

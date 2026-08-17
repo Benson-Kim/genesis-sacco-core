@@ -250,12 +250,19 @@ async def rotate_refresh_token(
     ).first()
     if peek is None:
         return AuthFailure("unknown refresh token")
-    role_id = (
+    user_row = (
         await session.execute(
             text("SELECT role_id FROM users WHERE id = CAST(:uid AS uuid) FOR UPDATE"),
             {"uid": str(peek[0])},
         )
-    ).scalar_one()
+    ).first()
+    if user_row is None:
+        # Review F6: the user vanished between the unlocked peek and the
+        # row lock (refresh_tokens.user_id is ON DELETE CASCADE, so the
+        # committed state is gone too). A 401 is the honest outcome —
+        # scalar_one() here would surface a 500 instead.
+        return AuthFailure("refresh token user vanished")
+    role_id = user_row[0]
     row = (
         await session.execute(
             text(

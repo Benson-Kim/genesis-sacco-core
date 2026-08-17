@@ -1,123 +1,106 @@
-# Genesis Prestige — Admin Web (P13.5 slice)
+# Genesis Prestige — Admin Web (`web/`)
 
-Static, **dependency-free** admin frontend for the P13.5 backend
-(system-users administration + audit-log viewer), delivered against the
-API on `duo/feature/p13-5-system-users` (MR !24).
+Next.js + TypeScript **strict** admin app (MASTER_PROMPT §2.3), built P14.
+Carries the P13.5 screens (system users administration + audit-log viewer),
+ported from the !25 stopgap console; the remaining feature screens land in P15.
 
-## Stack decision (pre-implementation reuse audit, MASTER_PROMPT §5.9)
-
-The only frontend that exists in this repository is the canonical
-prototype `genesis_prestige_app.html` — a single static HTML page with
-vanilla JS and CSS variables. The P14 Next.js scaffold (MASTER_PROMPT
-§2.3) is an unmerged Phase C prompt and does not exist on `main` or on
-the P13.5 base branch. Per the standing instruction for this slice —
-*reuse the repository's actual frontend conventions; do not introduce a
-new framework* — this app is:
-
-- plain HTML + vanilla ES modules + CSS, **zero runtime dependencies**,
-  no CDN scripts (supply-chain surface = this repo only);
-- visual tokens (CSS variables, card/table/pill/drawer/gate components)
-  copied from the prototype stylesheet;
-- served as static files; the API base defaults to same-origin and can
-  be overridden by the host page via `window.GENESIS_API_BASE`.
-
-When P14 lands, these screens are the reference implementation to port;
-nothing here duplicates backend logic (no client-side authz decisions,
-no local redaction/eligibility math, no local money math).
-
-### Reused, not re-implemented
-
-| Capability | Reused from |
-|---|---|
-| OTP sign-in, refresh rotation, logout | P3 `/auth/*` endpoints, transport unchanged (Bearer header + `x-tenant-id` pre-auth header) |
-| Permission gating data | P4 `GET /me/permissions` (UI affordance only; server enforces) |
-| Role catalogue | P4 `GET /access/roles` |
-| Idempotent mutations | P3 `Idempotency-Key` middleware (fresh UUID per logical submission) |
-| Error envelope | `{category, correlation_id}` from `genesis.errors` |
-| Look & feel | prototype CSS variables and component classes, copied verbatim where applicable |
-
-## Threat model (attacker lens — written before implementation)
-
-1. **XSS via audit-payload rendering** (named threat). `audit_log`
-   `before`/`after` JSON is attacker-influenced (member names, branch
-   strings, purposes...). Defence: DOM construction goes exclusively
-   through `src/dom.js`, which creates elements/text nodes and never
-   parses HTML; payloads render as pretty-printed JSON assigned via
-   `textContent` into a `<pre>`. `innerHTML`, `outerHTML`,
-   `insertAdjacentHTML`, `document.write`, `eval`, `new Function` and
-   inline event handlers are **build failures** (`scripts/lint.mjs`),
-   and the tests prove hostile payloads stay inert text.
-2. **CSRF on mutations.** The existing session transport is a Bearer
-   token in the `Authorization` header — there are no auth cookies in
-   this stack, so a cross-site attacker cannot attach credentials.
-   We follow that transport exactly and introduce no cookie fallback.
-3. **Token / OTP / PII leakage.** Access & refresh tokens live in JS
-   module memory only — never `localStorage`/`sessionStorage` (lint +
-   test enforced; the only persisted key is the non-secret tenant id),
-   never in URLs (auth travels in headers/bodies only; tested), never
-   logged. OTP codes are never displayed: the prototype's on-screen
-   OTP is a demo artifact; the API never returns codes and the UI has
-   no surface that could show one — OTP admin actions render
-   side-effect **counts** only. A page reload therefore requires
-   re-login; that is an accepted trade-off for a core-banking console.
-4. **IDOR via client-forged ids.** The client never treats its own
-   state as authority; every id is round-tripped to the server, which
-   enforces tenant + RBAC per request. 403/404 render least-disclosure
-   messages.
-5. **Privilege-escalation probing.** UI affordances are gated by
-   `GET /me/permissions` (`access_control` × view/create/edit) as UX
-   only; a 403 shows a generic "not permitted" message with the
-   correlation id — no hints about which permission was missing or
-   whether the target exists.
-6. **Clickjacking on admin actions.** `main.js` refuses to run framed
-   (frame guard), destructive actions require explicit confirmation
-   dialogs, and the deployment host MUST additionally send
-   `Content-Security-Policy: frame-ancestors 'none'` (meta CSP cannot
-   carry frame-ancestors; documented deployment requirement).
-7. **Lost update / stale write.** Every mutation carries the `version`
-   the record was rendered from; a 409 surfaces an explicit
-   "record changed — reload" flow. The client never auto-retries with
-   a fresher version and never silently overwrites.
-8. **Double submit.** Every mutation sends a fresh `Idempotency-Key`
-   (UUID) that is kept stable for retries of the *same* logical
-   submission; buttons are disabled while a call is in flight.
-9. **Hostile cursors / filters.** Keyset cursors are opaque strings:
-   stored, echoed back as query parameters, and never rendered or
-   parsed client-side. Filter inputs are length/shape-limited
-   client-side and validated server-side.
-10. **Supply chain.** Zero dependencies, no CDN, CSP `script-src 'self'`
-    in `index.html`; the lockfile is empty by construction.
-
-## Layout
+## Module layout
 
 ```
 web/
-  index.html        static shell (gate + sidebar + tab panels), meta CSP
-  assets/app.css    prototype tokens + components (no inline styles → strict CSP)
-  src/dom.js        the only module that builds DOM; text-node only
-  src/session.js    in-memory token store, tenant persistence, JWT sub decode
-  src/api.js        fetch wrapper: bearer, idempotency, refresh-once-on-401,
-                    error envelope mapping (401/403/409/422/429 distinct)
-  src/format.js     pure formatting (dates, pretty JSON), CursorPager
-  src/users.js      users administration screen
-  src/audit.js      audit-log viewer
-  src/main.js       boot, frame guard, login gate, permission-gated tabs
-  scripts/lint.mjs  security lint (merge blocker), module import check
-  scripts/run-tests.mjs / build.mjs
-  tests/            node:test suites (fake-DOM XSS proofs, client contract)
+├── packages/
+│   ├── design-system/     # @genesis/design-system — tokens (verbatim from the
+│   │                      #   prototype :root CSS variables) + UI primitives.
+│   │                      #   The ONLY source of colors/spacing (gate 1.1).
+│   └── api-client/        # @genesis/api-client — typed client. Types are
+│       ├── openapi.json   #   GENERATED from the backend OpenAPI contract;
+│       └── src/generated/ #   never hand-written (MASTER_PROMPT §2.1).
+├── src/
+│   ├── app/               # Next.js app router (thin pages only)
+│   ├── lib/               # env + the single authenticated API client
+│   └── modules/
+│       ├── auth/          # OTP flow, session store, token refresh, RequireAuth,
+│       │                  #   FrameGuard (clickjacking defence in depth)
+│       ├── authz/         # /me/permissions guards (RequireModule, deny-by-default)
+│       ├── layout/        # app shell: sidebar (permission-filtered nav), header
+│       ├── table/         # keyset-pagination table + cursor hooks (gate 1.3)
+│       ├── users/         # P13.5 users administration (Access-control tab)
+│       └── audit/         # P13.5 audit-log viewer (redacted payloads as text)
+└── scripts/
+    └── check-client-drift.sh
 ```
 
-## Local verification
+Internal packages are consumed through TypeScript path aliases
+(`@genesis/design-system`, `@genesis/api-client`); views import primitives and
+clients only through those public entry points.
 
-```
-cd web
-npm ci          # no-op install (zero deps) — mirrors CI
-npm run lint    # security lint + module load check
-npm test        # node:test suites
-npm run build   # copies the static site to web/dist
-```
+## Commands
 
-Serve `web/` from any static host that (a) also proxies the API
-same-origin or sets `window.GENESIS_API_BASE`, and (b) sends
-`frame-ancestors 'none'`/`X-Frame-Options: DENY` and
-`X-Content-Type-Options: nosniff`.
+| Command | Purpose |
+|---|---|
+| `npm run dev` | dev server |
+| `npm run lint` | eslint, **zero warnings** (`--max-warnings 0`) |
+| `npm run typecheck` | `tsc --noEmit` (strict) |
+| `npm test` | jest (jsdom) |
+| `npm run build` | production build |
+| `npm run generate:api` | regenerate the client from `packages/api-client/openapi.json` |
+| `npm run check:client-drift` | fail if the generated client is stale |
+
+## API client regeneration & drift-check
+
+The contract flows one way: backend code → OpenAPI → generated client.
+
+1. `cd backend && python scripts/export_openapi.py ../web/packages/api-client/openapi.json`
+2. `cd web && npm run generate:api`
+3. Commit both outputs.
+
+CI enforces both halves on every pipeline:
+
+- **`web:spec-drift`** — re-exports the spec from backend code and diffs it
+  against the committed `openapi.json` (fails when the backend contract moved).
+- **`web:client-drift`** — regenerates the TypeScript client from the committed
+  `openapi.json` and diffs it against `src/generated/` (fails on a stale client).
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | API origin (default `http://localhost:8000`) |
+| `NEXT_PUBLIC_TENANT_ID` | optional gate pre-fill for the tenant id (the tenant is chosen at sign-in, not baked into the build) |
+
+No secrets here — `NEXT_PUBLIC_*` values are public by definition (gate 1.6).
+
+## Auth & session notes
+
+- BOTH tokens are held in JS module memory only — no cookies, no local or
+  session storage (a page reload requires re-login; accepted trade-off for a
+  core-banking console, carried from the !25 threat model). Refresh is
+  proactive and single-flight before expiry; the refresh token travels only
+  in POST bodies; a failed refresh or any 401 tears the session down to the
+  sign-in gate.
+- The only persisted value is the tenant id — a routing UUID, not a
+  credential (`gp.tenant` in localStorage; `auth/session.ts` is the single
+  allowlisted storage site, lint- and test-enforced).
+- Route guards (`RequireAuth`, `RequireModule`) consume `/me/permissions` and
+  are deny-by-default; they shape UX only — the API authorizes every call.
+- Mutations send an `Idempotency-Key` with the stability/rotation contract:
+  stable across retries of an identical logical submission, rotated the
+  moment the body changes (gate 1.4). Mutations never auto-retry.
+- All list UIs use the keyset (cursor) contract `{items, next_cursor}` —
+  cursors are opaque server strings, echoed back, never parsed (gate 1.3).
+
+## Threat model (P13.5 screens — carried forward from !25, updated for the React/Next.js attack surface)
+
+| Threat | Defence |
+|---|---|
+| **XSS via audit-payload / profile rendering** (named threat; payloads embed attacker-influenced names/branches/purposes) | React text interpolation only — `dangerouslySetInnerHTML`, `innerHTML`/`outerHTML`/`insertAdjacentHTML`, `document.write`, `eval` family are eslint **errors** and a source-scan jest gate; payloads render as pretty-printed JSON via text nodes in `<pre>`, byte-identical to the API response; hostile-payload tests run through the real screens |
+| Hydration injection / SSR data leakage | All privileged data is fetched client-side after auth (TanStack Query); no `getServerSideProps`-style serialization of tokens/PII into page props; pages are thin client components; nothing sensitive in `NEXT_PUBLIC_*` |
+| CSRF on mutations | P3 transport exactly: Bearer header + refresh token in POST bodies — **no auth cookies exist**, so a cross-site page cannot attach credentials |
+| Token/OTP/PII leakage via storage/logs/URLs | Memory-only tokens (storage writes are test-asserted to carry only the tenant id); `console.*` is a lint error in shipped source; auth travels only in headers/bodies (network tests assert no token substring in any URL); OTP endpoints return side-effect **counts** only and have no code render surface |
+| Clickjacking on admin actions | `frame-ancestors 'none'` + `X-Frame-Options: DENY` from `next.config.ts` headers, in-app `FrameGuard` as defence in depth, confirmations on all destructive actions |
+| Lost update / stale write | Every mutation sends the loaded `version`; 409 ⇒ explicit "record changed — reload" flow; never silent overwrite or auto-retry (mutations `retry: 0`) |
+| Double submit / replay | `Idempotency-Key` stability/rotation contract per logical submission; buttons disabled in flight |
+| Privilege-escalation UI probing | Affordances gated by `GET /me/permissions` (UX only, deny-by-default `can()`); 403 renders "Not permitted." + correlation id — no capability enumeration |
+| Hostile cursors/filters | Cursors opaque (echoed, never parsed/rendered); filters length-limited; actor filter UUID-validated client-side; server validates regardless |
+| Dependency supply chain | `package.json` pinned to exact lockfile versions; `npm ci` against the committed lockfile; no CDN assets; generated client drift-checked in CI |
+| CSP limits | `script-src` retains `'unsafe-inline'` because Next.js emits inline bootstrap scripts — the nonce-based strict CSP is the P22 deployment item; primary XSS control is the absence of injection sinks (documented finding S2) |

@@ -26,8 +26,9 @@ from sqlalchemy import text
 from db_helpers import api_client, factory, latest_otp_code, unique_email
 from export_helpers import add_user, count, seed_actor
 from genesis.application import users as users_service
+from genesis.application.auth import AuthContext, issue_access_token
 from genesis.domain.rbac import ROLE_NAMES, Action, Module, seed_matrix
-from genesis.errors import NotFoundError
+from genesis.errors import ConflictError, NotFoundError
 from genesis.infrastructure.tenancy import tenant_session
 
 pytestmark = pytest.mark.skipif(
@@ -454,7 +455,13 @@ def test_self_status_and_self_role_edits_are_forbidden() -> None:
 
 def test_last_admin_cannot_be_suspended_or_reroled() -> None:
     """Self-lockout guard (P13.5). Falsifiable: remove the count check
-    under the admin-set lock and both calls return 200."""
+    under the admin-set lock and the suspension returns 200; remove the
+    F2 actor fence and the re-role returns 409 instead of 403.
+
+    Review F2 note: the manager's re-role attempt now dies at the actor
+    fence (403, least disclosure) BEFORE the last-admin count guard —
+    the count guard itself stays covered by
+    test_last_admin_rerole_guard_holds_at_service_level."""
 
     async def run() -> None:
         tid, admin_id, _ = await seed_actor()
@@ -474,7 +481,7 @@ def test_last_admin_cannot_be_suspended_or_reroled() -> None:
                 json={"version": 1, "role_id": str(teller_rid)},
                 headers=headers,
             )
-            assert res.status_code == 409
+            assert res.status_code == 403
         async with tenant_session(factory(), tid) as session:
             status = (
                 await session.execute(
@@ -483,6 +490,47 @@ def test_last_admin_cannot_be_suspended_or_reroled() -> None:
                 )
             ).scalar_one()
         assert str(status) == "active"
+
+    asyncio.run(run())
+
+
+def test_last_admin_rerole_guard_holds_at_service_level() -> None:
+    """The last-admin re-role 409 stays live behind the F2 fence.
+
+    After F2 every API actor allowed to re-role an admin is an ACTIVE
+    System Admin, which makes the target not-the-last by counting. The
+    guard still matters as defense in depth: a SUSPENDED admin actor
+    passes the F2 role check (role, not status) but must hit the count
+    guard. Falsifiable: drop the count check under the admin-set lock
+    and this service call succeeds, leaving zero active admins."""
+
+    async def run() -> None:
+        tid, admin_id, admin_token = await seed_actor()
+        suspended_admin_id, _ = await add_user(tid, "System Admin")
+        teller_rid = await _role_id(tid, "Teller")
+        async with api_client() as client:
+            res = await client.post(
+                f"/users/{suspended_admin_id}/status",
+                json={"version": 1, "status": "suspended"},
+                headers={"authorization": f"Bearer {admin_token}"},
+            )
+            assert res.status_code == 200
+        async with tenant_session(factory(), tid) as session:
+            with pytest.raises(ConflictError):
+                await users_service.assign_role(
+                    session,
+                    tid,
+                    suspended_admin_id,
+                    uuid.UUID(str(admin_id)),
+                    version=1,
+                    role_id=teller_rid,
+                )
+        remaining = await count(
+            tid,
+            "SELECT count(*) FROM users u JOIN roles r ON r.id = u.role_id "
+            "WHERE r.name = 'System Admin' AND u.status = 'active'",
+        )
+        assert remaining == 1
 
     asyncio.run(run())
 
@@ -800,5 +848,432 @@ def test_user_service_tenant_predicates_refuse_foreign_tenant() -> None:
                 )
             ).scalar_one()
         assert str(name) == "Target User"
+
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# Review findings F1/F2/F3/F5 (P13.5 deep-review remediation)
+# ---------------------------------------------------------------------------
+
+
+async def _active_refresh_and_pending_otp(tid: uuid.UUID, user_id: str) -> tuple[int, int]:
+    active = await count(
+        tid,
+        "SELECT count(*) FROM refresh_tokens "
+        "WHERE user_id = CAST(:u AS uuid) AND status = 'active'",
+        u=user_id,
+    )
+    pending = await count(
+        tid,
+        "SELECT count(*) FROM otp_challenges "
+        "WHERE user_id = CAST(:u AS uuid) AND consumed_at IS NULL",
+        u=user_id,
+    )
+    return active, pending
+
+
+def test_email_change_on_admin_by_manager_is_403_and_untouched() -> None:
+    """Review F1(b): email is the sole OTP login identifier, so a Branch
+    Manager rewriting a System Admin's email is account takeover.
+
+    Falsifiable: remove the actor fence in update_user and the PUT
+    returns 200 and the row assertions on email/version fail."""
+
+    async def run() -> None:
+        tid, admin_id, _ = await seed_actor()
+        # A second admin keeps the last-admin guard out of the picture.
+        await add_user(tid, "System Admin")
+        _, manager_token = await add_user(tid, "Branch Manager")
+        hijack = unique_email()
+        async with api_client() as client:
+            res = await client.put(
+                f"/users/{admin_id}",
+                json={"version": 1, "email": hijack},
+                headers={"authorization": f"Bearer {manager_token}"},
+            )
+            assert res.status_code == 403
+        async with tenant_session(factory(), tid) as session:
+            row = (
+                await session.execute(
+                    text("SELECT email, version FROM users WHERE id = CAST(:id AS uuid)"),
+                    {"id": str(admin_id)},
+                )
+            ).first()
+        assert row is not None
+        assert str(row[0]) != hijack
+        assert int(row[1]) == 1
+        # No audit row for the refused write (gate 1.5).
+        assert (
+            await count(
+                tid,
+                "SELECT count(*) FROM audit_log WHERE action = 'user.update' AND entity_id = :eid",
+                eid=str(admin_id),
+            )
+            == 0
+        )
+
+    asyncio.run(run())
+
+
+def test_email_change_voids_credentials_in_same_transaction() -> None:
+    """Review F1(c): ANY email change kills the target's credentials.
+
+    Hand-computed pre-state: the target logs in (1 active refresh
+    token, challenge #1 consumed) and requests a second OTP (1 pending
+    challenge). The email change must void 1 challenge and revoke 1
+    refresh token, recorded in the audit `after` payload. Falsifiable:
+    drop the void/revoke in update_user and the 0-count assertions and
+    the dead-old-email assertions fail."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        target_id, old_email = await _create_target(tid, admin_token)
+        await _login(tid, old_email)
+        tenant_headers = {"x-tenant-id": str(tid)}
+        admin_headers = {"authorization": f"Bearer {admin_token}"}
+        new_email = unique_email()
+        async with api_client() as client:
+            res = await client.post(
+                "/auth/otp/request", json={"email": old_email}, headers=tenant_headers
+            )
+            assert res.status_code == 202
+            assert await _active_refresh_and_pending_otp(tid, target_id) == (1, 1)
+
+            res = await client.put(
+                f"/users/{target_id}",
+                json={"version": 1, "email": new_email},
+                headers=admin_headers,
+            )
+            assert res.status_code == 200, res.text
+            assert res.json()["email"] == new_email
+
+            # Side-effect row counts prove the fence (never return
+            # values alone, MASTER_PROMPT section 4).
+            assert await _active_refresh_and_pending_otp(tid, target_id) == (0, 0)
+
+            # Old-email login is dead: no challenge is minted for an
+            # email that no longer exists (P3 silent path).
+            res = await client.post(
+                "/auth/otp/request", json={"email": old_email}, headers=tenant_headers
+            )
+            assert res.status_code == 202
+            assert await _active_refresh_and_pending_otp(tid, target_id) == (0, 0)
+
+        # New-email login works end to end.
+        tokens = await _login(tid, new_email)
+        assert tokens["access_token"]
+
+        # The audit row records the side-effect counts (gate 1.5).
+        async with tenant_session(factory(), tid) as session:
+            after = (
+                await session.execute(
+                    text(
+                        "SELECT after FROM audit_log WHERE action = 'user.update' "
+                        "AND entity_id = :eid ORDER BY at DESC LIMIT 1"
+                    ),
+                    {"eid": target_id},
+                )
+            ).scalar_one()
+        assert after["voided_otp_challenges"] == 1
+        assert after["revoked_refresh_tokens"] == 1
+
+    asyncio.run(run())
+
+
+def test_admin_can_change_another_admins_email() -> None:
+    """Review F1: the fence refuses non-admin ACTORS, not the operation.
+
+    A System Admin changing another System Admin's email is legitimate
+    (and exercises the admin-set-lock-first ordering branch)."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        target_admin_id, _ = await add_user(tid, "System Admin")
+        new_email = unique_email()
+        async with api_client() as client:
+            res = await client.put(
+                f"/users/{target_admin_id}",
+                json={"version": 1, "email": new_email},
+                headers={"authorization": f"Bearer {admin_token}"},
+            )
+            assert res.status_code == 200, res.text
+            assert res.json()["email"] == new_email
+
+    asyncio.run(run())
+
+
+def test_non_admin_cannot_grant_system_admin() -> None:
+    """Review F2: privilege escalation by proxy. A Branch Manager holds
+    access_control:edit but must not mint a System Admin.
+
+    Falsifiable: remove the actor fence in assign_role and the POST
+    returns 200 and the untouched-role assertion fails."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        target_id, _ = await _create_target(tid, admin_token, role_name="Teller")
+        _, manager_token = await add_user(tid, "Branch Manager")
+        admin_rid = await _role_id(tid, "System Admin")
+        teller_rid = await _role_id(tid, "Teller")
+        async with api_client() as client:
+            res = await client.post(
+                f"/users/{target_id}/role",
+                json={"version": 1, "role_id": str(admin_rid)},
+                headers={"authorization": f"Bearer {manager_token}"},
+            )
+            assert res.status_code == 403
+        async with tenant_session(factory(), tid) as session:
+            row = (
+                await session.execute(
+                    text("SELECT role_id, version FROM users WHERE id = CAST(:id AS uuid)"),
+                    {"id": target_id},
+                )
+            ).first()
+        assert row is not None
+        assert uuid.UUID(str(row[0])) == teller_rid
+        assert int(row[1]) == 1
+        assert (
+            await count(
+                tid,
+                "SELECT count(*) FROM audit_log WHERE action = 'user.role' AND entity_id = :eid",
+                eid=target_id,
+            )
+            == 0
+        )
+
+    asyncio.run(run())
+
+
+def test_non_admin_cannot_change_role_of_a_system_admin() -> None:
+    """Review F2, second edge: demoting a current System Admin also
+    requires a System Admin actor. Two admins exist, so the last-admin
+    count guard cannot mask the fence (falsifiable both ways)."""
+
+    async def run() -> None:
+        tid, admin_id, _ = await seed_actor()
+        await add_user(tid, "System Admin")
+        _, manager_token = await add_user(tid, "Branch Manager")
+        teller_rid = await _role_id(tid, "Teller")
+        async with api_client() as client:
+            res = await client.post(
+                f"/users/{admin_id}/role",
+                json={"version": 1, "role_id": str(teller_rid)},
+                headers={"authorization": f"Bearer {manager_token}"},
+            )
+            assert res.status_code == 403
+        async with tenant_session(factory(), tid) as session:
+            rid = (
+                await session.execute(
+                    text(
+                        "SELECT r.name FROM users u JOIN roles r ON r.id = u.role_id "
+                        "WHERE u.id = CAST(:id AS uuid)"
+                    ),
+                    {"id": str(admin_id)},
+                )
+            ).scalar_one()
+        assert str(rid) == "System Admin"
+
+    asyncio.run(run())
+
+
+def test_admin_can_grant_and_change_system_admin_roles() -> None:
+    """Review F2, allow direction: a real System Admin actor may grant
+    System Admin and may re-role another admin (a second admin exists,
+    so no lockout)."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        target_id, _ = await _create_target(tid, admin_token, role_name="Teller")
+        admin_rid = await _role_id(tid, "System Admin")
+        accountant_rid = await _role_id(tid, "Accountant")
+        headers = {"authorization": f"Bearer {admin_token}"}
+        async with api_client() as client:
+            res = await client.post(
+                f"/users/{target_id}/role",
+                json={"version": 1, "role_id": str(admin_rid)},
+                headers=headers,
+            )
+            assert res.status_code == 200, res.text
+            assert res.json()["role_name"] == "System Admin"
+            # ... and back off again (2 active admins, so no lockout).
+            res = await client.post(
+                f"/users/{target_id}/role",
+                json={"version": 2, "role_id": str(accountant_rid)},
+                headers=headers,
+            )
+            assert res.status_code == 200, res.text
+            assert res.json()["role_name"] == "Accountant"
+
+    asyncio.run(run())
+
+
+def test_role_fence_resolves_actor_role_server_side_not_from_jwt() -> None:
+    """Review F2: the fence must read the ACTOR's role from the users
+    table inside the transaction — never trust the JWT claim alone.
+
+    Adversarial setup: a token whose `rid` claim says System Admin but
+    whose users-table row is a Branch Manager. RequirePermission (JWT
+    role) grants access_control:edit, so only the server-side lookup
+    stands between this token and an admin grant. Falsifiable: resolve
+    the actor role from ctx.role_id instead and the POST returns 200."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        target_id, _ = await _create_target(tid, admin_token, role_name="Teller")
+        manager_id, _ = await add_user(tid, "Branch Manager")
+        admin_rid = await _role_id(tid, "System Admin")
+        teller_rid = await _role_id(tid, "Teller")
+        forged = issue_access_token(
+            AuthContext(user_id=manager_id, tenant_id=tid, role_id=admin_rid)
+        )
+        async with api_client() as client:
+            res = await client.post(
+                f"/users/{target_id}/role",
+                json={"version": 1, "role_id": str(admin_rid)},
+                headers={"authorization": f"Bearer {forged}"},
+            )
+            assert res.status_code == 403
+        async with tenant_session(factory(), tid) as session:
+            rid = (
+                await session.execute(
+                    text("SELECT role_id FROM users WHERE id = CAST(:id AS uuid)"),
+                    {"id": target_id},
+                )
+            ).scalar_one()
+        assert uuid.UUID(str(rid)) == teller_rid
+
+    asyncio.run(run())
+
+
+def test_suspended_user_access_token_is_refused_immediately() -> None:
+    """Review F3: a still-valid (15-minute) access token dies the moment
+    the suspension commits — authorization verifies users.status in the
+    same round-trip as the permission row.
+
+    Falsifiable: drop the status check in actor_access/RequirePermission
+    and the post-suspension GET returns 200 (the token is still signed
+    and unexpired, and the permission row still exists)."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        target_id, email = await _create_target(tid, admin_token, role_name="Teller")
+        tokens = await _login(tid, email)
+        target_headers = {"authorization": f"Bearer {tokens['access_token']}"}
+        async with api_client() as client:
+            res = await client.get("/members", headers=target_headers)
+            assert res.status_code == 200
+            res = await client.post(
+                f"/users/{target_id}/status",
+                json={"version": 1, "status": "suspended"},
+                headers={"authorization": f"Bearer {admin_token}"},
+            )
+            assert res.status_code == 200
+            # Same token, same route, zero grace period: 401 (not 403 —
+            # the session is dead, not under-privileged).
+            res = await client.get("/members", headers=target_headers)
+            assert res.status_code == 401
+
+    asyncio.run(run())
+
+
+def test_concurrent_otp_verify_vs_suspend_no_deadlock() -> None:
+    """Review F5: the P13.5 lock re-ordering (user row -> challenge ->
+    refresh) is proven by adversarial interleaving, not by docstring.
+
+    Repeated race (P11 style): OTP verify and suspension run
+    concurrently. The user-row lock serializes them in either order —
+    verify-first mints a token pair that the suspension then revokes;
+    suspend-first voids the challenge so verify gets 401. Invariant
+    after every round: no deadlock 500s, the suspension committed, and
+    the target holds 0 active refresh tokens and 0 pending challenges.
+    Falsifiable: restore the pre-P13.5 challenge-first lock order and
+    the rounds deadlock (500s); drop the void/revoke and the 0-count
+    assertions fail."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        tenant_headers = {"x-tenant-id": str(tid)}
+        admin_headers = {"authorization": f"Bearer {admin_token}"}
+        for _ in range(4):
+            target_id, email = await _create_target(tid, admin_token)
+            async with api_client() as client:
+                res = await client.post(
+                    "/auth/otp/request", json={"email": email}, headers=tenant_headers
+                )
+                assert res.status_code == 202
+                code = await latest_otp_code(tid)
+
+                async def verify(c: object, em: str, co: str) -> int:
+                    res = await c.post(  # type: ignore[attr-defined]
+                        "/auth/otp/verify",
+                        json={"email": em, "code": co},
+                        headers=tenant_headers,
+                    )
+                    return int(res.status_code)
+
+                async def suspend(c: object, target: str) -> int:
+                    res = await c.post(  # type: ignore[attr-defined]
+                        f"/users/{target}/status",
+                        json={"version": 1, "status": "suspended"},
+                        headers=admin_headers,
+                    )
+                    return int(res.status_code)
+
+                verify_status, suspend_status = await asyncio.gather(
+                    verify(client, email, code), suspend(client, target_id)
+                )
+            # No deadlocks: both requests resolve to domain outcomes.
+            assert suspend_status == 200, (verify_status, suspend_status)
+            assert verify_status in (200, 401), (verify_status, suspend_status)
+            # A committed suspension always leaves zero live credentials.
+            assert await _active_refresh_and_pending_otp(tid, target_id) == (0, 0)
+
+    asyncio.run(run())
+
+
+def test_concurrent_refresh_rotate_vs_suspend_no_deadlock() -> None:
+    """Review F5, second pair: refresh rotation vs suspension, repeated.
+
+    Rotation peeks the token row unlocked, then locks the USER row
+    before re-validating the token row — the same order the suspension
+    writer uses — so the pair serializes instead of deadlocking.
+    Rotate-first mints a replacement token that the suspension then
+    revokes; suspend-first revokes the family so rotation gets 401.
+    Falsifiable: lock the token row before the user row (the pre-P13.5
+    order) and the rounds deadlock (500s); drop the family revocation
+    and the 0-count assertions fail."""
+
+    async def run() -> None:
+        tid, _, admin_token = await seed_actor()
+        tenant_headers = {"x-tenant-id": str(tid)}
+        admin_headers = {"authorization": f"Bearer {admin_token}"}
+        for _ in range(4):
+            target_id, email = await _create_target(tid, admin_token)
+            tokens = await _login(tid, email)
+            async with api_client() as client:
+
+                async def rotate(c: object, refresh_token: str) -> int:
+                    res = await c.post(  # type: ignore[attr-defined]
+                        "/auth/refresh",
+                        json={"refresh_token": refresh_token},
+                        headers=tenant_headers,
+                    )
+                    return int(res.status_code)
+
+                async def suspend(c: object, target: str) -> int:
+                    res = await c.post(  # type: ignore[attr-defined]
+                        f"/users/{target}/status",
+                        json={"version": 1, "status": "suspended"},
+                        headers=admin_headers,
+                    )
+                    return int(res.status_code)
+
+                rotate_status, suspend_status = await asyncio.gather(
+                    rotate(client, tokens["refresh_token"]), suspend(client, target_id)
+                )
+            assert suspend_status == 200, (rotate_status, suspend_status)
+            assert rotate_status in (200, 401), (rotate_status, suspend_status)
+            assert await _active_refresh_and_pending_otp(tid, target_id) == (0, 0)
 
     asyncio.run(run())

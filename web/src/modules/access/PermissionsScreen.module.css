@@ -1,0 +1,189 @@
+/* Permissions matrix — role sidebar + permission table */
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Role sidebar */
+.roleList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roleItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--sub);
+  text-align: left;
+  transition: background 120ms var(--ease-standard), color 120ms var(--ease-standard);
+}
+
+.roleItem:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.roleItem.active {
+  background: var(--navySoft);
+  color: var(--navy);
+  font-weight: 800;
+}
+
+.roleItem:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.roleIcon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  /* Shield icon via CSS clip-path — no external asset */
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  opacity: 0.5;
+}
+
+.roleItem.active .roleIcon {
+  opacity: 1;
+}
+
+/* Matrix panel */
+.matrixHead {
+  font-size: var(--font-size-lg);
+  font-weight: 800;
+  color: var(--navy);
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.matrixTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.matrixTable thead tr {
+  background: var(--panel);
+}
+
+.matrixTh {
+  padding: 10px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+}
+
+.matrixTh:not(:first-child) {
+  text-align: center;
+}
+
+.matrixTd {
+  padding: 13px 16px;
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--ink);
+  border-bottom: 1px solid var(--panel);
+}
+
+.matrixTd:not(:first-child) {
+  text-align: center;
+}
+
+/* Custom checkbox replacing native — visually matches the screenshot */
+.check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  vertical-align: middle;
+  transition:
+    background 120ms var(--ease-standard),
+    border-color 120ms var(--ease-standard);
+  flex: none;
+}
+
+.check:checked {
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+.check:checked::after {
+  content: "";
+  width: 10px;
+  height: 7px;
+  border-left: 2.5px solid #fff;
+  border-bottom: 2.5px solid #fff;
+  transform: rotate(-45deg) translateY(-1px);
+  display: block;
+}
+
+.check:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.check:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.matrixFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.saveStatus {
+  font-size: var(--font-size-sm);
+  color: var(--sub);
+}
+
+.saveStatus.error {
+  color: var(--brick);
+}
+
+.saveStatus.ok {
+  color: var(--emerald);
+}
+
+/* Loading / empty states */
+.placeholder {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--sub);
+  font-size: var(--font-size-md);
+}

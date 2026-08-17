@@ -1,15 +1,41 @@
 {
-  "name": "genesis-prestige-web",
+  "name": "@genesis/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Genesis Prestige admin web (static, dependency-free). P13.5: system users administration & audit-log viewer.",
-  "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
+  "description": "Genesis Prestige admin web (Next.js + TypeScript strict) — MASTER_PROMPT §2.3",
   "scripts": {
-    "lint": "node scripts/lint.mjs",
-    "test": "node scripts/run-tests.mjs",
-    "build": "node scripts/build.mjs"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "generate:api": "openapi-typescript packages/api-client/openapi.json -o packages/api-client/src/generated/schema.d.ts",
+    "check:client-drift": "sh scripts/check-client-drift.sh"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.101.4",
+    "next": "15.5.22",
+    "openapi-fetch": "0.13.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.3.6",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/jest": "29.5.14",
+    "@types/node": "22.20.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.5",
+    "eslint-config-next": "15.5.22",
+    "jest": "29.7.0",
+    "jest-environment-jsdom": "29.7.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
   }
 }

@@ -36,7 +36,18 @@ row instead of deadlocking on each other's target rows. Token issue
 (application/auth.py) locks the user row before the challenge/refresh
 rows and never touches the admin set, so no cycle exists with login
 traffic. Non-admin-set operations (OTP invalidation/re-enrolment) start
-at the target user row and follow the same tail order.
+at the target user row and follow the same tail order. Email changes
+are credential mutations (review F1): email is the sole OTP login
+identifier, so update_user follows the same ordering — admin-set lock
+first when the TARGET holds the System Admin role, then the target
+row, then challenge/refresh voiding in the same transaction.
+
+Privilege fences on top of access_control:edit (review F1/F2): only an
+actor whose OWN role — resolved server-side from the users table
+inside the transaction, never from the JWT alone — is System Admin may
+change a System Admin's email, grant the System Admin role, or change
+the role of a current System Admin. Refusals are 403s that carry only
+the error category to the caller (least disclosure, gate 1.6).
 
 All reads AND writes carry explicit bound tenant_id predicates on top
 of forced RLS (v1.1 rule 4); every mutation writes its audit row
@@ -295,12 +306,44 @@ async def update_user(
     Role and status are deliberately NOT editable here: role assignment
     and activate/suspend are separate, separately-audited mutations with
     their own guards (P13.5). Omitted fields keep their current values.
+
+    Email change is a CREDENTIAL mutation (review F1): email is the sole
+    OTP login identifier, so rewriting it is account takeover unless
+    fenced. When the email changes, this path (a) takes the documented
+    lock order — the ordered admin-set lock FIRST when the target holds
+    the System Admin role, then the target user row; (b) refuses email
+    changes on a System Admin target unless the ACTOR is also a System
+    Admin (403, least disclosure); and (c) voids the target's pending
+    OTP challenges and revokes every refresh family IN THIS TRANSACTION,
+    with the counts recorded in the audit `after` payload.
     """
     current = await get_user(session, tenant_id, user_id)
     new_name = full_name if full_name is not None else current.full_name
     new_email = email if email is not None else current.email
     new_phone = phone if phone is not None else current.phone
     new_branch = branch if branch is not None else current.branch
+    email_changed = email is not None and email != current.email
+    if email_changed:
+        admin_role_id = await _admin_role_id(session, tenant_id)
+        target_is_admin = admin_role_id is not None and current.role_id == admin_role_id
+        if target_is_admin:
+            # Lock order (module docstring): the ordered admin-set lock
+            # comes FIRST when the target holds the System Admin role,
+            # exactly like the status/role writers, so no cycle exists
+            # with the suspension path.
+            await _lock_admin_set(session, tenant_id)
+        locked_role_id, _, _ = await _lock_user_row(session, tenant_id, user_id)
+        if admin_role_id is not None and locked_role_id == admin_role_id:
+            if not target_is_admin:
+                # The target became a System Admin between the unlocked
+                # read and the row lock; refuse (retryable) rather than
+                # proceed without the admin-set lock.
+                raise ConflictError(f"concurrent role change for user {user_id}")
+            if await _actor_role_id(session, tenant_id, actor_id) != admin_role_id:
+                # Review F1: a non-admin access_control:edit holder must
+                # never rotate an admin's login identifier. 403 carries
+                # only the category to the caller (least disclosure).
+                raise ForbiddenError("email change on a System Admin requires a System Admin actor")
     try:
         result = cast(
             CursorResult[Any],
@@ -328,6 +371,21 @@ async def update_user(
         raise ConflictError(f"email already in use for user update: {new_email}") from exc
     if result.rowcount != 1:
         raise ConflictError(f"stale version {version} for user {user_id}")
+    after: dict[str, object] = {
+        "full_name": new_name,
+        "email": new_email,
+        "phone": new_phone,
+        "branch": new_branch,
+        "version": current.version + 1,
+    }
+    if email_changed:
+        # Review F1(c): the old identifier's credentials die with it, in
+        # this same transaction — pending OTP challenges are voided and
+        # every refresh family is revoked (P3 state machines, reused).
+        voided = await _void_pending_otp_challenges(session, tenant_id, user_id)
+        revoked = await _revoke_refresh_families(session, tenant_id, user_id)
+        after["voided_otp_challenges"] = voided
+        after["revoked_refresh_tokens"] = revoked
     await record_audit(
         session,
         tenant_id,
@@ -342,15 +400,45 @@ async def update_user(
             "branch": current.branch,
             "version": current.version,
         },
-        after={
-            "full_name": new_name,
-            "email": new_email,
-            "phone": new_phone,
-            "branch": new_branch,
-            "version": current.version + 1,
-        },
+        after=after,
     )
     return await get_user(session, tenant_id, user_id)
+
+
+async def _admin_role_id(session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID | None:
+    """System Admin role id for the tenant, or None (unlocked read).
+
+    The role name is a code-owned constant, never caller input.
+    """
+    row = (
+        await session.execute(
+            text("SELECT id FROM roles WHERE tenant_id = CAST(:tid AS uuid) AND name = :name"),
+            {"tid": str(tenant_id), "name": SYSTEM_ADMIN},
+        )
+    ).first()
+    return uuid.UUID(str(row[0])) if row is not None else None
+
+
+async def _actor_role_id(
+    session: AsyncSession, tenant_id: uuid.UUID, actor_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Actor role resolved from the users table inside the transaction.
+
+    Review F1/F2: privilege fences must never trust the JWT's role claim
+    alone — a stale (or forged-claim) token would otherwise carry a role
+    the users table no longer grants. Explicit tenant predicate on top
+    of forced RLS (v1.1 rule 4).
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT role_id FROM users WHERE id = CAST(:id AS uuid) "
+                "AND tenant_id = CAST(:tid AS uuid)"
+            ),
+            {"id": str(actor_id), "tid": str(tenant_id)},
+        )
+    ).first()
+    return uuid.UUID(str(row[0])) if row is not None else None
 
 
 async def _lock_admin_set(session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID | None:
@@ -364,15 +452,9 @@ async def _lock_admin_set(session: AsyncSession, tenant_id: uuid.UUID) -> uuid.U
     (nothing to protect). The role name is a code-owned constant, never
     caller input.
     """
-    row = (
-        await session.execute(
-            text("SELECT id FROM roles WHERE tenant_id = CAST(:tid AS uuid) AND name = :name"),
-            {"tid": str(tenant_id), "name": SYSTEM_ADMIN},
-        )
-    ).first()
-    if row is None:
+    admin_role_id = await _admin_role_id(session, tenant_id)
+    if admin_role_id is None:
         return None
-    admin_role_id = uuid.UUID(str(row[0]))
     await session.execute(
         text(
             "SELECT id FROM users WHERE tenant_id = CAST(:tid AS uuid) "
@@ -559,6 +641,13 @@ async def assign_role(
     active System Admin away from System Admin is refused under the
     ordered admin-set lock — a lockout by role change is the same DoS
     as a lockout by suspension.
+
+    Privilege-escalation fence (review F2): granting the System Admin
+    role, or changing the role of a current System Admin, requires the
+    ACTOR to be a System Admin — with the actor's role resolved
+    server-side from the users table inside this transaction, never
+    from the JWT alone. Otherwise any access_control:edit holder could
+    mint an admin (or demote one) by proxy. 403, least disclosure.
     """
     if actor_id == user_id:
         raise ForbiddenError("users cannot change their own role")
@@ -567,6 +656,15 @@ async def assign_role(
         raise NotFoundError(f"role {role_id} not found")
     admin_role_id = await _lock_admin_set(session, tenant_id)
     target_role_id, current_status, _ = await _lock_user_row(session, tenant_id, user_id)
+    if (
+        admin_role_id is not None
+        and admin_role_id in (role_id, target_role_id)
+        # Review F2: checked under the locks, against committed state,
+        # BEFORE the same-role 409 so a non-admin probe learns nothing
+        # about the target's current role (least disclosure).
+        and await _actor_role_id(session, tenant_id, actor_id) != admin_role_id
+    ):
+        raise ForbiddenError("System Admin role changes require a System Admin actor")
     if target_role_id == role_id:
         raise ConflictError(f"user {user_id} already holds role {role_id}")
     if (

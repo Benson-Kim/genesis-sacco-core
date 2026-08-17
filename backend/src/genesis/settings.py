@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,25 @@ class Settings(BaseSettings):
     jwt_signing_key: str = ""
     otp_pepper: str = ""
     auth_rate_limit_per_minute: int = 60
+    # Comma-separated list of browser origins allowed to call this API.
+    # Example: "http://localhost:3000,https://admin.example.com"
+    # Stored as a plain string so pydantic-settings does not attempt JSON
+    # parsing; _split_origins converts it to a list after validation.
+    cors_origins: str = ""
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _coerce_list(cls, v: object) -> str:
+        """Accept a pre-split list (e.g. from tests) and join it back to a string."""
+        if isinstance(v, list):
+            return ",".join(str(i) for i in v)
+        return str(v) if v is not None else ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Return origins as a list, filtering out any blank entries."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # Export configuration (P13): resolved exclusively server-side —
     # request bodies never carry formats, row limits, or storage
     # locations (gate 1.6; P13 blocker a).

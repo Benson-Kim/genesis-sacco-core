@@ -1,0 +1,70 @@
+/* Mirrors prototype table / thead / th / td */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.headRow {
+  background: var(--panel);
+}
+
+.th,
+.thRight {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.thRight {
+  text-align: right;
+}
+
+.row {
+  border-bottom: 1px solid var(--panel);
+}
+
+.rowClickable {
+  cursor: pointer;
+}
+
+.rowClickable:hover {
+  background: var(--bg);
+}
+
+.td,
+.tdRight {
+  padding: 11px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--panel);
+}
+
+.tdRight {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+
+.note {
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 16px;
+}
+
+.error {
+  background: var(--brickSoft);
+  color: var(--brick);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+}

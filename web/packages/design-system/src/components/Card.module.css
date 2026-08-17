@@ -1,0 +1,10 @@
+/* Mirrors prototype .card / .pad */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.pad {
+  padding: 20px;
+}

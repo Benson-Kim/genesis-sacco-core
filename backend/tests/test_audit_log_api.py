@@ -11,13 +11,14 @@ import asyncio
 import json
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 from sqlalchemy import text
 
 from db_helpers import api_client, factory, unique_email
 from export_helpers import seed_actor
+from genesis.application.audit_log import list_audit_log
 from genesis.application.auth import AuthContext, issue_access_token
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -269,5 +270,62 @@ def test_audit_log_is_tenant_scoped() -> None:
             )
             assert res.status_code == 200
             assert res.json()["items"] == []
+
+    asyncio.run(run())
+
+
+def test_audit_date_filters_are_utc_days_independent_of_session_tz() -> None:
+    """Review F7: date bounds are explicit UTC datetimes computed
+    server-side, never bare dates cast by the session time zone.
+
+    Hand-computed oracle: a row at 20:00 UTC on day D lies inside the
+    inclusive filter [D, D] whatever the session TZ. Falsifiable: bind
+    bare dates again (the pre-fix code) and under the UTC+14 session
+    below the exclusive upper bound D+1 is cast to D 10:00 UTC, which
+    drops the 20:00 row — the first assertion fails."""
+
+    async def run() -> None:
+        tid, admin_id, _ = await seed_actor()
+        day = (datetime.now(UTC) - timedelta(days=3)).date()
+        late = datetime.combine(day, time(20, 0), tzinfo=UTC)
+        await _insert_audit_row(
+            tid, entity="members", action="probe.utcday", entity_id="late-utc", at=late
+        )
+        async with tenant_session(factory(), tid) as session:
+            viewer_role_id = (
+                await session.execute(
+                    text("SELECT role_id FROM users WHERE id = CAST(:id AS uuid)"),
+                    {"id": str(admin_id)},
+                )
+            ).scalar_one()
+        role_id = uuid.UUID(str(viewer_role_id))
+
+        async def entity_ids_with_session_tz(
+            tz: str, *, date_from: date | None = None, date_to: date | None = None
+        ) -> list[str]:
+            async with tenant_session(factory(), tid) as session:
+                # Transaction-local TZ (set_config ..., true); the bound
+                # parameters must make the result independent of it (F7).
+                await session.execute(text("SELECT set_config('TimeZone', :tz, true)"), {"tz": tz})
+                page = await list_audit_log(
+                    session,
+                    tid,
+                    role_id,
+                    action="probe.utcday",
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+            return [e.entity_id for e in page.items]
+
+        # UTC+14 (Etc/GMT-14): the bare-date binding would exclude the row.
+        ids = await entity_ids_with_session_tz("Etc/GMT-14", date_from=day, date_to=day)
+        assert ids == ["late-utc"]
+        # UTC-12 (Etc/GMT+12): the bare-date lower bound would shift late.
+        ids = await entity_ids_with_session_tz("Etc/GMT+12", date_from=day, date_to=day)
+        assert ids == ["late-utc"]
+        # Inclusive-end -> exclusive-upper semantics stay intact: the
+        # previous UTC day never contains the row.
+        ids = await entity_ids_with_session_tz("Etc/GMT-14", date_to=day - timedelta(days=1))
+        assert ids == []
 
     asyncio.run(run())

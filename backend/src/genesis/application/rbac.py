@@ -56,6 +56,69 @@ _ACTION_QUERIES: dict[Action, TextClause] = {
     ),
 }
 
+# Column names are code-owned literals chosen by Action, never caller
+# input, so the f-string assembly below is injection-safe (v1.1 rule 6).
+_ACTION_COLUMNS: dict[Action, str] = {
+    Action.VIEW: "can_view",
+    Action.CREATE: "can_create",
+    Action.EDIT: "can_edit",
+    Action.APPROVE: "can_approve",
+}
+
+_ACCESS_QUERIES: dict[Action, TextClause] = {
+    action: text(
+        f"SELECT u.status = 'active', COALESCE(p.{column}, false) "  # noqa: S608
+        "FROM users u LEFT JOIN permissions p "
+        "ON p.role_id = CAST(:rid AS uuid) AND p.module = :module "
+        "WHERE u.id = CAST(:uid AS uuid) AND u.tenant_id = CAST(:tid AS uuid)"
+    )
+    for action, column in _ACTION_COLUMNS.items()
+}
+
+
+@dataclass(frozen=True)
+class ActorAccess:
+    """Per-request authorization facts, fetched in one round-trip (F3)."""
+
+    is_active: bool
+    allowed: bool
+
+
+async def actor_access(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    role_id: uuid.UUID,
+    module: Module,
+    action: Action,
+) -> ActorAccess | None:
+    """Permission check + users.status verification, one round-trip.
+
+    Review F3: stateless access tokens outlive a suspension by up to 15
+    minutes, so authorization must also verify the actor's COMMITTED
+    status. RequirePermission already pays a DB round-trip per request;
+    the status rides along in the same query. Returns None when the
+    user row is gone (refused as unauthenticated by the caller). Deny
+    by default: a missing permission row is `allowed=False` (gate 1.6).
+    The users lookup carries an explicit bound tenant predicate on top
+    of forced RLS (v1.1 rule 4); role_id keeps the documented issue #17
+    exemption (unguessable, JWT-scoped).
+    """
+    row = (
+        await session.execute(
+            _ACCESS_QUERIES[action],
+            {
+                "uid": str(user_id),
+                "tid": str(tenant_id),
+                "rid": str(role_id),
+                "module": module.value,
+            },
+        )
+    ).first()
+    if row is None:
+        return None
+    return ActorAccess(is_active=bool(row[0]), allowed=bool(row[1]))
+
 
 async def seed_permissions(session: AsyncSession, tenant_id: uuid.UUID) -> dict[str, uuid.UUID]:
     """Create the 7 system roles and their prototype matrix; idempotent."""

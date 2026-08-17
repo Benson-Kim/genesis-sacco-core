@@ -1,0 +1,174 @@
+/*
+ * Design tokens as CSS custom properties.
+ *
+ * BLOCK 1 — Base palette: variable names and values are VERBATIM from the
+ * prototype :root block (genesis_prestige_app.html). This block is kept in
+ * byte-for-byte sync with tokens.ts by the design-system test suite.
+ *
+ * BLOCK 2 — Design-system extensions: interaction-state tonal steps
+ * (hover/active/dark), 8-point spacing grid, φ-derived fluid type scale,
+ * border-radius scale, named easing curves, layout dimension tokens,
+ * button interaction-state tokens (--btn-*), and shared focus ring.
+ * These are NOT in the prototype and therefore NOT in colorTokens / tokens.ts.
+ */
+
+/* ── BLOCK 1: Prototype palette (verbatim) ─────────────────────────────── */
+:root {
+  --navy:        #0F2C6B;
+  --navyMid:     #1E4FB0;
+  --steel:       #3E6FD0;
+  --navySoft:    #E6EDFB;
+
+  --gold:        #2E90FA;
+  --goldSoft:    #DCEBFF;
+
+  --ink:         #131A2B;
+  --sub:         #5C6579;
+
+  --line:        #E1E4EC;
+  --bg:          #F3F4F7;
+  --panel:       #EBEEF3;
+  --card:        #fff;
+
+  --emerald:     #1B7A54;
+  --emeraldSoft: #DCEFE6;
+
+  --brick:       #B23A2E;
+  --brickSoft:   #F6E1DD;
+
+  --orange:      #C2691C;
+  --orangeSoft:  #F7E7D4;
+
+  --loss:        #6E241B;
+}
+
+/* ── BLOCK 2: Design-system extensions (not in prototype) ───────────────── */
+:root {
+  /* Sidebar chrome opacity tokens (design-system addition — not in prototype) */
+  --sidebarSectionLabel: rgba(255, 255, 255, 0.4);
+  --sidebarNavActiveBg:  rgba(255, 255, 255, 0.12);
+  --sidebarBorder:       rgba(255, 255, 255, 0.1);
+
+  /* Interaction tonal steps (hover / active / dark) */
+  --navyDark:    #0A1E4A;   /* pressed/active */
+  --navyHover:   #1E4FB0;   /* alias of navyMid for explicitness */
+
+  --emeraldDark: #145C3F;   /* pressed/active */
+  --emeraldHover:#22966A;   /* hover */
+
+  --brickDark:   #8C2C22;   /* pressed/active */
+  --brickHover:  #C94135;   /* hover */
+
+  /* ── Spacing — 8-point grid ────────────────────────────────────────────
+   *  1 =  4px   2 =  8px   3 = 12px   4 = 16px   5 = 20px
+   *  6 = 24px   7 = 32px   8 = 40px   9 = 48px
+   */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+
+  /* ── Border-radius scale ───────────────────────────────────────────────── */
+  --radius-xs:   2px;
+  --radius-sm:   8px;
+  --radius-md:  10px;
+  --radius-lg:  12px;
+  --radius-xl:  14px;
+  --radius-pill: 999px;
+
+  /* ── Fluid type scale ──────────────────────────────────────────────────
+   * UI micro-copy (2xs→lg): tight uniform steps for labels and badges.
+   * Heading tier: φ = 1.618 anchored at 16 px (--font-size-xl).
+   *   2xl = 16 × φ   ≈ 26 px   (section headings)
+   *   3xl = 16 × φ²  ≈ 42 px   (page titles)
+   * All steps use clamp() to interpolate between 320 px and 1440 px viewports.
+   */
+  --font-size-2xs:  clamp(0.625rem,  0.625rem + 0vw,    0.625rem);   /* 10px */
+  --font-size-xs:   clamp(0.625rem,  0.607rem + 0.089vw, 0.6875rem); /* 10→11px */
+  --font-size-sm:   clamp(0.6875rem, 0.67rem  + 0.089vw, 0.75rem);   /* 11→12px */
+  --font-size-base: clamp(0.75rem,   0.732rem + 0.089vw, 0.8125rem); /* 12→13px */
+  --font-size-md:   clamp(0.8125rem, 0.795rem + 0.089vw, 0.875rem);  /* 13→14px */
+  --font-size-lg:   clamp(0.875rem,  0.857rem + 0.089vw, 0.9375rem); /* 14→15px */
+  --font-size-xl:   1rem;                                              /* 16px anchor */
+  --font-size-2xl:  clamp(1.375rem,  1.018rem + 1.116vw, 1.625rem);  /* 22→26px */
+  --font-size-3xl:  clamp(1.75rem,   1.25rem  + 1.5625vw, 2.625rem); /* 28→42px */
+
+  --font-sans:    -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --font-display: Georgia, serif;
+
+  /* ── Shadows ───────────────────────────────────────────────────────────── */
+  --shadow-md: 0 10px 30px rgba(19, 26, 43, 0.25);
+  --shadow-lg: 0 30px 90px rgba(0, 0, 0, 0.45);
+
+  /* ── Easing curves ─────────────────────────────────────────────────────── */
+  --ease-standard:   cubic-bezier(0.4, 0.0, 0.2, 1);
+  --ease-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0.0, 1.0, 1);
+  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Layout tokens ─────────────────────────────────────────────────────── */
+  --layout-sidebar-width:       240px;
+  --layout-sidebar-width-mini:   56px;
+  --layout-sidebar-transition:  200ms;
+  --layout-header-height:        64px;
+  --layout-content-max:        1200px;
+  --layout-card-form-width:      360px;
+  --layout-nav-active-bar:         3px;
+
+  /* ── Focus ring (shared across all interactive elements) ───────────────── */
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--gold) 45%, transparent);
+
+  /* ── Button interaction-state tokens ───────────────────────────────────
+   * Consumed by button.css. All values reference palette vars above.
+   */
+
+  /* primary (navy fill) */
+  --btn-primary-bg:            var(--navy);
+  --btn-primary-bg-hover:      var(--navyMid);
+  --btn-primary-bg-active:     var(--navyDark);
+  --btn-primary-fg:            var(--card);
+  --btn-primary-border:        var(--navy);
+  --btn-primary-border-hover:  var(--navyMid);
+
+  /* secondary (outline) */
+  --btn-secondary-bg:           var(--card);
+  --btn-secondary-bg-hover:     var(--panel);
+  --btn-secondary-bg-active:    var(--line);
+  --btn-secondary-fg:           var(--sub);
+  --btn-secondary-fg-hover:     var(--ink);
+  --btn-secondary-border:       var(--line);
+  --btn-secondary-border-hover: var(--sub);
+
+  /* danger (brick fill) */
+  --btn-danger-bg:           var(--brick);
+  --btn-danger-bg-hover:     var(--brickHover);
+  --btn-danger-bg-active:    var(--brickDark);
+  --btn-danger-fg:           var(--card);
+  --btn-danger-border:       var(--brick);
+  --btn-danger-border-hover: var(--brickHover);
+
+  /* success (emerald fill) */
+  --btn-success-bg:           var(--emerald);
+  --btn-success-bg-hover:     var(--emeraldHover);
+  --btn-success-bg-active:    var(--emeraldDark);
+  --btn-success-fg:           var(--card);
+  --btn-success-border:       var(--emerald);
+  --btn-success-border-hover: var(--emeraldHover);
+
+  /* ghost (transparent, text-only) */
+  --btn-ghost-bg:           transparent;
+  --btn-ghost-bg-hover:     var(--navySoft);
+  --btn-ghost-bg-active:    var(--steel);
+  --btn-ghost-fg:           var(--navyMid);
+  --btn-ghost-fg-hover:     var(--navy);
+  --btn-ghost-border:       transparent;
+}
+
+body {
+  font-size: var(--font-size-xl); /* 16px anchor — rem values derive from this */
+}

@@ -1,0 +1,179 @@
+/*
+ * Button design system — all interactive states per NNGroup button-states guide.
+ * https://www.nngroup.com/articles/button-states-communicate-interaction/
+ *
+ * States covered (every variant + size):
+ *   default   — resting appearance, clearly afforded as clickable
+ *   hover     — background/border shift signals interactivity
+ *   focus     — visible focus ring for keyboard / assistive-tech users
+ *   active    — pressed/depressed depth cue (scale + darker bg)
+ *   loading   — spinner replaces content; pointer-events off; same opacity as disabled
+ *   disabled  — reduced opacity + not-allowed cursor; no hover/active effects
+ *
+ * All color values reference --btn-* tokens from tokens.css (no raw hex).
+ * All spacing/radius values reference the standard token scale.
+ */
+
+/* Base */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-style: solid;
+  border-width: 1.5px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: var(--font-size-base);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 120ms var(--ease-standard),
+    border-color     120ms var(--ease-standard),
+    color            120ms var(--ease-standard),
+    box-shadow       120ms var(--ease-standard),
+    transform         80ms var(--ease-spring);
+  /* Prevent text-select on rapid clicks */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn:active:not(:disabled):not([aria-disabled='true']) {
+  transform: scale(0.97);
+}
+
+/* Sizes */
+/* sm — compact actions inside table rows, chips */
+.btn-sm {
+  padding: var(--space-1) var(--space-5);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-sm);
+}
+
+/* md — default; form actions, panel footers */
+.btn-md {
+  padding: var(--space-3) var(--space-7);
+}
+
+/* lg — primary page-level CTAs */
+.btn-lg {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--font-size-md);
+  border-radius: var(--radius-lg);
+}
+
+/* Variant: primary */
+.btn-primary {
+  background: var(--btn-primary-bg);
+  color:       var(--btn-primary-fg);
+  border-color: var(--btn-primary-border);
+}
+.btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-primary-bg-hover);
+  border-color: var(--btn-primary-border-hover);
+}
+.btn-primary:active:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-primary-bg-active);
+  border-color: var(--btn-primary-bg-active);
+}
+
+/* Variant: secondary */
+.btn-secondary {
+  background:   var(--btn-secondary-bg);
+  color:        var(--btn-secondary-fg);
+  border-color: var(--btn-secondary-border);
+}
+.btn-secondary:hover:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-secondary-bg-hover);
+  color:        var(--btn-secondary-fg-hover);
+  border-color: var(--btn-secondary-border-hover);
+}
+.btn-secondary:active:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-secondary-bg-active);
+  border-color: var(--btn-secondary-border-hover);
+}
+
+/* Variant: danger */
+.btn-danger {
+  background:   var(--btn-danger-bg);
+  color:        var(--btn-danger-fg);
+  border-color: var(--btn-danger-border);
+}
+.btn-danger:hover:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-danger-bg-hover);
+  border-color: var(--btn-danger-border-hover);
+}
+.btn-danger:active:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-danger-bg-active);
+  border-color: var(--btn-danger-bg-active);
+}
+
+/* Variant: success */
+.btn-success {
+  background:   var(--btn-success-bg);
+  color:        var(--btn-success-fg);
+  border-color: var(--btn-success-border);
+}
+.btn-success:hover:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-success-bg-hover);
+  border-color: var(--btn-success-border-hover);
+}
+.btn-success:active:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-success-bg-active);
+  border-color: var(--btn-success-bg-active);
+}
+
+/* Variant: ghost */
+.btn-ghost {
+  background:   var(--btn-ghost-bg);
+  color:        var(--btn-ghost-fg);
+  border-color: var(--btn-ghost-border);
+}
+.btn-ghost:hover:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-ghost-bg-hover);
+  color:        var(--btn-ghost-fg-hover);
+}
+.btn-ghost:active:not(:disabled):not([aria-disabled='true']) {
+  background:   var(--btn-ghost-bg-active);
+  opacity: 0.25; /* steel at reduced opacity for pressed depth */
+}
+
+/* Disabled & loading states */
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  /* Suppress all interaction effects */
+  pointer-events: none;
+}
+
+/* Loading: pointer-events off while spinner is visible */
+.btn[aria-busy='true'] {
+  cursor: wait;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+/* Loading spinner */
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width:  1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.65s linear infinite;
+  flex-shrink: 0;
+}

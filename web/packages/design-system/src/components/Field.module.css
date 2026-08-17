@@ -1,0 +1,12 @@
+/* Mirrors prototype label + .field */
+.field {
+  margin-bottom: 12px;
+}
+
+.label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--sub);
+  display: block;
+  margin-bottom: 5px;
+}

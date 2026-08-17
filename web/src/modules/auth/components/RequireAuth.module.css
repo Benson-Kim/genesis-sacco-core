@@ -1,0 +1,8 @@
+.checking {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  color: var(--sub);
+  font-size: 13px;
+  font-weight: 700;
+}
