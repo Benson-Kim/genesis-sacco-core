@@ -4,6 +4,13 @@ The first request claims (tenant_id, key) with a UNIQUE insert. Concurrent
 duplicates find the claim and receive 409 while the original is in flight;
 once a response is stored, replays return it verbatim. A 5xx or crash
 releases the claim so the client can retry.
+
+Replay scope (review R4): a stored response is returned ONLY to the
+same (tenant, actor, method, path, body) — the actor rides the request
+hash, so a DIFFERENT user presenting the same key can never read the
+first caller's stored response (that would bypass the per-handler
+authorization the original caller passed). A mismatched hash gets the
+least-disclosure 409 envelope instead.
 """
 
 from __future__ import annotations
@@ -50,6 +57,23 @@ def _tenant_from_scope(scope: Scope) -> uuid.UUID | None:
     return None
 
 
+def _actor_from_scope(scope: Scope) -> str:
+    """Actor discriminator for the request hash (review R4).
+
+    Authenticated requests hash the token's user_id so replays are
+    per-user; pre-auth requests (x-tenant-id header, no bearer) have no
+    actor and hash the empty string — their identity lives in the body
+    (e.g. the OTP email), which is already part of the hash.
+    """
+    bearer = _header(scope, b"authorization") or ""
+    if bearer.lower().startswith("bearer "):
+        try:
+            return str(decode_access_token(bearer[7:]).user_id)
+        except UnauthenticatedError:
+            return ""
+    return ""
+
+
 async def _read_body(receive: Receive) -> bytes:
     chunks: list[bytes] = []
     while True:
@@ -94,7 +118,13 @@ class IdempotencyMiddleware:
         body = await _read_body(receive)
         method: str = scope["method"]
         path: str = scope["path"]
-        request_hash = hashlib.sha256(b"|".join([method.encode(), path.encode(), body])).hexdigest()
+        # The actor is part of the hash (review R4): a different user
+        # replaying the same key mismatches and gets the 409 envelope,
+        # never the stored response of a request they never authorized.
+        actor = _actor_from_scope(scope)
+        request_hash = hashlib.sha256(
+            b"|".join([actor.encode(), method.encode(), path.encode(), body])
+        ).hexdigest()
         factory = get_sessionmaker(settings.database_url)
 
         stored: tuple[Any, Any, Any] | None = None

@@ -46,6 +46,16 @@ _products_list = RequireAnyPermission(
     (Module.SETTINGS, Action.VIEW),
     (Module.APPLICATIONS, Action.CREATE),
 )
+#: P13.14 release gate: staff with applications:edit release anything
+#: the rules allow; a guarantor withdrawing their OWN unconsented
+#: pledge holds only applications:view (the Guarantors screen). The
+#: binding wrong-actor check (self vs staff) runs server-side in the
+#: service under the row locks — this dependency is the deny-by-default
+#: outer fence (gate 1.6).
+_guarantee_release = RequireAnyPermission(
+    (Module.APPLICATIONS, Action.EDIT),
+    (Module.APPLICATIONS, Action.VIEW),
+)
 
 SettingsViewCtx = Annotated[AuthContext, Depends(_settings_view)]
 SettingsCreateCtx = Annotated[AuthContext, Depends(_settings_create)]
@@ -55,6 +65,7 @@ AppsCreateCtx = Annotated[AuthContext, Depends(_apps_create)]
 AppsEditCtx = Annotated[AuthContext, Depends(_apps_edit)]
 AppsApproveCtx = Annotated[AuthContext, Depends(_apps_approve)]
 ProductListCtx = Annotated[AuthContext, Depends(_products_list)]
+GuaranteeReleaseCtx = Annotated[AuthContext, Depends(_guarantee_release)]
 
 
 class ProductCreateBody(BaseModel):
@@ -173,14 +184,47 @@ class ConsentBody(BaseModel):
     version: int = Field(ge=1)
 
 
+class GuaranteeReleaseBody(BaseModel):
+    """No amounts, ever (P13.14): the released amount comes from the
+    guarantee row; version pins the optimistic lock (gate 1.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+
+
+class GuaranteeSubstituteBody(BaseModel):
+    """Atomic-swap request (P13.14). consented records the substitute
+    guarantor's staff-attested consent and consent_reference cites the
+    evidence it rests on (e.g. the signed guarantorship form) — an
+    unconsented or unreferenced substitute is refused (422) and the
+    attestation is written as a first-class audited fact (review R1).
+    amount may only meet or exceed the released amount (server-derived
+    from the guarantee row when omitted)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    guarantor_member_id: uuid.UUID
+    consented: bool
+    consent_reference: str = Field(min_length=1, max_length=200)
+    amount: Decimal | None = Field(default=None, gt=0, le=1_000_000_000)
+
+
 class GuaranteeOut(BaseModel):
     id: str
-    application_id: str
+    application_id: str | None
+    loan_id: str | None
     guarantor_member_id: str
     borrower_member_id: str
     amount: str
     status: str
     version: int
+
+
+class SubstitutionOut(BaseModel):
+    released: GuaranteeOut
+    replacement: GuaranteeOut
 
 
 def _product_out(p: products_service.LoanProduct) -> ProductOut:
@@ -214,7 +258,8 @@ def _application_out(a: applications_service.ApplicationRecord) -> ApplicationOu
 def _guarantee_out(g: guarantees_service.GuaranteeRecord) -> GuaranteeOut:
     return GuaranteeOut(
         id=str(g.id),
-        application_id=str(g.application_id),
+        application_id=str(g.application_id) if g.application_id else None,
+        loan_id=str(g.loan_id) if g.loan_id else None,
         guarantor_member_id=str(g.guarantor_member_id),
         borrower_member_id=str(g.borrower_member_id),
         amount=str(g.amount),
@@ -400,3 +445,61 @@ async def consent_guarantee(
             version=body.version,
         )
     return _guarantee_out(record)
+
+
+@router.post("/guarantees/{guarantee_id}/release")
+async def release_guarantee(
+    guarantee_id: uuid.UUID,
+    body: GuaranteeReleaseBody,
+    ctx: GuaranteeReleaseCtx,
+) -> GuaranteeOut:
+    """Release one guarantee per the P13.14 rules (prototype "Release").
+
+    Staff (applications:edit) release pledged guarantees and — cover
+    rule permitting — active ones on undisbursed applications; a
+    guarantor may withdraw their own unconsented pledge. An active
+    guarantee behind a disbursed loan is never bare-released (409):
+    use the substitution endpoint.
+    """
+    factory = get_sessionmaker(get_settings().database_url)
+    async with tenant_session(factory, ctx.tenant_id) as session:
+        record = await guarantees_service.release_guarantee(
+            session,
+            ctx.tenant_id,
+            ctx.user_id,
+            guarantee_id,
+            version=body.version,
+            actor_role_id=ctx.role_id,
+        )
+    return _guarantee_out(record)
+
+
+@router.post("/guarantees/{guarantee_id}/substitute", status_code=201)
+async def substitute_guarantee(
+    guarantee_id: uuid.UUID,
+    body: GuaranteeSubstituteBody,
+    ctx: AppsEditCtx,
+) -> SubstitutionOut:
+    """Atomic swap for a disbursed loan's collateral (P13.14).
+
+    Releases the guarantee and creates the replacement CONSENTED pledge
+    in one transaction; any failure between the two writes leaves the
+    original guarantee fully intact.
+    """
+    factory = get_sessionmaker(get_settings().database_url)
+    async with tenant_session(factory, ctx.tenant_id) as session:
+        released, replacement = await guarantees_service.substitute_guarantee(
+            session,
+            ctx.tenant_id,
+            ctx.user_id,
+            guarantee_id,
+            version=body.version,
+            guarantor_member_id=body.guarantor_member_id,
+            consented=body.consented,
+            consent_reference=body.consent_reference,
+            amount=body.amount,
+        )
+    return SubstitutionOut(
+        released=_guarantee_out(released),
+        replacement=_guarantee_out(replacement),
+    )

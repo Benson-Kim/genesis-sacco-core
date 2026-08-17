@@ -20,10 +20,15 @@ workflow:
 default:
   interruptible: true
 
+# `latest` template variants: the stable templates rule on
+# $CI_COMMIT_BRANCH only, so their jobs never spawned on
+# merge_request_event pipelines (the !26/!28/!29 security-stage gap —
+# review R6). The latest variants add merge-request rules and skip the
+# duplicate branch pipeline when an MR is open.
 include:
-  - template: Jobs/SAST.gitlab-ci.yml
-  - template: Jobs/Secret-Detection.gitlab-ci.yml
-  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+  - template: Jobs/SAST.latest.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.latest.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.latest.gitlab-ci.yml
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
