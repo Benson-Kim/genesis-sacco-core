@@ -33,6 +33,7 @@ include:
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+  PUB_CACHE: "$CI_PROJECT_DIR/mobile/.pub-cache"
 
 # -----------------------------------------------------------------------------
 # Docs — architecture diagrams (P-DIAG series, docs/diagrams/ only)
@@ -455,10 +456,21 @@ web:client-drift:
     expire_in: 3 days
 
 # -----------------------------------------------------------------------------
-# Mobile — Flutter (member_app, admin_app, shared packages)
+# Mobile — Flutter (member_app, admin_app, gp_ui, gp_api_client)
+# Packages are processed in dependency order:
+#   gp_ui → gp_api_client → member_app → admin_app
 # -----------------------------------------------------------------------------
 .mobile:
   image: ghcr.io/cirruslabs/flutter:stable
+  cache:
+    # Key on the member_app lockfile as a representative; all packages share
+    # the same pub cache directory. GitLab cache key supports max 2 files.
+    key:
+      files:
+        - mobile/member_app/pubspec.yaml
+        - mobile/gp_ui/pubspec.yaml
+    paths:
+      - mobile/.pub-cache
 
 mobile:lint:
   extends: .mobile
@@ -467,10 +479,21 @@ mobile:lint:
     - exists: ["mobile/**/pubspec.yaml"]
   script:
     - |
-      for app in mobile/*/; do
-        if [ -f "${app}pubspec.yaml" ]; then
-          (cd "$app" && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze)
+      set -e
+      for pkg in mobile/gp_ui mobile/gp_api_client mobile/member_app mobile/admin_app; do
+        echo "==> Linting $pkg"
+        (cd "$pkg" && flutter pub get)
+        if ! (cd "$pkg" && dart format --output=none --set-exit-if-changed .); then
+          # Print the formatter's own diff so a stale tree can be
+          # refreshed exactly from this trace (the spec-drift /
+          # client-drift precedent: the tool's output, never a hand
+          # guess, is the update path).
+          (cd "$pkg" && dart format . >/dev/null)
+          git --no-pager diff -- "$pkg"
+          git checkout -- "$pkg"
+          exit 1
         fi
+        (cd "$pkg" && flutter analyze --fatal-infos)
       done
 
 mobile:test:
@@ -481,9 +504,46 @@ mobile:test:
     - exists: ["mobile/**/pubspec.yaml"]
   script:
     - |
-      for app in mobile/*/; do
-        if [ -f "${app}pubspec.yaml" ] && [ -d "${app}test" ]; then
-          (cd "$app" && flutter pub get && flutter test)
+      set -e
+      for pkg in mobile/gp_ui mobile/gp_api_client mobile/member_app mobile/admin_app; do
+        if [ -d "${pkg}/test" ]; then
+          echo "==> Testing $pkg"
+          (cd "$pkg" && flutter pub get && flutter test --reporter=expanded)
         fi
       done
+  artifacts:
+    when: always
+    reports:
+      junit: mobile/**/test-results.xml
 
+mobile:build:member:
+  extends: .mobile
+  stage: build
+  needs: ["mobile:test"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: ["mobile/member_app/pubspec.yaml"]
+  script:
+    - cd mobile/member_app
+    - flutter pub get
+    - flutter build apk --release --dart-define=GP_API_BASE_URL=https://api.staging.genesisprestige.co.ke/v1
+  artifacts:
+    paths:
+      - mobile/member_app/build/app/outputs/flutter-apk/app-release.apk
+    expire_in: 1 week
+
+mobile:build:admin:
+  extends: .mobile
+  stage: build
+  needs: ["mobile:test"]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      exists: ["mobile/admin_app/pubspec.yaml"]
+  script:
+    - cd mobile/admin_app
+    - flutter pub get
+    - flutter build apk --release --dart-define=GP_API_BASE_URL=https://api.staging.genesisprestige.co.ke/v1
+  artifacts:
+    paths:
+      - mobile/admin_app/build/app/outputs/flutter-apk/app-release.apk
+    expire_in: 1 week
