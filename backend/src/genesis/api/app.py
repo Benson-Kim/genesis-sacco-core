@@ -13,6 +13,7 @@ from genesis.api.accounting_periods import router as accounting_periods_router
 from genesis.api.audit_log import router as audit_log_router
 from genesis.api.auth import router as auth_router
 from genesis.api.branches import router as branches_router
+from genesis.api.dividends import router as dividends_router
 from genesis.api.health import router as health_router
 from genesis.api.idempotency import IdempotencyMiddleware
 from genesis.api.loan_book import router as loan_book_router
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(loans_router)
     app.include_router(loan_book_router)
     app.include_router(transactions_router)
+    app.include_router(dividends_router)
     app.include_router(reports_router)
     app.include_router(tenant_settings_router)
     app.include_router(accounting_periods_router)

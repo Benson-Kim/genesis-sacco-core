@@ -69,7 +69,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from functools import partial
 from typing import Any, cast
@@ -80,6 +80,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from genesis.application.audit import record_audit
 from genesis.application.batch_runner import SessionScope, run_in_batches
 from genesis.application.ledger import post_deposit_interest
+from genesis.application.period_balances import average_daily_balance
 from genesis.domain.deposits import (
     QuarterPeriod,
     next_quarter,
@@ -87,7 +88,6 @@ from genesis.domain.deposits import (
     quarter_of,
     quarterly_interest,
 )
-from genesis.domain.ledger import Account
 from genesis.domain.money import ZERO, to_cents
 from genesis.errors import ConflictError, InvalidInputError
 
@@ -189,113 +189,6 @@ async def resolve_run_parameters(
     return next_quarter(latest), rate
 
 
-async def _balance_as_of_period_end(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    member_id: uuid.UUID,
-    *,
-    current_balance: Decimal,
-    cutoff: datetime,
-) -> Decimal:
-    """Reconstruct the deposit balance at the period end from the ledger.
-
-    Every deposit-balance writer posts a member.deposits leg through
-    the P7 contract in the same transaction as the balance update, so
-    subtracting the net movement at/after the cutoff from the current
-    balance (both read under the account row lock) yields the balance
-    the account held when the period closed. Clamped at zero as a
-    guard for directly seeded fixtures without ledger history.
-    """
-    delta = (
-        await session.execute(
-            text(
-                "SELECT COALESCE(SUM(CASE WHEN le.side = 'credit' "
-                "THEN le.amount ELSE -le.amount END), 0) "
-                "FROM ledger_entries le "
-                "JOIN transactions t ON t.id = le.transaction_id "
-                "AND t.tenant_id = le.tenant_id "
-                "WHERE le.tenant_id = CAST(:tid AS uuid) "
-                "AND t.member_id = CAST(:m AS uuid) "
-                "AND le.account = :acct AND t.occurred_at >= :cutoff"
-            ),
-            {
-                "tid": str(tenant_id),
-                "m": str(member_id),
-                "acct": Account.MEMBER_DEPOSITS.value,
-                "cutoff": cutoff,
-            },
-        )
-    ).scalar_one()
-    historical = to_cents(current_balance - Decimal(str(delta)))
-    return historical if historical > ZERO else ZERO
-
-
-async def _average_daily_balance(
-    session: AsyncSession,
-    tenant_id: uuid.UUID,
-    member_id: uuid.UUID,
-    *,
-    current_balance: Decimal,
-    period: QuarterPeriod,
-) -> Decimal:
-    """Average daily balance over the period, reconstructed from the ledger.
-
-    All reads happen under the account row lock taken by the caller
-    (gate 1.4), inside the same transaction. Starting from the balance
-    as of the period end (see _balance_as_of_period_end), the walk
-    undoes each day's net member.deposits movement backwards from
-    period.end to period.start, producing every end-of-day balance in
-    the period; the basis is the cent-rounded mean of those balances,
-    each clamped at zero (guard for directly seeded fixtures without
-    ledger history). A deposit parked on the account for only the last
-    day of the quarter therefore earns exactly 1/N of the quarter
-    (review finding 14) instead of the full quarter a point-in-time
-    snapshot would have paid.
-    """
-    period_start_at = datetime.combine(period.start, time.min, tzinfo=UTC)
-    cutoff = datetime.combine(period.end + timedelta(days=1), time.min, tzinfo=UTC)
-    end_balance = await _balance_as_of_period_end(
-        session, tenant_id, member_id, current_balance=current_balance, cutoff=cutoff
-    )
-    rows = (
-        await session.execute(
-            text(
-                "SELECT (t.occurred_at AT TIME ZONE 'UTC')::date AS day, "
-                "SUM(CASE WHEN le.side = 'credit' "
-                "THEN le.amount ELSE -le.amount END) "
-                "FROM ledger_entries le "
-                "JOIN transactions t ON t.id = le.transaction_id "
-                "AND t.tenant_id = le.tenant_id "
-                "WHERE le.tenant_id = CAST(:tid AS uuid) "
-                "AND t.member_id = CAST(:m AS uuid) "
-                "AND le.account = :acct "
-                "AND t.occurred_at >= :p_start AND t.occurred_at < :cutoff "
-                "GROUP BY 1"
-            ),
-            {
-                "tid": str(tenant_id),
-                "m": str(member_id),
-                "acct": Account.MEMBER_DEPOSITS.value,
-                "p_start": period_start_at,
-                "cutoff": cutoff,
-            },
-        )
-    ).all()
-    movements: dict[date, Decimal] = {row[0]: Decimal(str(row[1])) for row in rows}
-    total = ZERO
-    balance = end_balance
-    day = period.end
-    while day >= period.start:
-        if balance > ZERO:
-            total += balance
-        # End-of-day balance for the previous day = this day's
-        # end-of-day balance minus this day's net movement.
-        balance -= movements.get(day, ZERO)
-        day -= timedelta(days=1)
-    days_in_period = (period.end - period.start).days + 1
-    return to_cents(total / days_in_period)
-
-
 async def _process_batch(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -353,8 +246,11 @@ async def _process_batch(
         balance = Decimal(str(balance_raw))
         # Average daily balance over the period (review finding 14):
         # a last-day deposit earns 1/N of the quarter, not all of it.
-        basis = await _average_daily_balance(
-            session, tenant_id, member_id, current_balance=balance, period=period
+        # Reconstructed by the shared P11 helper (extracted to
+        # period_balances for the P13.11 dividend basis, gate 1.1);
+        # reads run under the account row lock held by this scan.
+        basis = await average_daily_balance(
+            session, tenant_id, member_id, kind="deposit", start=period.start, end=period.end
         )
         interest = quarterly_interest(basis, annual_rate_pct)
         accrual_id = str(uuid.uuid4())

@@ -56,6 +56,7 @@ class ExportFiltersBody(BaseModel):
 
     member_id: uuid.UUID | None = None
     exit_id: uuid.UUID | None = None
+    declaration_id: uuid.UUID | None = None
     date_from: date | None = None
     date_to: date | None = None
 
@@ -127,6 +128,7 @@ async def request_export(body: ExportRequestBody, ctx: ViewCtx) -> ExportOut:
     filters = ExportFilters(
         member_id=filters_body.member_id,
         exit_id=filters_body.exit_id,
+        declaration_id=filters_body.declaration_id,
         date_from=filters_body.date_from,
         date_to=filters_body.date_to,
     )

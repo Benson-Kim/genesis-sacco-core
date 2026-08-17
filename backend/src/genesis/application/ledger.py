@@ -41,11 +41,14 @@ from genesis.domain.ledger import (
     build_deposit_interest_posting,
     build_deposit_posting,
     build_disbursement_posting,
+    build_dividend_distribution_posting,
     build_exit_settlement_posting,
     build_loan_interest_accrual_posting,
     build_repayment_posting,
     build_reversal_posting,
     build_share_topup_posting,
+    build_share_transfer_in_posting,
+    build_share_transfer_out_posting,
     build_withdrawal_posting,
     ref_prefix,
 )
@@ -521,6 +524,87 @@ async def post_deposit_interest(
         },
     )
     return result
+
+
+async def post_dividend_distribution(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    dividend: Decimal,
+    rebate: Decimal,
+    actor_id: uuid.UUID | None = None,
+    occurred_at: datetime | None = None,
+) -> PostingResult:
+    """Post one member's dividend + rebate payout (DV- ref, P13.11).
+
+    DR expense.dividends / CR member.shares and DR expense.rebates /
+    CR member.deposits — the dividend capitalises into share capital
+    so it compounds into the next financial year's basis (gate 1.5).
+    Runs in the caller's transaction; the P13.11 distribution job owns
+    the atomic unit (claim + posting + balance updates + audit).
+    Payload carries ids and amounts only — never names (gate 1.6).
+    """
+    spec = build_dividend_distribution_posting(dividend, rebate)
+    result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="ledger.dividend_posted",
+        payload={
+            "txn_id": str(result.txn_id),
+            "txn_ref": result.txn_ref,
+            "member_id": str(member_id),
+            "dividend": str(to_cents(dividend)),
+            "rebate": str(to_cents(rebate)),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
+        },
+    )
+    return result
+
+
+async def post_share_transfer(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    from_member_id: uuid.UUID,
+    to_member_id: uuid.UUID,
+    amount: Decimal,
+    actor_id: uuid.UUID | None = None,
+    occurred_at: datetime | None = None,
+) -> tuple[PostingResult, PostingResult]:
+    """Post both legs of a member-to-member share transfer (ST- refs).
+
+    Two member-attributed transactions through the clearing account
+    (see genesis.domain.ledger for why one netted posting would blind
+    the ledger-reconstructed share basis); the clearing account nets
+    to zero inside this one transaction. The caller (P13.11
+    transfer_shares) owns the atomic unit and the row locks. One
+    outbox event describes the whole transfer (gates 1.2, 1.5).
+    """
+    out_spec = build_share_transfer_out_posting(amount)
+    in_spec = build_share_transfer_in_posting(amount)
+    out_result = await _post(
+        session, tenant_id, from_member_id, out_spec, actor_id, occurred_at=occurred_at
+    )
+    in_result = await _post(
+        session, tenant_id, to_member_id, in_spec, actor_id, occurred_at=occurred_at
+    )
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="ledger.share_transfer_posted",
+        payload={
+            "out_txn_id": str(out_result.txn_id),
+            "out_txn_ref": out_result.txn_ref,
+            "in_txn_id": str(in_result.txn_id),
+            "in_txn_ref": in_result.txn_ref,
+            "from_member_id": str(from_member_id),
+            "to_member_id": str(to_member_id),
+            "amount": str(out_spec.amount),  # rounded, matches the ledger (1.5)
+        },
+    )
+    return out_result, in_result
 
 
 async def post_exit_settlement(

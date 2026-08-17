@@ -46,6 +46,9 @@ class TxnType(enum.StrEnum):
     LOAN_REPAYMENT = "loan_repayment"
     INTEREST_POSTING = "interest_posting"
     EXIT_SETTLEMENT = "exit_settlement"
+    DIVIDEND_POSTING = "dividend_posting"
+    SHARE_TRANSFER_OUT = "share_transfer_out"
+    SHARE_TRANSFER_IN = "share_transfer_in"
 
 
 class Channel(enum.StrEnum):
@@ -83,6 +86,15 @@ class Account(enum.StrEnum):
 
     # Expense accounts
     INTEREST_EXPENSE = "interest.expense"
+    DIVIDEND_EXPENSE = "expense.dividends"
+    REBATE_EXPENSE = "expense.rebates"
+
+    # Clearing account for member-to-member share transfers (P13.11):
+    # the OUT and IN legs post as two member-attributed transactions
+    # so each member's ledger-reconstructed share history stays exact
+    # (the ADB basis keys legs to members via transactions.member_id);
+    # this account nets to zero inside every transfer's transaction.
+    SHARE_TRANSFER_CLEARING = "clearing.share_transfers"
 
     # Suspense / clearing (exceptional items only — never a structural leg)
     SUSPENSE = "suspense"
@@ -145,6 +157,9 @@ REF_PREFIX: dict[TxnType, str] = {
     TxnType.LOAN_REPAYMENT: "RP-",
     TxnType.INTEREST_POSTING: "INT-",
     TxnType.EXIT_SETTLEMENT: "WD-",  # exit settlement is a withdrawal variant
+    TxnType.DIVIDEND_POSTING: "DV-",
+    TxnType.SHARE_TRANSFER_OUT: "ST-",  # both transfer legs share the ST-
+    TxnType.SHARE_TRANSFER_IN: "ST-",  # sequence (the WD- precedent)
 }
 
 # Channel-specific prefix for deposits. Deposits only arrive via M-Pesa or
@@ -414,6 +429,81 @@ def build_exit_settlement_posting(
     )
 
 
+def build_dividend_distribution_posting(dividend: Decimal, rebate: Decimal) -> PostingSpec:
+    """One member's dividend + rebate payout (P13.11): DV- ref, ACCRUAL.
+
+    DR expense.dividends / CR member.shares for the dividend component
+    (capitalised into share capital, so it compounds into the NEXT
+    financial year's share basis — gate 1.5) and DR expense.rebates /
+    CR member.deposits for the deposit-rebate component. Components are
+    rounded upstream by the single money primitive; at least one must
+    be positive (zero entitlements are skipped, never posted).
+    """
+    dividend = to_cents(dividend)
+    rebate = to_cents(rebate)
+    if dividend < ZERO or rebate < ZERO:
+        raise ValueError("dividend components must not be negative")
+    total = to_cents(dividend + rebate)
+    if total <= ZERO:
+        raise ValueError("a zero dividend distribution cannot be posted")
+    lines: list[LedgerLine] = []
+    if dividend > ZERO:
+        lines.append(LedgerLine(account=Account.DIVIDEND_EXPENSE, side=Side.DEBIT, amount=dividend))
+        lines.append(LedgerLine(account=Account.MEMBER_SHARES, side=Side.CREDIT, amount=dividend))
+    if rebate > ZERO:
+        lines.append(LedgerLine(account=Account.REBATE_EXPENSE, side=Side.DEBIT, amount=rebate))
+        lines.append(LedgerLine(account=Account.MEMBER_DEPOSITS, side=Side.CREDIT, amount=rebate))
+    return PostingSpec(
+        txn_type=TxnType.DIVIDEND_POSTING,
+        channel=Channel.ACCRUAL,
+        amount=total,
+        lines=tuple(lines),
+    )
+
+
+def build_share_transfer_out_posting(amount: Decimal) -> PostingSpec:
+    """Transferor leg of a share transfer (P13.11): ST- ref, INTERNAL.
+
+    DR member.shares / CR clearing.share_transfers. The transfer posts
+    as TWO transactions (OUT for the transferor, IN for the transferee)
+    because ledger legs are attributed to members via
+    transactions.member_id: a single netted posting would make the
+    transferor's movement invisible to the ledger-reconstructed share
+    basis (v1.1 rule 2) and never credit the transferee's history. The
+    clearing account nets to zero inside the one atomic transfer
+    transaction that posts both legs.
+    """
+    amt = to_cents(amount)
+    return PostingSpec(
+        txn_type=TxnType.SHARE_TRANSFER_OUT,
+        channel=Channel.INTERNAL,
+        amount=amt,
+        lines=(
+            LedgerLine(account=Account.MEMBER_SHARES, side=Side.DEBIT, amount=amt),
+            LedgerLine(account=Account.SHARE_TRANSFER_CLEARING, side=Side.CREDIT, amount=amt),
+        ),
+    )
+
+
+def build_share_transfer_in_posting(amount: Decimal) -> PostingSpec:
+    """Transferee leg of a share transfer (P13.11): ST- ref, INTERNAL.
+
+    DR clearing.share_transfers / CR member.shares — the mirror of
+    build_share_transfer_out_posting; see there for the two-transaction
+    rationale.
+    """
+    amt = to_cents(amount)
+    return PostingSpec(
+        txn_type=TxnType.SHARE_TRANSFER_IN,
+        channel=Channel.INTERNAL,
+        amount=amt,
+        lines=(
+            LedgerLine(account=Account.SHARE_TRANSFER_CLEARING, side=Side.DEBIT, amount=amt),
+            LedgerLine(account=Account.MEMBER_SHARES, side=Side.CREDIT, amount=amt),
+        ),
+    )
+
+
 def build_reversal_posting(original: PostingSpec) -> PostingSpec:
     """Return a reversing entry that exactly negates the original (gate 1.5).
 
@@ -454,6 +544,12 @@ MEMBER_DIRECTION: dict[TxnType, Side] = {
     TxnType.WITHDRAWAL: Side.DEBIT,
     TxnType.LOAN_DISBURSEMENT: Side.DEBIT,
     TxnType.EXIT_SETTLEMENT: Side.DEBIT,
+    # P13.11: a dividend/rebate credits the member's position; a share
+    # transfer posts one DEBIT-direction transaction for the transferor
+    # (OUT) and one CREDIT-direction transaction for the transferee (IN).
+    TxnType.DIVIDEND_POSTING: Side.CREDIT,
+    TxnType.SHARE_TRANSFER_OUT: Side.DEBIT,
+    TxnType.SHARE_TRANSFER_IN: Side.CREDIT,
 }
 
 

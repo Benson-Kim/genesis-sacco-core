@@ -67,6 +67,9 @@ class SettingsUpdateBody(BaseModel):
     dividend_rate_pct: Decimal | None = Field(
         default=None, ge=0, le=100, max_digits=5, decimal_places=2
     )
+    deposit_rebate_rate_pct: Decimal | None = Field(
+        default=None, ge=0, le=100, max_digits=5, decimal_places=2
+    )
     penalty_rate_pct_per_month: Decimal | None = Field(
         default=None, ge=0, le=100, max_digits=5, decimal_places=2
     )
@@ -128,6 +131,7 @@ class SettingsOut(BaseModel):
     corrupt_keys: list[str]
     deposit_interest_annual_rate_pct: str | None
     dividend_rate_pct: str | None
+    deposit_rebate_rate_pct: str | None
     penalty_rate_pct_per_month: str | None
     penalty_grace_days: int | None
     penalty_charged_on: str | None
@@ -184,6 +188,7 @@ def _out(record: settings_service.TenantSettingsRecord) -> SettingsOut:
         corrupt_keys=list(record.corrupt_keys),
         deposit_interest_annual_rate_pct=s(record.deposit_interest_annual_rate_pct),
         dividend_rate_pct=s(record.dividend_rate_pct),
+        deposit_rebate_rate_pct=s(record.deposit_rebate_rate_pct),
         penalty_rate_pct_per_month=s(record.penalty_rate_pct_per_month),
         penalty_grace_days=record.penalty_grace_days,
         penalty_charged_on=(

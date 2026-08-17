@@ -46,6 +46,11 @@ TENANT_TABLES = [
     # P13.7: the tenant settings row holds the money parameters, so its
     # RLS posture is release-blocking like every other tenant table.
     "tenant_settings",
+    # P13.11: every dividend/share-lifecycle table is a money table.
+    "dividend_declarations",
+    "dividend_declaration_votes",
+    "dividend_distributions",
+    "share_transfers",
     "outbox_events",
     "audit_log",
     "idempotency_keys",

@@ -102,6 +102,7 @@ class TenantSettingsRecord:
     version: int
     deposit_interest_annual_rate_pct: Decimal | None
     dividend_rate_pct: Decimal | None
+    deposit_rebate_rate_pct: Decimal | None
     penalty_rate_pct_per_month: Decimal | None
     penalty_grace_days: int | None
     penalty_charged_on: PenaltyChargedOn | None
@@ -207,6 +208,7 @@ def _record_from_raw(raw: dict[str, object] | None) -> TenantSettingsRecord:
         version=int(cast(int, raw["version"])) if raw else 0,
         deposit_interest_annual_rate_pct=dec("deposit_interest_annual_rate_pct"),
         dividend_rate_pct=dec("dividend_rate_pct"),
+        deposit_rebate_rate_pct=dec("deposit_rebate_rate_pct"),
         penalty_rate_pct_per_month=dec("penalty_rate_pct_per_month"),
         penalty_grace_days=num("penalty_grace_days"),
         penalty_charged_on=enum("penalty_charged_on"),

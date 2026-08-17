@@ -57,6 +57,13 @@ ENTITY_MODULES: dict[str, Module] = {
     "transaction": Module.TRANSACTIONS,
     "transactions": Module.TRANSACTIONS,
     "accounting_periods": Module.TRANSACTIONS,
+    # P13.11: declaration/distribution payloads carry the exact money
+    # figures, disclosed per transactions entitlement (their routes
+    # are gated transactions:*); share transfers move member equity
+    # under members:approve, so their payloads follow members:view.
+    "dividend_declarations": Module.TRANSACTIONS,
+    "dividend_distributions": Module.TRANSACTIONS,
+    "share_transfers": Module.MEMBERS,
     "loan_products": Module.SETTINGS,
     # P13.7: the tenant settings row is maintained under settings:*
     # routes; mapped here so its before/after payloads are released per

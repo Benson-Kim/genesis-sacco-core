@@ -33,6 +33,7 @@ from typing import Any, cast
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from genesis.application import dividends as dividends_service
 from genesis.application import member_exits as exits_service
 from genesis.application.members import get_member
 from genesis.domain.documents import Cell
@@ -57,6 +58,7 @@ class ReportName(enum.StrEnum):
     DISBURSEMENT_COLLECTIONS = "disbursement_collections"
     NPL_TREND = "npl_trend"
     MEMBER_EXIT_STATEMENT = "member_exit_statement"
+    DIVIDEND_REBATE_SCHEDULE = "dividend_rebate_schedule"
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,7 @@ class ExportFilters:
 
     member_id: uuid.UUID | None = None
     exit_id: uuid.UUID | None = None
+    declaration_id: uuid.UUID | None = None
     date_from: date | None = None
     date_to: date | None = None
 
@@ -88,6 +91,7 @@ class ExportFilters:
             for key, value in (
                 ("member_id", self.member_id),
                 ("exit_id", self.exit_id),
+                ("declaration_id", self.declaration_id),
                 ("date_from", self.date_from),
                 ("date_to", self.date_to),
             )
@@ -100,6 +104,7 @@ class ExportFilters:
             for key, value in (
                 ("member_id", self.member_id),
                 ("exit_id", self.exit_id),
+                ("declaration_id", self.declaration_id),
                 ("date_from", self.date_from),
                 ("date_to", self.date_to),
             )
@@ -111,6 +116,7 @@ class ExportFilters:
         return ExportFilters(
             member_id=uuid.UUID(raw["member_id"]) if "member_id" in raw else None,
             exit_id=uuid.UUID(raw["exit_id"]) if "exit_id" in raw else None,
+            declaration_id=(uuid.UUID(raw["declaration_id"]) if "declaration_id" in raw else None),
             date_from=date.fromisoformat(raw["date_from"]) if "date_from" in raw else None,
             date_to=date.fromisoformat(raw["date_to"]) if "date_to" in raw else None,
         )
@@ -178,6 +184,8 @@ async def assert_scope_exists(
         await get_member(session, tenant_id, filters.member_id)
     if report is ReportName.MEMBER_EXIT_STATEMENT and filters.exit_id is not None:
         await exits_service.get_exit(session, tenant_id, filters.exit_id)
+    if report is ReportName.DIVIDEND_REBATE_SCHEDULE and filters.declaration_id is not None:
+        await dividends_service.get_declaration(session, tenant_id, filters.declaration_id)
 
 
 def _memory_query(
@@ -666,6 +674,88 @@ async def _build_member_exit_statement(
 
 
 # ---------------------------------------------------------------------------
+# Dividend & rebate schedule (P13.11 / P13.10 catalogue entry)
+# ---------------------------------------------------------------------------
+
+
+def dividend_schedule_page_sql(*, with_cursor: bool) -> str:
+    """Keyset page over one declaration's distribution claims (gate 1.3).
+
+    Served by idx_dividend_distributions_page (tenant_id,
+    declaration_id, created_at, id; 0020 — shipped with this query);
+    the members join runs on the members primary key and the
+    transactions join resolves the posting reference. Static fragments
+    chosen in code; all values are bound parameters.
+    """
+    cursor_clause = (
+        "AND (d.created_at, d.id) > (:c_ts, CAST(:c_id AS uuid)) " if with_cursor else ""
+    )
+    return (
+        "SELECT d.id, m.member_no, m.name, d.share_basis, "  # noqa: S608
+        "d.dividend_rate_pct, d.dividend_amount, d.deposit_basis, "
+        "d.rebate_rate_pct, d.rebate_amount, d.total_amount, t.txn_ref, "
+        "d.created_at "
+        "FROM dividend_distributions d "
+        "JOIN members m ON m.id = d.member_id AND m.tenant_id = d.tenant_id "
+        "LEFT JOIN transactions t ON t.id = d.transaction_id "
+        "AND t.tenant_id = d.tenant_id "
+        "WHERE d.tenant_id = CAST(:tid AS uuid) "
+        "AND d.declaration_id = CAST(:did AS uuid) "
+        "AND d.created_at <= :as_of "
+        f"{cursor_clause}"
+        "ORDER BY d.created_at, d.id LIMIT :limit"
+    )
+
+
+async def _build_dividend_rebate_schedule(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    filters: ExportFilters,
+    as_of: datetime,
+) -> ReportQuery:
+    declaration_id = filters.declaration_id
+    if declaration_id is None:  # pragma: no cover - validate_filters refuses this
+        raise InvalidInputError("dividend_rebate_schedule requires declaration_id")
+    # Existence check inside the snapshot transaction (404 for a
+    # foreign tenant's id — least disclosure via the reused service).
+    await dividends_service.get_declaration(session, tenant_id, declaration_id)
+
+    params: dict[str, object] = {
+        "tid": str(tenant_id),
+        "did": str(declaration_id),
+        "as_of": as_of,
+    }
+
+    async def fetch(cursor: ReportCursor | None, limit: int) -> list[Any]:
+        page_params = dict(params)
+        page_params["limit"] = limit
+        if cursor is not None:
+            page_params["c_ts"], page_params["c_id"] = cast(tuple[datetime, str], cursor)
+        page_sql = dividend_schedule_page_sql(with_cursor=cursor is not None)
+        result = await session.execute(text(page_sql), page_params)
+        return list(result.all())
+
+    def cursor_key(raw: Any) -> ReportCursor:
+        return (raw[11], str(raw[0]))
+
+    def to_cells(raw: Any) -> tuple[Cell, ...]:
+        return (
+            str(raw[1]),
+            str(raw[2]),
+            Decimal(str(raw[3])),
+            Decimal(str(raw[4])),
+            Decimal(str(raw[5])),
+            Decimal(str(raw[6])),
+            Decimal(str(raw[7])),
+            Decimal(str(raw[8])),
+            Decimal(str(raw[9])),
+            str(raw[10]) if raw[10] is not None else None,
+        )
+
+    return ReportQuery(fetch=fetch, cursor_key=cursor_key, to_cells=to_cells)
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -747,6 +837,25 @@ REPORTS: dict[ReportName, ReportDefinition] = {
         allowed_filters=frozenset(),
         required_filters=frozenset(),
         build=_build_npl_trend,
+    ),
+    ReportName.DIVIDEND_REBATE_SCHEDULE: ReportDefinition(
+        name=ReportName.DIVIDEND_REBATE_SCHEDULE,
+        title="Dividend & rebate schedule",
+        columns=(
+            ReportColumn("member_no", "Member No"),
+            ReportColumn("member_name", "Member", pii=True),
+            ReportColumn("share_basis", "Avg Share Balance"),
+            ReportColumn("dividend_rate_pct", "Dividend %"),
+            ReportColumn("dividend", "Dividend"),
+            ReportColumn("deposit_basis", "Avg Deposit Balance"),
+            ReportColumn("rebate_rate_pct", "Rebate %"),
+            ReportColumn("rebate", "Rebate"),
+            ReportColumn("total", "Total"),
+            ReportColumn("txn_ref", "Reference"),
+        ),
+        allowed_filters=frozenset({"declaration_id"}),
+        required_filters=frozenset({"declaration_id"}),
+        build=_build_dividend_rebate_schedule,
     ),
     ReportName.MEMBER_EXIT_STATEMENT: ReportDefinition(
         name=ReportName.MEMBER_EXIT_STATEMENT,
