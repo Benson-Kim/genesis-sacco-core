@@ -173,7 +173,13 @@ def test_application_paths_refuse_foreign_tenant_argument() -> None:
                 await applications_service.get_application(session, foreign, aid)
             with pytest.raises(NotFoundError):
                 await applications_service.transition_stage(
-                    session, foreign, None, aid, version=1, target=ApplicationStage.REJECTED
+                    session,
+                    foreign,
+                    None,
+                    aid,
+                    version=1,
+                    target=ApplicationStage.REJECTED,
+                    system_actor=True,
                 )
             with pytest.raises(NotFoundError):
                 await applications_service.cast_vote(

@@ -387,6 +387,11 @@ def test_assign_user_and_member_to_branch() -> None:
             )
             assert res.status_code == 200
             assert (await _user_branch_state(tid, target_user)) == (branch_b, 3)
+            # The users read surface exposes the registry FK read-only
+            # (!24 review finding #3, closed in P13.7).
+            res = await client.get(f"/users/{target_user}", headers=headers)
+            assert res.status_code == 200
+            assert res.json()["branch_id"] == branch_b
 
             res = await client.put(
                 f"/branches/{branch_a}/members/{target_member}",

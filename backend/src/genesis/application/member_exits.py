@@ -6,7 +6,11 @@ Workflow (mirrors the prototype's Governance > Member exit screen):
      snapshot persisted to member_exits (0001 table, 0010 columns)
   2. cast_exit_vote — committee approval reusing the P9 voting
      machinery (quorum -> approved/rejected, one vote per voter by DB
-     UNIQUE, the initiator may never vote on their own request)
+     UNIQUE, the initiator may never vote on their own request). The
+     quorum is read from tenant configuration AT VOTE TIME under the
+     exit row lock, falling back to the code-owned COMMITTEE_QUORUM
+     (P13.7): a quorum change between votes governs the next vote's
+     tally only — it can never decide an exit retroactively.
 
 User-level separation of duties (the P4 matrix grants members:edit and
 members:approve to the same roles, so the separation is per user, not
@@ -77,6 +81,7 @@ from genesis.application.loans import _close_loan, _interest_due
 from genesis.application.members import mark_member_exited
 from genesis.application.outbox import enqueue_event
 from genesis.application.pagination import build_created_id_cursor, parse_created_id_cursor
+from genesis.application.tenant_settings import committee_quorum
 from genesis.application.transactions import _lock_account, _set_balance
 from genesis.domain.committee import Decision, Vote, decide
 from genesis.domain.exits import (
@@ -538,7 +543,8 @@ async def cast_exit_vote(
         entity_id=str(exit_id),
         after={"vote": vote.value, "approvals": approvals, "rejections": rejections},
     )
-    decision = decide(approvals, rejections)
+    # Config read at vote time, under the exit row lock (P13.7).
+    decision = decide(approvals, rejections, quorum=await committee_quorum(session, tenant_id))
     status: ExitStatus = current
     if decision is not None:
         target = ExitStatus.APPROVED if decision is Decision.APPROVED else ExitStatus.REJECTED

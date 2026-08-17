@@ -1137,17 +1137,35 @@ def test_application_service_direct_flow() -> None:
 
         async with tenant_session(factory(), tid) as session:
             moved = await applications_service.transition_stage(
-                session, tid, None, record.id, version=1, target=ApplicationStage.APPRAISAL
+                session,
+                tid,
+                None,
+                record.id,
+                version=1,
+                target=ApplicationStage.APPRAISAL,
+                system_actor=True,
             )
         assert moved.stage is ApplicationStage.APPRAISAL
         async with tenant_session(factory(), tid) as session:
             moved = await applications_service.transition_stage(
-                session, tid, None, record.id, version=2, target=ApplicationStage.COMMITTEE
+                session,
+                tid,
+                None,
+                record.id,
+                version=2,
+                target=ApplicationStage.COMMITTEE,
+                system_actor=True,
             )
         assert moved.stage is ApplicationStage.COMMITTEE
         async with tenant_session(factory(), tid) as session:
             rejected = await applications_service.transition_stage(
-                session, tid, None, record.id, version=3, target=ApplicationStage.REJECTED
+                session,
+                tid,
+                None,
+                record.id,
+                version=3,
+                target=ApplicationStage.REJECTED,
+                system_actor=True,
             )
         assert rejected.stage is ApplicationStage.REJECTED
         async with tenant_session(factory(), tid) as session:

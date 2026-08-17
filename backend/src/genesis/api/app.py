@@ -21,6 +21,7 @@ from genesis.api.me import router as me_router
 from genesis.api.member_exits import router as member_exits_router
 from genesis.api.members import router as members_router
 from genesis.api.reports import router as reports_router
+from genesis.api.tenant_settings import router as tenant_settings_router
 from genesis.api.transactions import router as transactions_router
 from genesis.api.users import router as users_router
 from genesis.errors import AppError, ErrorCategory
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(loan_book_router)
     app.include_router(transactions_router)
     app.include_router(reports_router)
+    app.include_router(tenant_settings_router)
     app.include_router(accounting_periods_router)
     app.include_router(me_router)
     app.include_router(access_router)

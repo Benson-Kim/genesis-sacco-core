@@ -146,7 +146,10 @@ async def resolve_run_parameters(
             {"tid": str(tenant_id)},
         )
     ).first()
-    if rate_row is None:
+    if rate_row is None or rate_row[0] is None:
+        # A settings row without a deposit rate (possible since 0017
+        # made the column optional) is exactly as unconfigured as a
+        # missing row — same 409, unchanged contract (P13.7).
         raise ConflictError(
             "deposit interest is not configured for this tenant "
             "(tenant_settings.deposit_interest_annual_rate_pct)"

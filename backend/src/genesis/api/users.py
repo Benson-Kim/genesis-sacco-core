@@ -79,6 +79,9 @@ class UserOut(BaseModel):
     email: str
     phone: str | None
     branch: str | None
+    #: P13.6 branch-registry FK, read-only here (!24 finding #3): branch
+    #: assignment goes exclusively through PUT /branches/{id}/users/{id}.
+    branch_id: str | None
     role_id: str
     role_name: str
     status: str
@@ -109,6 +112,7 @@ def _out(record: users_service.UserRecord) -> UserOut:
         email=record.email,
         phone=record.phone,
         branch=record.branch,
+        branch_id=str(record.branch_id) if record.branch_id is not None else None,
         role_id=str(record.role_id),
         role_name=record.role_name,
         status=record.status.value,

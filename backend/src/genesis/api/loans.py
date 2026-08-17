@@ -72,6 +72,9 @@ class ProductCreateBody(BaseModel):
     rate_pct: Decimal = Field(gt=0, le=100, max_digits=5, decimal_places=2)
     deposit_multiplier: Decimal = Field(gt=0, max_digits=5, decimal_places=2)
     max_term_months: int = Field(ge=1, le=120)
+    #: P13.7: stored product configuration (prototype Settings screen);
+    #: bounds mirror the 0017 DB CHECK.
+    guarantors_required: int = Field(default=0, ge=0, le=10)
 
 
 class ProductUpdateBody(BaseModel):
@@ -85,6 +88,7 @@ class ProductUpdateBody(BaseModel):
     rate_pct: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
     deposit_multiplier: Decimal | None = Field(default=None, gt=0, max_digits=5, decimal_places=2)
     max_term_months: int | None = Field(default=None, ge=1, le=120)
+    guarantors_required: int | None = Field(default=None, ge=0, le=10)
     active: bool | None = None
 
 
@@ -94,6 +98,7 @@ class ProductOut(BaseModel):
     rate_pct: str
     deposit_multiplier: str
     max_term_months: int
+    guarantors_required: int
     active: bool
     version: int
 
@@ -185,6 +190,7 @@ def _product_out(p: products_service.LoanProduct) -> ProductOut:
         rate_pct=str(p.rate_pct),
         deposit_multiplier=str(p.deposit_multiplier),
         max_term_months=p.max_term_months,
+        guarantors_required=p.guarantors_required,
         active=p.active,
         version=p.version,
     )
@@ -229,6 +235,7 @@ async def create_product(body: ProductCreateBody, ctx: SettingsCreateCtx) -> Pro
             rate_pct=body.rate_pct,
             deposit_multiplier=body.deposit_multiplier,
             max_term_months=body.max_term_months,
+            guarantors_required=body.guarantors_required,
         )
     return _product_out(product)
 
@@ -258,6 +265,7 @@ async def update_product(
             rate_pct=body.rate_pct,
             deposit_multiplier=body.deposit_multiplier,
             max_term_months=body.max_term_months,
+            guarantors_required=body.guarantors_required,
             active=body.active,
         )
     return _product_out(product)

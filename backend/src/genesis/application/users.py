@@ -89,6 +89,10 @@ class UserRecord:
     email: str
     phone: str | None
     branch: str | None
+    #: P13.6 registry FK (0016), surfaced read-only alongside the legacy
+    #: free-text branch until the text column contracts (!24 finding #3).
+    #: Writes go exclusively through the branches assign endpoint.
+    branch_id: uuid.UUID | None
     role_id: uuid.UUID
     role_name: str
     status: UserStatus
@@ -105,7 +109,7 @@ class UserPage:
 
 _USER_COLUMNS = (
     "u.id, u.full_name, u.email, u.phone, u.branch, u.role_id, r.name, "
-    "u.status, u.last_active_at, u.version, u.created_at"
+    "u.status, u.last_active_at, u.version, u.created_at, u.branch_id"
 )
 
 
@@ -140,6 +144,7 @@ def _row_to_record(row: Any) -> UserRecord:
         email=str(row[2]),
         phone=str(row[3]) if row[3] is not None else None,
         branch=str(row[4]) if row[4] is not None else None,
+        branch_id=uuid.UUID(str(row[11])) if row[11] is not None else None,
         role_id=uuid.UUID(str(row[5])),
         role_name=str(row[6]),
         status=UserStatus(str(row[7])),

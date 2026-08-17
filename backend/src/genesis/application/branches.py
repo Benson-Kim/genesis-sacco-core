@@ -286,24 +286,23 @@ async def update_branch(
     return await get_branch(session, tenant_id, branch_id)
 
 
-# Assignment targets: static, code-owned table/action mapping — the
+# Assignment targets: static, code-owned table/label mapping — the
 # table identifier is never caller input (v1.1 rule 6).
-_ASSIGN_TARGETS: dict[str, tuple[str, str]] = {
-    "users": ("user.branch_assign", "user"),
-    "members": ("member.branch_assign", "member"),
+_ASSIGN_TARGETS: dict[str, str] = {
+    "users": "user",
+    "members": "member",
 }
 
 
 async def _assign_branch(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-    actor_id: uuid.UUID,
     *,
     table: str,
     entity_id: uuid.UUID,
     version: int,
     branch_id: uuid.UUID,
-) -> BranchAssignment:
+) -> tuple[BranchAssignment, dict[str, Any], dict[str, Any]]:
     """Shared assignment path for users and members (gate 1.1).
 
     Order of checks: branch existence in the caller's tenant (a foreign
@@ -311,8 +310,14 @@ async def _assign_branch(
     existence, then the version-guarded single-statement UPDATE. No
     explicit row lock is taken (see the module docstring on lock
     ordering).
+
+    Returns (assignment, before, after). The audit row is written by
+    each public wrapper with a static-literal entity= so the F4
+    completeness scan (tests/test_audit_entity_map.py) can verify the
+    redaction map statically; the wrapper shares this session, so the
+    write stays in the same transaction (gate 1.5).
     """
-    action, label = _ASSIGN_TARGETS[table]
+    label = _ASSIGN_TARGETS[table]
     branch = await get_branch(session, tenant_id, branch_id)
     row = (
         await session.execute(
@@ -349,29 +354,22 @@ async def _assign_branch(
     )
     if result.rowcount != 1:
         raise ConflictError(f"stale version {version} for {label} {entity_id}")
-    await record_audit(
-        session,
-        tenant_id,
-        actor_id,
-        action=action,
-        entity=table,
-        entity_id=str(entity_id),
-        before={
-            "branch_id": str(old_branch_id) if old_branch_id else None,
-            "version": version,
-        },
-        after={
-            "branch_id": str(branch.id),
-            "branch_name": branch.name,
-            "version": version + 1,
-        },
-    )
-    return BranchAssignment(
+    before: dict[str, Any] = {
+        "branch_id": str(old_branch_id) if old_branch_id else None,
+        "version": version,
+    }
+    after: dict[str, Any] = {
+        "branch_id": str(branch.id),
+        "branch_name": branch.name,
+        "version": version + 1,
+    }
+    assignment = BranchAssignment(
         entity_id=entity_id,
         branch_id=branch.id,
         branch_name=branch.name,
         version=version + 1,
     )
+    return assignment, before, after
 
 
 async def assign_user_branch(
@@ -384,15 +382,25 @@ async def assign_user_branch(
     branch_id: uuid.UUID,
 ) -> BranchAssignment:
     """Assign (or re-assign) a user to a branch; audited (gate 1.5)."""
-    return await _assign_branch(
+    assignment, before, after = await _assign_branch(
         session,
         tenant_id,
-        actor_id,
         table="users",
         entity_id=user_id,
         version=version,
         branch_id=branch_id,
     )
+    await record_audit(
+        session,
+        tenant_id,
+        actor_id,
+        action="user.branch_assign",
+        entity="users",
+        entity_id=str(user_id),
+        before=before,
+        after=after,
+    )
+    return assignment
 
 
 async def assign_member_branch(
@@ -405,15 +413,25 @@ async def assign_member_branch(
     branch_id: uuid.UUID,
 ) -> BranchAssignment:
     """Assign (or re-assign) a member to a branch; audited (gate 1.5)."""
-    return await _assign_branch(
+    assignment, before, after = await _assign_branch(
         session,
         tenant_id,
-        actor_id,
         table="members",
         entity_id=member_id,
         version=version,
         branch_id=branch_id,
     )
+    await record_audit(
+        session,
+        tenant_id,
+        actor_id,
+        action="member.branch_assign",
+        entity="members",
+        entity_id=str(member_id),
+        before=before,
+        after=after,
+    )
+    return assignment
 
 
 async def _process_backfill_batch(

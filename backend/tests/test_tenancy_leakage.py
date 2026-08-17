@@ -34,6 +34,9 @@ TENANT_TABLES = [
     "guarantees",
     "member_exits",
     "exit_votes",
+    # P13.7: the tenant settings row holds the money parameters, so its
+    # RLS posture is release-blocking like every other tenant table.
+    "tenant_settings",
     "outbox_events",
     "audit_log",
     "idempotency_keys",

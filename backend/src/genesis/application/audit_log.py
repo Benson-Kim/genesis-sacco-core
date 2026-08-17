@@ -54,6 +54,10 @@ ENTITY_MODULES: dict[str, Module] = {
     "transactions": Module.TRANSACTIONS,
     "accounting_periods": Module.TRANSACTIONS,
     "loan_products": Module.SETTINGS,
+    # P13.7: the tenant settings row is maintained under settings:*
+    # routes; mapped here so its before/after payloads are released per
+    # settings entitlement (review F4 completeness scan).
+    "tenant_settings": Module.SETTINGS,
     # P13.6 (!24) ships `entity="branches"` writers under settings:*
     # routes; mapped here (review F4) so the registry's payloads are
     # released per settings entitlement once !24 rebases onto this fix.

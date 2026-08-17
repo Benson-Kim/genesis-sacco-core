@@ -19,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from genesis.application.audit import record_audit
 from genesis.errors import ConflictError, NotFoundError
 
-_COLS = "id, name, rate_pct, deposit_multiplier, max_term_months, active, version"
+_COLS = (
+    "id, name, rate_pct, deposit_multiplier, max_term_months, guarantors_required, active, version"
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,9 @@ class LoanProduct:
     rate_pct: Decimal
     deposit_multiplier: Decimal
     max_term_months: int
+    #: P13.7 stored configuration (prototype Settings > Loan products);
+    #: disbursement-time enforcement is a recorded follow-up.
+    guarantors_required: int
     active: bool
     version: int
 
@@ -40,8 +45,9 @@ def _row_to_product(row: Any) -> LoanProduct:
         rate_pct=Decimal(str(row[2])),
         deposit_multiplier=Decimal(str(row[3])),
         max_term_months=int(row[4]),
-        active=bool(row[5]),
-        version=int(row[6]),
+        guarantors_required=int(row[5]),
+        active=bool(row[6]),
+        version=int(row[7]),
     )
 
 
@@ -54,15 +60,17 @@ async def create_product(
     rate_pct: Decimal,
     deposit_multiplier: Decimal,
     max_term_months: int,
+    guarantors_required: int = 0,
 ) -> LoanProduct:
     product_id = uuid.uuid4()
     try:
         await session.execute(
             text(
                 "INSERT INTO loan_products "
-                "(id, tenant_id, name, rate_pct, deposit_multiplier, max_term_months) "
+                "(id, tenant_id, name, rate_pct, deposit_multiplier, max_term_months, "
+                " guarantors_required) "
                 "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), :name, "
-                ":rate, :mult, :term)"
+                ":rate, :mult, :term, :guarantors)"
             ),
             {
                 "id": str(product_id),
@@ -71,6 +79,7 @@ async def create_product(
                 "rate": str(rate_pct),
                 "mult": str(deposit_multiplier),
                 "term": max_term_months,
+                "guarantors": guarantors_required,
             },
         )
     except IntegrityError as exc:
@@ -87,6 +96,7 @@ async def create_product(
             "rate_pct": str(rate_pct),
             "deposit_multiplier": str(deposit_multiplier),
             "max_term_months": max_term_months,
+            "guarantors_required": guarantors_required,
         },
     )
     return LoanProduct(
@@ -95,6 +105,7 @@ async def create_product(
         rate_pct=rate_pct,
         deposit_multiplier=deposit_multiplier,
         max_term_months=max_term_months,
+        guarantors_required=guarantors_required,
         active=True,
         version=1,
     )
@@ -142,6 +153,7 @@ async def update_product(
     rate_pct: Decimal | None = None,
     deposit_multiplier: Decimal | None = None,
     max_term_months: int | None = None,
+    guarantors_required: int | None = None,
     active: bool | None = None,
 ) -> LoanProduct:
     """Optimistic-locked product edit; stale version surfaces 409 (gate 1.4)."""
@@ -149,6 +161,9 @@ async def update_product(
     new_rate = rate_pct if rate_pct is not None else current.rate_pct
     new_mult = deposit_multiplier if deposit_multiplier is not None else current.deposit_multiplier
     new_term = max_term_months if max_term_months is not None else current.max_term_months
+    new_guarantors = (
+        guarantors_required if guarantors_required is not None else current.guarantors_required
+    )
     new_active = active if active is not None else current.active
     result = cast(
         CursorResult[Any],
@@ -157,7 +172,8 @@ async def update_product(
                 # Explicit tenant predicate on the write, on top of RLS
                 # (defence in depth, gate 1.6 v1.1; issue #17).
                 "UPDATE loan_products SET rate_pct = :rate, deposit_multiplier = :mult, "
-                "max_term_months = :term, active = :active, "
+                "max_term_months = :term, guarantors_required = :guarantors, "
+                "active = :active, "
                 "version = version + 1, updated_at = now() "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
                 "AND version = :ver"
@@ -166,6 +182,7 @@ async def update_product(
                 "rate": str(new_rate),
                 "mult": str(new_mult),
                 "term": new_term,
+                "guarantors": new_guarantors,
                 "active": new_active,
                 "id": str(product_id),
                 "tid": str(tenant_id),
@@ -186,6 +203,7 @@ async def update_product(
             "rate_pct": str(current.rate_pct),
             "deposit_multiplier": str(current.deposit_multiplier),
             "max_term_months": current.max_term_months,
+            "guarantors_required": current.guarantors_required,
             "active": current.active,
             "version": current.version,
         },
@@ -193,6 +211,7 @@ async def update_product(
             "rate_pct": str(new_rate),
             "deposit_multiplier": str(new_mult),
             "max_term_months": new_term,
+            "guarantors_required": new_guarantors,
             "active": new_active,
             "version": current.version + 1,
         },
@@ -203,6 +222,7 @@ async def update_product(
         rate_pct=new_rate,
         deposit_multiplier=new_mult,
         max_term_months=new_term,
+        guarantors_required=new_guarantors,
         active=new_active,
         version=current.version + 1,
     )
