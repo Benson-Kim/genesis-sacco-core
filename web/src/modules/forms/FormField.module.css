@@ -1,0 +1,24 @@
+/* Shared form-field row — design-system tokens only. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xxs);
+  margin-bottom: var(--space-sm);
+}
+
+.label {
+  font-size: var(--fs-meta);
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.hint {
+  font-size: var(--fs-meta);
+  color: var(--sub);
+}
+
+.error {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--brick);
+}
