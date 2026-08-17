@@ -345,3 +345,36 @@ test("issue #30 A2/S2 accept/reject matrix: amount/max_eligible assert the CANON
   delete missing["max_eligible"];
   expect(appSchemas.applicationSchema.safeParse(missing).success).toBe(false);
 });
+
+test("a garbage money STRING is REJECTED at the wire boundary (issue #30 A2/S2) — a value that passes z.string() can still never reach fmtKes", async () => {
+  recordGarbageMoney = true;
+  const thrown = await appsApi.fetchApplication(APP_ID).catch((error: unknown) => error);
+  expect(thrown).toBeInstanceOf(Error);
+  expect(thrown).not.toBeInstanceOf(ApiError);
+  expect(String(thrown)).toContain("amount");
+});
+
+test("issue #30 A2/S2 accept/reject matrix: amount/max_eligible assert the CANONICAL server shape; the percentages stay contract-typed strings", () => {
+  const withField = (field: string, value: unknown) =>
+    appSchemas.applicationSchema.safeParse({ ...applicationOut, [field]: value }).success;
+
+  // Canonical shapes ACCEPTED: loan_applications.amount is
+  // numeric(18,2) CHECK (amount > 0) via str(Decimal);
+  // max_eligible = to_cents(deposits x multiplier) added to the
+  // two-place guarantee sum — Decimal addition keeps the wider scale
+  // (hand-computed oracles).
+  expect(withField("amount", "250000.10")).toBe(true);
+  expect(withField("max_eligible", "300000.00")).toBe(true);
+  expect(withField("max_eligible", null)).toBe(true);
+
+  // Garbage shapes REJECTED on both money fields — each previously
+  // flowed into fmtKes unchallenged (bare z.string()).
+  for (const value of ["abc", "1e5", "007.10", "250000.1", "250000.100", "250000", "250,000.10", " 250000.10", "NaN", ""]) {
+    expect(withField("amount", value)).toBe(false);
+    expect(withField("max_eligible", value)).toBe(false);
+  }
+  // CHECK (amount > 0) / non-negative composition: a '-' is a
+  // contract violation on both.
+  expect(withField("amount", "-1.00")).toBe(false);
+  expect(withField("max_eligible", "-1.00")).toBe(false);
+});
