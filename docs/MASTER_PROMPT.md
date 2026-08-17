@@ -33,7 +33,9 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Email/SMS/push/webhooks go through the **transactional outbox** only:
   write `outbox_events` in the SAME transaction as the domain change; a worker
   dispatches with retry + exponential backoff + dead-letter table. Direct
-  provider calls from request handlers are forbidden.
+  provider calls from request handlers are forbidden. The as-built flow
+  is `docs/diagrams/sequence-outbox-dispatch.md` (P-DIAG.5) — reference
+  it instead of re-describing the pattern.
 - Every service exposes `/healthz` (liveness) and `/readyz` (deps checked).
 
 ### 1.3 Scalability
@@ -65,7 +67,10 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
   quotes) bind to a PERSISTED snapshot row (amount + component breakdown +
   version); execution re-verifies every component under the full lock set
   and returns 409 if anything moved since approval. Approving "the current
-  state" is a rejected design (quote/approve/execute TOCTOU).
+  state" is a rejected design (quote/approve/execute TOCTOU). As-built
+  sequence diagrams (P-DIAG.5 — reference, never re-describe):
+  committee/voting `docs/diagrams/sequence-committee-voting.md`;
+  snapshot-bind-reverify `docs/diagrams/sequence-snapshot-bind-reverify.md`.
 - Uniqueness/idempotency claims are made atomically:
   `INSERT ... ON CONFLICT DO NOTHING` checked by rowcount. SELECT-then-INSERT
   against a UNIQUE key is a rejected pattern (race -> unhandled IntegrityError).
@@ -129,6 +134,11 @@ Currency: KES, stored as `NUMERIC(18,2)` (or integer minor units) — NEVER floa
 - Rate limiting on auth/OTP/M-Pesa callbacks; OTP: 6 digits, <= 5 attempts,
   5-min TTL, single-use, constant-time compare.
 - M-Pesa callbacks: verify source, validate against pending intent, idempotent.
+- Threat model: the as-built data-flow diagrams (`docs/diagrams/dfd.md`,
+  P-DIAG.3) and the STRIDE-per-element table (`docs/diagrams/stride.md`,
+  P-DIAG.4) are the authoritative map of this section's gates onto the
+  code; an MR that changes a money flow or trust boundary updates them
+  in the same MR (BUILD_PROMPTS v1.2 rule 11).
 
 ## 2. ARCHITECTURE
 
@@ -137,8 +147,16 @@ The lock-ordering DAG — `docs/diagrams/lock-order.md` — is the single
 authority for every lock-order statement (concurrency gates in §1.4);
 MRs reference it instead of restating chains, and any MR that changes
 a lock-graph edge updates it in the same MR (BUILD_PROMPTS v1.2 rule 11).
+The data-flow diagrams (`docs/diagrams/dfd.md`, P-DIAG.3) and the STRIDE
+threat model (`docs/diagrams/stride.md`, P-DIAG.4) trace every
+money-bearing flow, store and trust boundary to the implementing
+module or migration.
 
 ### 2.1 Backend (Python 3.12, FastAPI)
+As-built C4 diagrams (P-DIAG.1, drift-governed per v1.2 rule 11):
+context `docs/diagrams/c4-context.md`, containers
+`docs/diagrams/c4-container.md`, components (one per API router group)
+`docs/diagrams/c4-component.md`.
 Layered/hexagonal, dependency direction inward:
 `api (routers/schemas) -> application (use-case services, owns transactions)
 -> domain (entities, transitions, pure logic — no I/O) -> infrastructure
@@ -151,6 +169,9 @@ Layered/hexagonal, dependency direction inward:
   hand-written.
 
 ### 2.2 Data model (core tables)
+As-built ERD (P-DIAG.2, drift-governed per v1.2 rule 11):
+`docs/diagrams/erd.md` — every table and FK at the alembic head,
+gated by `docs/diagrams/erd-spot-check.py`.
 tenants, users, roles, permissions, members (type: person|company|group|vehicle),
 share_accounts, deposit_accounts, loan_products, loan_applications
 (stage machine incl. Rejected), loans, loan_schedules, repayments, guarantees,

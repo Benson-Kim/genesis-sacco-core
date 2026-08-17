@@ -93,10 +93,14 @@ flowchart TD
     DSELF -->|E12| SSELF
     MSELF -->|E13| SSELF
     SSELF -->|E14| LOANS
+    TXN -->|E20| MSELF
+    MSELF -->|E21| LOANS
+    WOFF -->|E22| LOANS
     DSELF -->|E15| ADVP
     SSELF -->|E15| ADVP
     LOANS -->|E15| ADVP
     TXN -->|E15| ADVP
+    MSELF -->|E15| ADVP
     ADVP -->|E16| ADVR
 
     subgraph ISO["Disjoint subgraphs (never held together with money locks)"]
@@ -106,7 +110,7 @@ flowchart TD
         RT["refresh_tokens<br/>FOR UPDATE"]
         PERM["permissions<br/>FOR UPDATE (single row)"]
         EXP["exports<br/>FOR UPDATE SKIP LOCKED (single-row claim)"]
-        OBX["outbox_events<br/>FOR UPDATE SKIP LOCKED (claim + lease);<br/>dispatch holds NO domain locks"]
+        OBX["outbox_events<br/>FOR UPDATE SKIP LOCKED (claim + set-based lease);<br/>retention purge: batched DELETE via SKIP LOCKED subquery<br/>(dispatched rows only — P13.17e);<br/>dispatch holds NO domain locks"]
         IDEM["idempotency_keys<br/>ON CONFLICT claim in its OWN txn — no locks held"]
         UADM -->|E17| UTGT
         UTGT -->|E18| OTP
@@ -142,11 +146,14 @@ citation.
 | E12 | deposit_accounts (self) → share_accounts (self) | FU → FU | `application/member_exits.py:_compute_under_locks` (deposit then share via `_lock_account`); `application/dividends.py:_distribute_one` (same order) | P12 |
 | E13 | members (self) → share_accounts (self) | FS/FU → FU | `application/dividends.py:transfer_shares` (both members `sorted()` L1365, then both share accounts in the same member-id order L1384); `application/transactions.py:record_share_topup` (member FOR SHARE guard → share account, single member) — the deposit tier is skipped, which is always safe (§4) | P11/!30 |
 | E14 | share_accounts (self) → loans (self, id order) | FU → FU | `application/member_exits.py:_compute_under_locks` → `_active_loan_payoffs` (`ORDER BY id FOR UPDATE` L259) | P12 |
-| E15 | last row lock of any posting chain → advisory period barrier (shared) | row → advisory | `application/ledger.py:_post` → `accounting_periods.py:assert_open_period` (`pg_advisory_xact_lock_shared` L110) — called by EVERY posting: deposits/withdrawals/top-ups, disbursement, repayment, exit set-off, deposit interest, dividends/rebates, share transfer, reversal | issue #12 |
+| E15 | last row lock of any posting chain → advisory period barrier (shared) | row → advisory | `application/ledger.py:_post` → `accounting_periods.py:assert_open_period` (`pg_advisory_xact_lock_shared` L110) — called by EVERY posting: deposits/withdrawals/top-ups, disbursement, repayment, exit set-off, deposit interest, dividends/rebates, share transfer, reversal, P13.15 misc fees / adjustment reversals / write-off postings | issue #12 |
 | E16 | advisory period barrier → advisory ref generator | advisory → advisory | `application/ledger.py:_post` (barrier first, then `_next_ref` `pg_advisory_xact_lock` L108 + `txn_ref_sequences` upsert). Member numbering (`members.py:_next_member_no` L91) takes ADVR with **no** row locks held | P7 |
 | E17 | users (admin set, id order) → users (target) | FU → FU | `application/users.py:change_user_status` / `assign_role` / `update_user` (`_lock_admin_set` L467 → `_lock_user_row` L483) | P13.5 |
 | E18 | users → otp_challenges | FU → FU | `application/auth.py:verify_otp` (user L179 → newest challenge L191); suspension voids challenges (row writes) under the same user lock (`users.py:_void_pending_otp_challenges`) | P13.5 |
 | E19 | users → refresh_tokens | FU → FU | `application/auth.py:rotate_refresh_token` (unlocked peek → user L255 → token L270); suspension revokes families under the user lock (`users.py:_revoke_refresh_families`) | P13.5 |
+| E20 | transactions → members (self) | FU → FS | `application/corrections.py:adjust_repayment` (original txn FOR UPDATE — serialises against generic reversal and second adjustments — then member FOR SHARE, holding off a concurrent terminal exit) | P13.15 |
+| E21 | members (self) → loans (self) | FS → FU | `application/corrections.py:adjust_repayment` (member FOR SHARE from E20, then the loan row — the deposit/share tiers are skipped, which is always safe, §4) | P13.15 |
+| E22 | loan_write_offs → loans | FU → FU | `application/corrections.py:post_write_off` (snapshot row FOR UPDATE, then the loan row for the component re-verification + terminal transition) | P13.15 |
 
 **Single-node lockers** (no outgoing domain edges — they enter the DAG
 and stop, or never touch it):
@@ -165,7 +172,8 @@ and stop, or never touch it):
 | Period close | ADVP **exclusive** only, then `ON CONFLICT` claim — no row locks | `accounting_periods.py:close_period` L159 |
 | RBAC permission edit | PERM alone | `rbac.py:update_permission` L227 |
 | Export claim | EXP single row SKIP LOCKED, then snapshot-consistent reads | `exports.py:CLAIM_SQL` L85 |
-| Outbox claim | OBX SKIP LOCKED + lease, commit, dispatch **outside** any txn | `infrastructure/outbox_worker.py:dispatch_due` L67 |
+| Outbox claim | OBX SKIP LOCKED + lease (ONE set-based UPDATE per batch since P13.17e), commit, dispatch **outside** any txn | `infrastructure/outbox_worker.py:dispatch_due` |
+| Outbox retention purge (P13.17e) | OBX batched DELETE, at most batch_size rows per txn claimed via a `FOR UPDATE SKIP LOCKED` subquery — dispatched rows ONLY (pending/dead exempt by status); no other table touched | `infrastructure/outbox_worker.py:purge_dispatched` |
 | Idempotency claim | `ON CONFLICT DO NOTHING` in its **own** middleware txn before the handler — never holds domain locks | `api/idempotency.py` L137 |
 | Settings read/write | **no row locks** (single-statement optimistic writes; consumers read config as plain MVCC snapshot while holding their own anchor lock) | `tenant_settings.py` (module docstring), the !26 convention |
 
@@ -179,10 +187,26 @@ continues mid-chain — share top-up at T3, deposit-interest at T2,
 repayment at T4 — still only moves down). Ties inside a tier are broken
 by a **total order**: global member-id order for multi-member
 operations (E13, the !30 rule), `ORDER BY id` for multi-row scans
-(E2, E14, arrears, E17). All E1–E19 edges point downward **except two
+(E2, E14, arrears, E17). All E1–E22 edges point downward **except two
 upward edges out of the guarantees tier — E8 (→ guarantor member, T1)
 and E9 (→ borrower deposit, T2)** — so any cycle would have to pass
-through one of them. Each is safe for a different, checkable reason:
+through one of them. Each is safe for a different, checkable reason.
+
+**The P13.15 edges (E20/E21/E22) are strictly downward and
+anchor-first.** E20 (TXN, T0 → member, T1) and E21 (member, T1 →
+loans, T4 — a skip-tier hop, always safe) form the adjustment chain:
+the TXN anchor is locked FIRST, and nothing anywhere acquires a
+transactions row while holding T1+ locks (`reverse_transaction` locks
+TXN alone; the adjustment locks TXN before anything else), so no wait
+can point back up into T0. E22 (WOFF, T0 → loans, T4) mirrors E1/E4:
+votes and voids lock the WOFF anchor alone (the DECL discipline), and
+nothing acquires a loan_write_offs row while holding T1+ locks
+(`request_write_off` inserts the snapshot under the loan lock — a
+plain write, not a lock on WOFF). The member FOR SHARE in E20→E21
+conflicts with a terminal exit's member FOR UPDATE (E1) exactly like
+the P9/P11 guard chains, so adjustment-vs-exit serialises at T1 before
+any loan-tier contention; adjustment-vs-repayment serialises at T4
+(repayment is a LOANS-alone single-node locker).
 
 **The cross-actor edge E8 (and the guarantor continuation of E3):
 borrower's anchor/guarantee → guarantor's member row.** A transaction
@@ -308,14 +332,19 @@ consequences the MRs rely on:
    created there. Deadlock analysis for batch jobs therefore reduces to
    the locks they take *after* the scan (E10/E12/E15/E16 for
    distribution and deposit-interest; none for arrears; none for the
-   dormancy batch; none for exports/outbox).
+   dormancy batch; none for exports/outbox, claim or purge).
 2. **They trade waiting for incompleteness** — a skipped row is simply
    not processed this run. Every SKIP LOCKED job is therefore paired
    with an idempotent re-run guard (anti-join + `ON CONFLICT` claim,
    v1.1 rules 5/8) so the skipped row is picked up later: the !30
    `pending_members` reconciliation, the arrears "picked up next run"
    rule, the P13.13 anti-join on status + ledger-derived last activity
-   (a re-run scans zero rows), the outbox lease. A SKIP LOCKED scan **without** a claimed
+   (a re-run scans zero rows), the outbox lease, and the P13.17e
+   retention purge's claimed re-run path: a skipped/failed row still
+   matches `status = 'dispatched' AND dispatched_at < cutoff` and is
+   deleted by the next hourly purge cycle; a re-run after exhaustion
+   matches zero rows and locks nothing (idempotent by side-effect
+   counts). A SKIP LOCKED scan **without** a claimed
    re-run path would be a correctness bug, not just a liveness one.
 
 Concurrent runners of the same job claim disjoint row sets via SKIP
@@ -353,9 +382,17 @@ commit/rollback, per-tenant keys so tenants never serialise each other.
   sites (the lock keywords appear only in docstrings stating this);
   all slices read from one `REPEATABLE READ` snapshot. Nothing to
   draw; the no-new-edges claim holds.
-- **P13.15 (corrections/write-off), P19 (M-Pesa)** and later prompts:
-  any lock they take must land as an edge here first-class, in the same
-  MR.
+- **P13.15 (corrections/write-off) — AS-BUILT (!46):** three new
+  strictly-downward edges landed first-class in this file's §2/§3/§4:
+  E20 (transactions FOR UPDATE → member FOR SHARE) and E21 (member
+  FOR SHARE → loan FOR UPDATE) for the repayment adjustment, and E22
+  (loan_write_offs FOR UPDATE → loan FOR UPDATE) for write-off
+  posting. Write-off request is a LOANS-alone single-node locker (the
+  P10 repayment pattern); votes/voids lock the WOFF anchor alone (the
+  DECL pattern); the misc fee takes member FOR SHARE alone then the
+  advisory posting tier (§3 rows).
+- **P19 (M-Pesa)** and later prompts: any lock they take must land as
+  an edge here first-class, in the same MR.
 
 ## 8. Derivation & re-verification (falsifiable completeness)
 
@@ -384,6 +421,22 @@ or the advisory tier above. `FOR NO KEY UPDATE` is not used anywhere.
 A new grep hit that maps to none of §3's rows means this file is stale
 and the MR introducing it is rejected until it updates this file
 (v1.2 rule 11).
+
+**P13.17(e) delta (scoped re-verification, authored on the DSA-6
+branch off `08541b8`):** the outbox hardening adds exactly **one new
+executable SQL lock site** — the retention purge's `FOR UPDATE SKIP
+LOCKED` driving subquery (`outbox_worker.py:purge_dispatched`),
+catalogued as a §3 single-node locker with its §5 re-run path. Grep
+deltas from this change: +2 `for update` lines, +4 `skip locked`
+lines (the extras are docstrings/comments restating the chain); the
+set-based lease UPDATE and the SECURITY DEFINER discovery functions
+take no locks and add no sites. Note honestly: the totals printed
+above predate !36/!37 (merged after the `5922b924` re-verification)
+and current main greps higher (88/15/21/32 = 140 at `08541b8`); the
+!36 disposition scan is an uncatalogued root-tier single-node locker
+per !36's own MR statement. A full re-derivation pass over !36/!37 is
+owed by the next docs as-built update, not this backend MR — this MR's
+own delta is fully catalogued.
 
 ## 9. Cross-check: MR prose vs code-derived DAG (P-DIAG.0 step 3)
 
@@ -423,4 +476,10 @@ E10 citation, updated here). The graph as built is acyclic (§4).
 5. **New advisory locks** get a §6 row; they must remain terminal
    (no row lock is ever acquired after an advisory lock).
 6. **INCOMING claims** (§7) are flipped to as-built by the executing
+   MR, never left dashed after merge.
+flipped to as-built by the executing
+   MR, never left dashed after merge.
+ipped to as-built by the executing
+   MR, never left dashed after merge.
+flipped to as-built by the executing
    MR, never left dashed after merge.

@@ -43,6 +43,7 @@ from genesis.domain.ledger import (
     build_disbursement_posting,
     build_dividend_distribution_posting,
     build_exit_settlement_posting,
+    build_fee_posting,
     build_loan_interest_accrual_posting,
     build_repayment_posting,
     build_reversal_posting,
@@ -51,6 +52,7 @@ from genesis.domain.ledger import (
     build_share_transfer_out_posting,
     build_unclaimed_dividend_posting,
     build_withdrawal_posting,
+    build_write_off_posting,
     ref_prefix,
 )
 from genesis.domain.lending import (
@@ -650,6 +652,76 @@ async def post_share_transfer(
     return out_result, in_result
 
 
+async def post_fee(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    amount: Decimal,
+    channel: Channel,
+    actor_id: uuid.UUID | None = None,
+    *,
+    fee_type: str,
+) -> PostingResult:
+    """Post a misc fee received from a member (P13.15): FE- ref.
+
+    ``amount`` is resolved server-side from P13.7 tenant configuration
+    by the corrections service (v1.1 rule 1) — no request body ever
+    carries it. occurred_at is server-resolved NOW inside _post, so the
+    P12.5 open-period gate applies (A2). Payload carries ids and
+    amounts only — never names (gate 1.6).
+    """
+    spec = build_fee_posting(amount, channel)
+    result = await _post(session, tenant_id, member_id, spec, actor_id)
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="ledger.fee_posted",
+        payload={
+            "txn_id": str(result.txn_id),
+            "txn_ref": result.txn_ref,
+            "member_id": str(member_id),
+            "fee_type": fee_type,
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
+            "channel": channel.value,
+        },
+    )
+    return result
+
+
+async def post_loan_write_off(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    loan_id: uuid.UUID,
+    amount: Decimal,
+    actor_id: uuid.UUID | None = None,
+) -> PostingResult:
+    """Post the write-off provisioning posting (P13.15): WO- ref.
+
+    DR expense.loan_writeoffs / CR loans.receivable for the written-off
+    principal balance. Runs in the caller's transaction; the P13.15
+    write-off executor owns the atomic unit (snapshot re-verify +
+    terminal transition + this posting + audit + outbox). occurred_at
+    is server-resolved NOW inside _post (A2 — the open-period gate
+    applies to corrections too).
+    """
+    spec = build_write_off_posting(amount)
+    result = await _post(session, tenant_id, member_id, spec, actor_id)
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="ledger.write_off_posted",
+        payload={
+            "txn_id": str(result.txn_id),
+            "txn_ref": result.txn_ref,
+            "member_id": str(member_id),
+            "loan_id": str(loan_id),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
+        },
+    )
+    return result
+
+
 async def post_exit_settlement(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -705,6 +777,8 @@ async def post_reversal(
     tenant_id: uuid.UUID,
     original_txn_id: uuid.UUID,
     actor_id: uuid.UUID | None = None,
+    *,
+    allow_repayment_correction: bool = False,
 ) -> PostingResult:
     """Post a reversing entry for a previous transaction (gate 1.5).
 
@@ -723,7 +797,15 @@ async def post_reversal(
         repayment standing as a paid amount against a restored ledger
         balance. Repayment corrections need the dedicated adjustment
         service (BUILD_PROMPTS P13.15) that undoes the allocation
-        component-by-component in one transaction.
+        component-by-component in one transaction. That service — and
+        ONLY that service — passes ``allow_repayment_correction=True``
+        while holding the loan row lock, after claiming the
+        one-adjustment-per-repayment UNIQUE; it then restores balance/
+        penalty/schedule state and writes the negative-linked
+        repayments correction row in the SAME transaction (A1: the
+        complete original allocation is reversed, never a hand-edited
+        subset — the mirror-image legs are built from the original's
+        full leg set by construction).
     """
     # Load and lock the original transaction (FOR UPDATE serialises
     # concurrent reversal attempts; rows are append-only so no trigger fires).
@@ -762,22 +844,23 @@ async def post_reversal(
     if existing_reversal is not None:
         raise ConflictError(f"transaction {original_txn_id} has already been reversed")
 
-    repayment_row = (
-        await session.execute(
-            text(
-                # Explicit tenant predicate on top of RLS (gate 1.6 v1.1).
-                "SELECT 1 FROM repayments "
-                "WHERE transaction_id = CAST(:id AS uuid) "
-                "AND tenant_id = CAST(:tid AS uuid) LIMIT 1"
-            ),
-            {"id": str(original_txn_id), "tid": str(tenant_id)},
-        )
-    ).first()
-    if repayment_row is not None:
-        raise ConflictError(
-            f"transaction {original_txn_id} has repayment records and cannot be "
-            "generically reversed; use the repayment adjustment flow"
-        )
+    if not allow_repayment_correction:
+        repayment_row = (
+            await session.execute(
+                text(
+                    # Explicit tenant predicate on top of RLS (gate 1.6 v1.1).
+                    "SELECT 1 FROM repayments "
+                    "WHERE transaction_id = CAST(:id AS uuid) "
+                    "AND tenant_id = CAST(:tid AS uuid) LIMIT 1"
+                ),
+                {"id": str(original_txn_id), "tid": str(tenant_id)},
+            )
+        ).first()
+        if repayment_row is not None:
+            raise ConflictError(
+                f"transaction {original_txn_id} has repayment records and cannot be "
+                "generically reversed; use the repayment adjustment flow"
+            )
 
     # Load original ledger lines.
     line_rows = (

@@ -40,7 +40,9 @@ from genesis.domain.ledger import Account
 #: filed return is traceable to the exact mapping that produced it.
 #: Bump this (and keep the old mapping importable in history) whenever
 #: the regulator's prescribed line items change.
-SASRA_RETURN_VERSION = "SASRA-DS-2025.1"
+#: 2025.2 (P13.15): adds X400 "Loan write-off expense" for the new
+#: expense.loan_writeoffs account (the write-off provisioning posting).
+SASRA_RETURN_VERSION = "SASRA-DS-2025.2"
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,8 @@ SASRA_LINES: tuple[SasraLine, ...] = (
     SasraLine("X100", "Interest expense on member deposits", (Account.INTEREST_EXPENSE,)),
     SasraLine("X200", "Dividends on member shares", (Account.DIVIDEND_EXPENSE,)),
     SasraLine("X300", "Rebates on member deposits", (Account.REBATE_EXPENSE,)),
+    # P13.15: bad-debt expense from committee-approved loan write-offs.
+    SasraLine("X400", "Loan write-off expense", (Account.WRITE_OFF_EXPENSE,)),
     SasraLine(
         "C100",
         "Clearing and suspense (nets to zero)",

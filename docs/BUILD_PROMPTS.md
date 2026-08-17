@@ -10,6 +10,79 @@ Prompt format: ROLE / DEPENDS / PROMPT (give verbatim to the executor) / EXIT.
 
 ---
 
+## STATUS REGISTER (authoritative — update in the same MR as the work)
+
+Evidence-based as of main @ 2026-08-01 (alembic head 0023; !44/0024 in
+flight). Legend: ✅ DONE (merged to main, EXIT met) · 🔄 IN PROGRESS
+(open MR cited) · ❌ TODO (no evidence on main). A prompt may not be
+marked ✅ without citing its evidence (migration number, merged MR,
+or test/artifact present on main).
+
+| Prompt | Status | Evidence on main |
+|---|---|---|
+| P0 | ✅ DONE | CODEOWNERS, MR template, protected main |
+| P1 | ✅ DONE | backend/ scaffold, backend:* CI jobs |
+| P2 | ✅ DONE | 0001 schema v1 + RLS + leakage suite |
+| P3 | ✅ DONE | 0002 refresh tokens; test_auth, test_otp_domain |
+| P4 | ✅ DONE | test_rbac_matrix / test_rbac_endpoints |
+| P5 | ✅ DONE | 0003 outbox; test_outbox P5 suites |
+| P6 | ✅ DONE | domain/lending; test_lending |
+| P7 | ✅ DONE | 0004 ledger; test_ledger_* |
+| P8 | ✅ DONE | test_members_api / test_members_domain |
+| P9 | ✅ DONE | 0005 committee votes, 0006 keyset index |
+| P10 | ✅ DONE | 0007 loan servicing; test_loan_servicing |
+| P11 | ✅ DONE | 0008/0009; test_transactions_integration |
+| P12 | ✅ DONE | 0010 member exit; test_member_exits |
+| P12.5 | ✅ DONE | 0011 guarantee backfill, 0012 accounting periods |
+| P13 | ✅ DONE | 0013 exports, 0014 ledger integrity; test_run_export |
+| P13.5 | ✅ DONE | 0015; test_users_admin, test_audit_log_api |
+| P13.6 | ✅ DONE | 0016 branches; test_branches |
+| P13.7 | ✅ DONE | 0017 tenant settings; test_tenant_settings |
+| P13.8 | ✅ DONE | 0019 penalty accruals; test_penalty_accrual |
+| P13.9 | ✅ DONE | test_dashboard (no migration, per prompt) |
+| P13.10 | ✅ DONE | 0023 (!40); PAR-aging/register/income/SASRA export tests |
+| P13.11 | ✅ DONE | 0020 (!30); test_dividends*, test_share_transfers |
+| P13.12 | ✅ DONE | 0018 member KYC; test_member_kyc_* |
+| P13.13 | ✅ DONE | 0021 dormancy (+0022 dividend-dormant policy fix); test_dormancy |
+| P13.14 | ✅ DONE | test_guarantee_release |
+| P13.15 | 🔄 IN PROGRESS | !46 (migration 0025; merging maintainer flips to ✅ DONE with evidence upon merge) |
+| P13.16 | ❌ TODO | no recovery_cases on main — claims the number after P13.15's |
+| P13.17 | 🔄 IN PROGRESS | (e) DSA-6 in !44 (0024) with maintainer-review fixes R6/R7 + flake disposition in flight; (a)–(d) NOT found on main — verify no in-flight MR before claiming |
+| P-DIAG.0 | ✅ DONE | docs/diagrams/lock-order.md |
+| P-DIAG.1 | ✅ DONE | c4-context/container/component + c4-spot-check.py |
+| P-DIAG.2 | ✅ DONE | erd.md + erd-spot-check.py |
+| P-DIAG.3 | ✅ DONE | dfd.md |
+| P-DIAG.4 | ✅ DONE | stride.md |
+| P-DIAG.5 | ✅ DONE | sequence-committee-voting / -outbox-dispatch / -snapshot-bind-reverify |
+| P14 | ❌ TODO | no web/ tree |
+| P14.5 | ❌ TODO | member principal absent |
+| P15 | ❌ TODO | depends P14 |
+| P16 | ❌ TODO | no mobile/ tree |
+| P17 | ❌ TODO | depends P16, P14.5 |
+| P18 | ❌ TODO | depends P16 |
+| P19 | ❌ TODO | no payment_intents |
+| P20 | ❌ TODO | providers are StubProvider only |
+| P21 | ❌ TODO | — |
+| P22 | ❌ TODO | security-template non-spawn debt still open (rule 13) |
+| P23 | ❌ TODO | — |
+| P24 | ❌ TODO | — |
+
+### Review follow-ups (maintainer review of !44, 2026-08-01) — placement
+
+| # | Finding | Lands in |
+|---|---|---|
+| RF1 | R7: SECURITY DEFINER functions PUBLIC-executable (cross-tenant activity oracle) | !44 itself (0024 REVOKE/GRANT + proacl sweep test) — in flight |
+| RF2 | Dead-letter operator requeue/resolve path (dead rows now accumulate forever by design) | P20 — added to its scope: delivery-status lifecycle must include an audited, RBAC-gated requeue/resolve admin path for status='dead' rows |
+| RF3 | lock-order.md §8 re-derivation pass over !36/!37 grep totals (owed per its own note) | next docs-touching MR (rule 11 debt) — does not fit a feature prompt; docs-only micro-MR acceptable |
+| RF4 | CI flake eradication: issue #20 EXPLAIN planner flakes + test_run_export latency threshold (pipeline 2724154615) | !44 dispositions the export threshold; the EXPLAIN-flake class needs a micro-MR BEFORE P21 hardens perf gates (P21 FM1 forbids quietly raised thresholds) |
+
+Migration-claim registry delta (rule 14): 0001–0023 on main; **0024 is
+!44's (P13.17e)**; next free number is 0025 — P13.15 claims it; P13.16
+claims the next after P13.15's, and declares it merges AFTER P13.15
+(both touch ENTITY_MODULES, a named collision surface).
+
+---
+
 ## PHASE A — FOUNDATION
 
 ### P0 — Governance merge & repo hygiene

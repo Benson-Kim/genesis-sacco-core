@@ -49,6 +49,10 @@ class TxnType(enum.StrEnum):
     DIVIDEND_POSTING = "dividend_posting"
     SHARE_TRANSFER_OUT = "share_transfer_out"
     SHARE_TRANSFER_IN = "share_transfer_in"
+    # P13.15: misc fee (FE-) and the write-off provisioning posting
+    # (WO-); values match the 0025 transactions.type CHECK.
+    FEE = "fee"
+    LOAN_WRITE_OFF = "loan_write_off"
 
 
 class Channel(enum.StrEnum):
@@ -95,6 +99,12 @@ class Account(enum.StrEnum):
     INTEREST_EXPENSE = "interest.expense"
     DIVIDEND_EXPENSE = "expense.dividends"
     REBATE_EXPENSE = "expense.rebates"
+    # P13.15: bad-debt expense recognised when a committee-approved
+    # write-off derecognises loans.receivable. Provisions are loan-row
+    # bookkeeping (loans.provision_pct), never ledger balances, so the
+    # write-off charge posts directly to expense (documented in
+    # build_write_off_posting).
+    WRITE_OFF_EXPENSE = "expense.loan_writeoffs"
 
     # Clearing account for member-to-member share transfers (P13.11):
     # the OUT and IN legs post as two member-attributed transactions
@@ -167,6 +177,8 @@ REF_PREFIX: dict[TxnType, str] = {
     TxnType.DIVIDEND_POSTING: "DV-",
     TxnType.SHARE_TRANSFER_OUT: "ST-",  # both transfer legs share the ST-
     TxnType.SHARE_TRANSFER_IN: "ST-",  # sequence (the WD- precedent)
+    TxnType.FEE: "FE-",  # P13.15 misc fees
+    TxnType.LOAN_WRITE_OFF: "WO-",  # P13.15 write-off provisioning posting
 }
 
 # Channel-specific prefix for deposits. Deposits only arrive via M-Pesa or
@@ -554,6 +566,59 @@ def build_share_transfer_in_posting(amount: Decimal) -> PostingSpec:
     )
 
 
+def build_fee_posting(amount: Decimal, channel: Channel) -> PostingSpec:
+    """Misc fee received from a member (P13.15): FE- ref.
+
+    DR cash / CR income.fees — the member pays the fee in, so only the
+    cash channels (MPESA/BANK) are valid; ACCRUAL/INTERNAL are refused
+    exactly like deposits (a fee is never a system accrual). The amount
+    comes exclusively from P13.7 tenant configuration (v1.1 rule 1) —
+    the application service resolves it server-side and no request body
+    ever carries it.
+    """
+    amt = to_cents(amount)
+    if channel not in (Channel.MPESA, Channel.BANK):
+        raise ValueError(f"fees are only valid on MPESA or BANK channels, got {channel!r}")
+    return PostingSpec(
+        txn_type=TxnType.FEE,
+        channel=channel,
+        amount=amt,
+        lines=(
+            LedgerLine(account=_cash_account(channel), side=Side.DEBIT, amount=amt),
+            LedgerLine(account=Account.FEE_INCOME, side=Side.CREDIT, amount=amt),
+        ),
+    )
+
+
+def build_write_off_posting(amount: Decimal) -> PostingSpec:
+    """Committee-approved write-off provisioning posting (P13.15): WO- ref.
+
+    DR expense.loan_writeoffs / CR loans.receivable for the written-off
+    PRINCIPAL balance, INTERNAL channel (no cash moves). penalty_due is
+    receivable-side loan-row bookkeeping only (the P13.8 rule: penalty
+    income is recognised on receipt), so writing it off zeroes the loan
+    row without a ledger leg — there is no penalty receivable in the
+    ledger to derecognise.
+
+    WRITE-OFF IS NOT FORGIVENESS (P13.15 A4): this posting zeroes the
+    performing receivable, but the legal claim on the member survives
+    in the write-once loan_write_offs snapshot; post-write-off
+    recoveries are a FUTURE explicit branch (bad-debt-recovery income
+    posting — follow-up issue referencing P13.16/P19), and a repayment
+    against a written_off loan is refused loudly today.
+    """
+    amt = to_cents(amount)
+    return PostingSpec(
+        txn_type=TxnType.LOAN_WRITE_OFF,
+        channel=Channel.INTERNAL,
+        amount=amt,
+        lines=(
+            LedgerLine(account=Account.WRITE_OFF_EXPENSE, side=Side.DEBIT, amount=amt),
+            LedgerLine(account=Account.LOANS_RECEIVABLE, side=Side.CREDIT, amount=amt),
+        ),
+    )
+
+
 def build_reversal_posting(original: PostingSpec) -> PostingSpec:
     """Return a reversing entry that exactly negates the original (gate 1.5).
 
@@ -600,6 +665,11 @@ MEMBER_DIRECTION: dict[TxnType, Side] = {
     TxnType.DIVIDEND_POSTING: Side.CREDIT,
     TxnType.SHARE_TRANSFER_OUT: Side.DEBIT,
     TxnType.SHARE_TRANSFER_IN: Side.CREDIT,
+    # P13.15: a fee is a charge on the member (money out of their
+    # pocket); a write-off extinguishes their receivable like a
+    # repayment leg would (money into their position).
+    TxnType.FEE: Side.DEBIT,
+    TxnType.LOAN_WRITE_OFF: Side.CREDIT,
 }
 
 
@@ -655,6 +725,11 @@ MEMBER_INITIATED: dict[TxnType, bool] = {
     TxnType.DIVIDEND_POSTING: False,
     TxnType.SHARE_TRANSFER_OUT: True,
     TxnType.SHARE_TRANSFER_IN: False,
+    # P13.15: fees are STAFF-charged (the member did not act) and a
+    # write-off is a committee action — neither may reset the P13.13
+    # dormancy clock.
+    TxnType.FEE: False,
+    TxnType.LOAN_WRITE_OFF: False,
 }
 
 
@@ -708,6 +783,7 @@ ACCOUNT_CLASS: dict[Account, AccountClass] = {
     Account.INTEREST_EXPENSE: AccountClass.EXPENSE,
     Account.DIVIDEND_EXPENSE: AccountClass.EXPENSE,
     Account.REBATE_EXPENSE: AccountClass.EXPENSE,
+    Account.WRITE_OFF_EXPENSE: AccountClass.EXPENSE,
     Account.SHARE_TRANSFER_CLEARING: AccountClass.CLEARING,
     Account.SUSPENSE: AccountClass.CLEARING,
 }

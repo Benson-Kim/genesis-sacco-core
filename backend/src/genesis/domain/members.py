@@ -85,6 +85,8 @@ class MoneyOperation(enum.StrEnum):
     SHARE_TRANSFER_OUT = "share transfer out"
     SHARE_TRANSFER_IN = "share transfer in"
     EXIT_REQUEST = "exit request"
+    # P13.15: staff-charged misc fee (money IN — the member pays it).
+    FEE = "fee posting"
 
 
 #: Code-owned capability map (P13.13 FM2 — the single gatekeeper):

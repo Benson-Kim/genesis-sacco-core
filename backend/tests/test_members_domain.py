@@ -85,6 +85,9 @@ _EXPECTED_OPERATIONS = {
         MemberStatus.ARREARS,
         MemberStatus.DORMANT,
     },
+    # P13.15: a fee is money IN (the member pays it); exited members
+    # are refused like every operation (terminal).
+    MoneyOperation.FEE: {MemberStatus.ACTIVE, MemberStatus.ARREARS, MemberStatus.DORMANT},
 }
 
 

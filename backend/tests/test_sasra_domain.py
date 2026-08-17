@@ -101,6 +101,10 @@ def test_sasra_line_codes_are_unique_and_version_is_pinned() -> None:
     assert len(codes) == len(set(codes))
     # The version tag every rendered row carries; bumping the mapping
     # without bumping the version is a rejected diff (v1.1 rules 1/6).
-    assert SASRA_RETURN_VERSION == "SASRA-DS-2025.1"
+    # 2025.2: P13.15 added X400 (loan write-off expense) — the mapping
+    # changed, so the version moved with it.
+    assert SASRA_RETURN_VERSION == "SASRA-DS-2025.2"
     # The !36 payable has its own regulator line.
     assert line_for_account(Account.UNCLAIMED_DIVIDENDS.value) == "L200"
+    # P13.15: the write-off expense has its own regulator line.
+    assert line_for_account(Account.WRITE_OFF_EXPENSE.value) == "X400"

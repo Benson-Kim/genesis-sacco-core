@@ -105,6 +105,18 @@ def classify(days_past_due: int) -> Classification:
     return Classification(LoanClass.LOSS, Decimal("100"), True)
 
 
+#: The NPL label set, BY LABEL (P13.16). classify() above is the single
+#: source of truth for NPL-ness by days-past-due; consumers that hold a
+#: STORED classification label (the arrears job's persisted output on
+#: loans.classification) test membership here instead of re-deriving
+#: days past due (v1.1 rule 2 — never a parallel dpd recomputation).
+#: tests/test_recovery_domain.py pins this set to classify()'s is_npl
+#: flag across every threshold, so the two can never drift.
+NPL_CLASSES: frozenset[LoanClass] = frozenset(
+    {LoanClass.SUBSTANDARD, LoanClass.DOUBTFUL, LoanClass.LOSS}
+)
+
+
 class LoanStatus(enum.StrEnum):
     ACTIVE = "active"
     CLOSED = "closed"
@@ -113,7 +125,13 @@ class LoanStatus(enum.StrEnum):
 
 _LOAN_ALLOWED: dict[LoanStatus, frozenset[LoanStatus]] = {
     LoanStatus.ACTIVE: frozenset({LoanStatus.CLOSED, LoanStatus.WRITTEN_OFF}),
-    LoanStatus.CLOSED: frozenset(),
+    # P13.15 (FM6): the ONE documented reopen branch. A closed loan
+    # re-opens only when the repayment adjustment service reverses the
+    # repayment that closed it (the restored balance/penalty is again
+    # outstanding). No other code path may take this edge — the
+    # adjustment service is its single caller, and the full-matrix
+    # transition test pins the map so widening it is a failing diff.
+    LoanStatus.CLOSED: frozenset({LoanStatus.ACTIVE}),
     LoanStatus.WRITTEN_OFF: frozenset(),
 }
 
@@ -121,8 +139,12 @@ _LOAN_ALLOWED: dict[LoanStatus, frozenset[LoanStatus]] = {
 def loan_transition(current: LoanStatus, target: LoanStatus) -> LoanStatus:
     """The single gatekeeper for loan status changes (gate 1.4).
 
-    CLOSED and WRITTEN_OFF are terminal; a closed loan can never be
-    reopened — corrections happen through reversing ledger entries.
+    WRITTEN_OFF is terminal: post-write-off recoveries are a future
+    explicit branch (bad-debt-recovery income posting, see the P13.15
+    follow-up issue) — a repayment or adjustment against a written-off
+    loan is refused loudly today. CLOSED re-opens ONLY via the P13.15
+    repayment-adjustment branch (see _LOAN_ALLOWED); generic ledger
+    corrections remain reversing entries, never status edits.
     """
     if target not in _LOAN_ALLOWED[current]:
         raise InvalidTransitionError(f"{current.value} -> {target.value}")

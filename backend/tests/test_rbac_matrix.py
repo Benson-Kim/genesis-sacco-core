@@ -54,6 +54,31 @@ def test_matrix_matches_prototype_seed_perms() -> None:
     assert accountant[Module.APPLICATIONS][Action.VIEW] is False
 
 
+def test_corrections_module_grants_are_narrow() -> None:
+    """P13.15 A3: corrections are the fraud channel — the generic
+    non-admin defaults must never leak in. Maker (Accountant: create)
+    and checker (Branch Manager / Credit Committee: approve) are
+    distinct roles; Teller and Loan Officer hold NOTHING. Falsifiable:
+    routing corrections through the generic module defaults makes the
+    Teller/Loan Officer denials and the Branch Manager create-denial
+    fail."""
+    matrix = seed_matrix()
+    corrections = Module.CORRECTIONS
+    assert all(matrix["System Admin"][corrections].values())
+    maker = matrix["Accountant"][corrections]
+    assert maker[Action.VIEW] and maker[Action.CREATE]
+    assert not maker[Action.EDIT] and not maker[Action.APPROVE]
+    for checker_role in ("Branch Manager", "Credit Committee"):
+        checker = matrix[checker_role][corrections]
+        assert checker[Action.VIEW] and checker[Action.APPROVE]
+        assert not checker[Action.CREATE] and not checker[Action.EDIT]
+    auditor = matrix["Auditor"][corrections]
+    assert auditor[Action.VIEW]
+    assert not any((auditor[Action.CREATE], auditor[Action.EDIT], auditor[Action.APPROVE]))
+    for denied_role in ("Teller", "Loan Officer"):
+        assert not any(matrix[denied_role][corrections].values())
+
+
 def test_every_operation_carries_the_authz_dependency() -> None:
     """Spec walk (P4 exit): deny-by-default is structural, not a convention."""
     app = create_app()

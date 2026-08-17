@@ -198,7 +198,10 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = dict(
             "money",
             "KES",
             ">= 0",
-            ("stored for P13.12 registration flow",),
+            (
+                "application/corrections.post_misc_fee (P13.15 FeeType.REGISTRATION)",
+                "stored for P13.12 registration flow",
+            ),
         ),
         _spec(
             "min_monthly_contribution",

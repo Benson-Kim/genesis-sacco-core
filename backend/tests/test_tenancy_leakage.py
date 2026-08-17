@@ -51,6 +51,11 @@ TENANT_TABLES = [
     "dividend_declaration_votes",
     "dividend_distributions",
     "share_transfers",
+    # P13.15: the corrections/write-off tables carry money figures per
+    # loan, so their RLS posture is release-blocking (ADR-0002).
+    "repayment_adjustments",
+    "loan_write_offs",
+    "loan_write_off_votes",
     "outbox_events",
     "audit_log",
     "idempotency_keys",

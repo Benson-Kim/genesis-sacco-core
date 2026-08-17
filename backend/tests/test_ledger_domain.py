@@ -18,12 +18,14 @@ from genesis.domain.ledger import (
     build_deposit_interest_posting,
     build_deposit_posting,
     build_disbursement_posting,
+    build_fee_posting,
     build_loan_interest_accrual_posting,
     build_repayment_posting,
     build_reversal_posting,
     build_share_topup_posting,
     build_unclaimed_dividend_posting,
     build_withdrawal_posting,
+    build_write_off_posting,
     member_initiated_types,
     ref_prefix,
 )
@@ -262,6 +264,10 @@ def test_reversal_of_reversal_equals_original() -> None:
         (TxnType.LOAN_DISBURSEMENT, Channel.BANK, "LN-"),
         (TxnType.LOAN_REPAYMENT, Channel.MPESA, "RP-"),
         (TxnType.INTEREST_POSTING, Channel.ACCRUAL, "INT-"),
+        # P13.15: misc fees and the write-off provisioning posting.
+        (TxnType.FEE, Channel.MPESA, "FE-"),
+        (TxnType.FEE, Channel.BANK, "FE-"),
+        (TxnType.LOAN_WRITE_OFF, Channel.INTERNAL, "WO-"),
     ],
 )
 def test_ref_prefix_mapping(txn_type: TxnType, channel: Channel, expected_prefix: str) -> None:
@@ -363,6 +369,47 @@ def test_unclaimed_dividend_posting_rejects_zero_and_negative_components() -> No
         build_unclaimed_dividend_posting(Decimal("-1"), Decimal("0"))
 
 
+def test_fee_posting_debits_cash_and_credits_fee_income() -> None:
+    """P13.15 misc fee (FE-). HAND-COMPUTED: a 1,500.00 configured fee
+    paid via M-Pesa -> DR cash.mpesa 1,500.00 / CR income.fees
+    1,500.00, balanced. Falsifiable: swap either leg's account or side
+    and the asserts fail."""
+    spec = build_fee_posting(Decimal("1500.00"), Channel.MPESA)
+    spec.assert_balanced()
+    assert spec.txn_type is TxnType.FEE
+    assert spec.amount == Decimal("1500.00")
+    assert spec.lines == (
+        LedgerLine(account=Account.CASH_MPESA, side=Side.DEBIT, amount=Decimal("1500.00")),
+        LedgerLine(account=Account.FEE_INCOME, side=Side.CREDIT, amount=Decimal("1500.00")),
+    )
+
+
+@pytest.mark.parametrize("channel", [Channel.ACCRUAL, Channel.INTERNAL])
+def test_fee_posting_rejects_non_cash_channels(channel: Channel) -> None:
+    """A fee is money the member pays IN — never a system accrual."""
+    with pytest.raises(ValueError, match="MPESA or BANK"):
+        build_fee_posting(Decimal("100"), channel)
+
+
+def test_write_off_posting_derecognises_the_receivable() -> None:
+    """P13.15 write-off provisioning posting (WO-). HAND-COMPUTED: a
+    25,000.00 written-off principal balance -> DR
+    expense.loan_writeoffs 25,000.00 / CR loans.receivable 25,000.00,
+    INTERNAL channel (no cash moves), balanced. penalty_due carries no
+    ledger leg by design (penalty income is recognised on receipt —
+    the P13.8 rule). Falsifiable: point the credit leg anywhere but
+    loans.receivable and the equality fails."""
+    spec = build_write_off_posting(Decimal("25000.00"))
+    spec.assert_balanced()
+    assert spec.txn_type is TxnType.LOAN_WRITE_OFF
+    assert spec.channel is Channel.INTERNAL
+    assert spec.amount == Decimal("25000.00")
+    assert spec.lines == (
+        LedgerLine(account=Account.WRITE_OFF_EXPENSE, side=Side.DEBIT, amount=Decimal("25000.00")),
+        LedgerLine(account=Account.LOANS_RECEIVABLE, side=Side.CREDIT, amount=Decimal("25000.00")),
+    )
+
+
 def test_member_initiated_map_classifies_every_transaction_type() -> None:
     """Completeness pin: a NEW transaction type cannot land without a
     deliberate dormancy classification here — the universal bank bug
@@ -388,3 +435,7 @@ def test_member_initiated_allow_list_is_exactly_the_hand_written_set() -> None:
     assert not MEMBER_INITIATED[TxnType.INTEREST_POSTING]
     assert not MEMBER_INITIATED[TxnType.DIVIDEND_POSTING]
     assert not MEMBER_INITIATED[TxnType.SHARE_TRANSFER_IN]
+    # P13.15: STAFF-charged fees and committee write-offs are not
+    # member activity either.
+    assert not MEMBER_INITIATED[TxnType.FEE]
+    assert not MEMBER_INITIATED[TxnType.LOAN_WRITE_OFF]

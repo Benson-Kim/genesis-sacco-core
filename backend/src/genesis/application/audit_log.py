@@ -64,6 +64,12 @@ ENTITY_MODULES: dict[str, Module] = {
     "dividend_declarations": Module.TRANSACTIONS,
     "dividend_distributions": Module.TRANSACTIONS,
     "share_transfers": Module.MEMBERS,
+    # P13.15 (A3): corrections are the fraud channel — their audit
+    # rows carry the exact money figures and are disclosed (and
+    # filterable in review) per the DEDICATED corrections entitlement,
+    # never generic transactions:*.
+    "repayment_adjustments": Module.CORRECTIONS,
+    "loan_write_offs": Module.CORRECTIONS,
     "loan_products": Module.SETTINGS,
     # P13.7: the tenant settings row is maintained under settings:*
     # routes; mapped here so its before/after payloads are released per

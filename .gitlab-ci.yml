@@ -155,6 +155,18 @@ backend:test:
           "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES "
           "IN SCHEMA public TO genesis_app"
       )
+      # R7 (!44): migration 0024 revokes the PostgreSQL-default PUBLIC
+      # EXECUTE on the three SECURITY DEFINER registries, so the app
+      # role needs an explicit grant. 0024's own conditional grant
+      # cannot fire here because this role is created AFTER `alembic
+      # upgrade head` (role provisioning is environment-owned per
+      # ADR-0002) — grant alongside the table/sequence grants above.
+      cur.execute("GRANT EXECUTE ON FUNCTION active_tenant_ids() TO genesis_app")
+      cur.execute("GRANT EXECUTE ON FUNCTION outbox_due_tenant_ids() TO genesis_app")
+      cur.execute(
+          "GRANT EXECUTE ON FUNCTION outbox_purgeable_tenant_ids(timestamptz) "
+          "TO genesis_app"
+      )
       PYEOF
     - export DATABASE_URL="postgresql+psycopg://genesis_app@postgres:5432/genesis_test"
     - pytest --cov=src --cov-fail-under=85 --junitxml=report.xml
