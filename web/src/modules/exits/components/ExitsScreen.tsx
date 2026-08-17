@@ -91,21 +91,6 @@ export function ExitsScreen() {
     ? EXIT_STATUSES.some((s) => statusCounts[s]?.hasMore)
     : false;
 
-  // Advisory per-status counts — decorative badges only; null while loading.
-  const { data: statusCounts } = useQuery({
-    queryKey: ["exits", "status-counts"],
-    queryFn: fetchExitStatusCounts,
-    staleTime: 60_000,
-    retry: 1,
-  });
-  // Total across all statuses — sum of per-status counts; null until loaded.
-  const allStatusCount = statusCounts
-    ? EXIT_STATUSES.reduce((sum, s) => sum + (statusCounts[s]?.count ?? 0), 0)
-    : null;
-  const allStatusCountMore = statusCounts
-    ? EXIT_STATUSES.some((s) => statusCounts[s]?.hasMore)
-    : false;
-
   const list = useKeysetList<ExitRecord>({
     queryKey: ["exits", "list", filters, pagination.pageSize],
     fetchPage: (cursor) => fetchExitsPage(filters, cursor, pagination.pageSize),
