@@ -73,7 +73,7 @@ CREATE INDEX idx_audit_action_keyset
 CREATE INDEX idx_audit_entity_keyset
     ON audit_log (tenant_id, entity, at DESC, id DESC);
 
-DROP INDEX idx_audit_time;
+DROP INDEX IF EXISTS idx_audit_time;
 """
 
 _DOWN = """

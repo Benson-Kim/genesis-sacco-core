@@ -11,6 +11,7 @@ from genesis.api.access import router as access_router
 from genesis.api.accounting_periods import router as accounting_periods_router
 from genesis.api.audit_log import router as audit_log_router
 from genesis.api.auth import router as auth_router
+from genesis.api.branches import router as branches_router
 from genesis.api.health import router as health_router
 from genesis.api.idempotency import IdempotencyMiddleware
 from genesis.api.loan_book import router as loan_book_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(access_router)
     app.include_router(users_router)
     app.include_router(audit_log_router)
+    app.include_router(branches_router)
     app.add_middleware(IdempotencyMiddleware)
 
     @app.middleware("http")

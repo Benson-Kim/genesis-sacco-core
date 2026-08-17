@@ -20,6 +20,7 @@ TENANT_TABLES = [
     "roles",
     "permissions",
     "users",
+    "branches",
     "members",
     "share_accounts",
     "deposit_accounts",
@@ -112,6 +113,50 @@ def test_cross_tenant_rows_are_invisible_and_immutable() -> None:
         async with tenant_session(_factory(), tid_a) as session:
             count = (await session.execute(text("SELECT count(*) FROM members"))).scalar_one()
             assert count == 1, "tenant A cannot see its own row"
+
+    asyncio.run(run())
+
+
+def test_cross_tenant_branch_rows_are_invisible_and_immutable() -> None:
+    """P13.6 EXIT: leakage suite extended to branches.
+
+    Tenant B must not read, update, delete or insert tenant A branch
+    rows even via raw SQL through the app role (ADR-0002).
+    """
+
+    async def run() -> None:
+        tid_a = await _create_tenant("branch-a")
+        tid_b = await _create_tenant("branch-b")
+        async with tenant_session(_factory(), tid_a) as session:
+            await session.execute(
+                text(
+                    "INSERT INTO branches (tenant_id, name) "
+                    "VALUES (CAST(:tid AS uuid), 'Leakage HQ')"
+                ),
+                {"tid": str(tid_a)},
+            )
+
+        async with tenant_session(_factory(), tid_b) as session:
+            count = (await session.execute(text("SELECT count(*) FROM branches"))).scalar_one()
+            assert count == 0, "tenant B can see tenant A branches"
+            updated = await session.execute(text("UPDATE branches SET name = 'hijack'"))
+            assert updated.rowcount == 0, "tenant B can update tenant A branches"
+            deleted = await session.execute(text("DELETE FROM branches"))
+            assert deleted.rowcount == 0, "tenant B can delete tenant A branches"
+
+        with pytest.raises(DBAPIError):
+            async with tenant_session(_factory(), tid_b) as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO branches (tenant_id, name) "
+                        "VALUES (CAST(:tid AS uuid), 'Forged Branch')"
+                    ),
+                    {"tid": str(tid_a)},
+                )
+
+        async with tenant_session(_factory(), tid_a) as session:
+            count = (await session.execute(text("SELECT count(*) FROM branches"))).scalar_one()
+            assert count == 1, "tenant A cannot see its own branch"
 
     asyncio.run(run())
 
