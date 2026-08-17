@@ -78,6 +78,13 @@ class Account(enum.StrEnum):
     # Liability accounts
     MEMBER_DEPOSITS = "member.deposits"
     MEMBER_SHARES = "member.shares"
+    # Unclaimed dividends payable (issue #19 P3): the record-date
+    # entitlement of a member who EXITED between declaration and
+    # distribution is parked here as an explicit, reportable liability
+    # — never credited to member accounts, never a silent shortfall.
+    # Resolved only through the P13.15 correction paths (reversing
+    # entries), never UPDATE/DELETE.
+    UNCLAIMED_DIVIDENDS = "liability.unclaimed_dividends"
 
     # Income accounts
     INTEREST_INCOME = "income.interest"
@@ -461,6 +468,49 @@ def build_dividend_distribution_posting(dividend: Decimal, rebate: Decimal) -> P
     )
 
 
+def build_unclaimed_dividend_posting(dividend: Decimal, rebate: Decimal) -> PostingSpec:
+    """Mid-run-exit disposition of one member's entitlement (issue #19 P3).
+
+    DV- ref, ACCRUAL channel — the same transaction type as a paid
+    distribution (dividend_posting stays classified SYSTEM in
+    MEMBER_INITIATED, so the P13.13 dormancy clock is untouched), but
+    the credit legs park the money as an explicit
+    liability.unclaimed_dividends payable instead of member accounts:
+    DR expense.dividends / CR liability.unclaimed_dividends and
+    DR expense.rebates / CR liability.unclaimed_dividends. The exited
+    member holds no balances any more; recognising the payable keeps
+    SUM(expense postings) == the approved declaration totals (the !30
+    zero-residue conservation rule) while the disposition row, its
+    audit row and the outbox event make the position visible.
+    Resolution (pay-out or write-back) happens through the P13.15
+    correction paths as reversing entries.
+    """
+    dividend = to_cents(dividend)
+    rebate = to_cents(rebate)
+    if dividend < ZERO or rebate < ZERO:
+        raise ValueError("dividend components must not be negative")
+    total = to_cents(dividend + rebate)
+    if total <= ZERO:
+        raise ValueError("a zero unclaimed dividend cannot be posted")
+    lines: list[LedgerLine] = []
+    if dividend > ZERO:
+        lines.append(LedgerLine(account=Account.DIVIDEND_EXPENSE, side=Side.DEBIT, amount=dividend))
+        lines.append(
+            LedgerLine(account=Account.UNCLAIMED_DIVIDENDS, side=Side.CREDIT, amount=dividend)
+        )
+    if rebate > ZERO:
+        lines.append(LedgerLine(account=Account.REBATE_EXPENSE, side=Side.DEBIT, amount=rebate))
+        lines.append(
+            LedgerLine(account=Account.UNCLAIMED_DIVIDENDS, side=Side.CREDIT, amount=rebate)
+        )
+    return PostingSpec(
+        txn_type=TxnType.DIVIDEND_POSTING,
+        channel=Channel.ACCRUAL,
+        amount=total,
+        lines=tuple(lines),
+    )
+
+
 def build_share_transfer_out_posting(amount: Decimal) -> PostingSpec:
     """Transferor leg of a share transfer (P13.11): ST- ref, INTERNAL.
 
@@ -611,3 +661,83 @@ MEMBER_INITIATED: dict[TxnType, bool] = {
 def member_initiated_types() -> tuple[str, ...]:
     """The sorted member-initiated type values (for bound SQL parameters)."""
     return tuple(sorted(t.value for t, member in MEMBER_INITIATED.items() if member))
+
+
+# ---------------------------------------------------------------------------
+# Account classification (P13.10 income statement / SASRA return)
+# ---------------------------------------------------------------------------
+
+
+class AccountClass(enum.StrEnum):
+    """Financial-statement class of a ledger account (code-owned).
+
+    DEBIT-normal classes (balance = debits - credits): ASSET, EXPENSE,
+    CLEARING (clearing/suspense accounts net to zero inside their
+    flows, reported debit-normal so a non-zero residue is visible).
+    CREDIT-normal classes (balance = credits - debits): LIABILITY,
+    EQUITY, INCOME.
+    """
+
+    ASSET = "asset"
+    LIABILITY = "liability"
+    EQUITY = "equity"
+    INCOME = "income"
+    EXPENSE = "expense"
+    CLEARING = "clearing"
+
+
+#: Code-owned classification of EVERY chart account (v1.1 rule 6: the
+#: account identifiers interpolated into report groupings come from
+#: THIS mapping, never from callers). The completeness test pins this
+#: map to the Account enum, so a new account cannot land unclassified
+#: — and the P13.10 report builders FAIL LOUDLY (UnprocessableError)
+#: on any ledger account string not covered here, so a future account
+#: can never silently vanish from an income statement or a regulator
+#: return (the classic silent-drop return defect).
+ACCOUNT_CLASS: dict[Account, AccountClass] = {
+    Account.CASH_MPESA: AccountClass.ASSET,
+    Account.CASH_BANK: AccountClass.ASSET,
+    Account.LOANS_RECEIVABLE: AccountClass.ASSET,
+    Account.INTEREST_RECEIVABLE: AccountClass.ASSET,
+    Account.MEMBER_DEPOSITS: AccountClass.LIABILITY,
+    Account.UNCLAIMED_DIVIDENDS: AccountClass.LIABILITY,
+    Account.MEMBER_SHARES: AccountClass.EQUITY,
+    Account.INTEREST_INCOME: AccountClass.INCOME,
+    Account.PENALTY_INCOME: AccountClass.INCOME,
+    Account.FEE_INCOME: AccountClass.INCOME,
+    Account.INTEREST_EXPENSE: AccountClass.EXPENSE,
+    Account.DIVIDEND_EXPENSE: AccountClass.EXPENSE,
+    Account.REBATE_EXPENSE: AccountClass.EXPENSE,
+    Account.SHARE_TRANSFER_CLEARING: AccountClass.CLEARING,
+    Account.SUSPENSE: AccountClass.CLEARING,
+}
+
+#: Classes whose accounts carry a DEBIT-normal balance.
+DEBIT_NORMAL_CLASSES: frozenset[AccountClass] = frozenset(
+    {AccountClass.ASSET, AccountClass.EXPENSE, AccountClass.CLEARING}
+)
+
+
+def account_class(account_value: str) -> AccountClass:
+    """Classify a raw ledger account string; unknown accounts RAISE.
+
+    ValueError (unknown enum value) or KeyError (enum member missing
+    from ACCOUNT_CLASS) both surface as ValueError so report builders
+    can translate the failure into a loud, sanitized domain error —
+    never a silently dropped line (gate 1.5).
+    """
+    try:
+        return ACCOUNT_CLASS[Account(account_value)]
+    except KeyError as exc:  # pragma: no cover - the completeness pin
+        raise ValueError(f"ledger account {account_value!r} has no class mapping") from exc
+    except ValueError:
+        raise ValueError(f"unknown ledger account {account_value!r}") from None
+
+
+def signed_balance(account_value: str, debits: Decimal, credits: Decimal) -> Decimal:
+    """Natural-sign balance of one account (debit-normal positive for
+    asset/expense/clearing; credit-normal positive for liability/
+    equity/income). Raises ValueError on an unmapped account."""
+    if account_class(account_value) in DEBIT_NORMAL_CLASSES:
+        return debits - credits
+    return credits - debits

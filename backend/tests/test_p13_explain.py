@@ -161,7 +161,16 @@ def test_p13_report_and_export_queries_are_index_backed() -> None:
         # falsifiable guard is the no-sequential-scan gate below
         # (drop both indexes and this test fails on the Seq Scan).
         assert "idx_txns_type_occurred" in disb_coll or "idx_txns_occurred_keyset" in disb_coll
-        assert "idx_schedules_due" in npl_month
+        # The schedules CTE (tenant_id + due_date <= cutoff, joined per
+        # loan) may be served by idx_schedules_due (the due-led range
+        # scan) or by idx_schedules_loan (the loan-led nested loop) —
+        # the planner flips between them on near-empty CI tables (the
+        # disb_coll precedent above; observed flipping run-to-run on
+        # BYTE-IDENTICAL SQL and test code, !40 pipelines 2723985005
+        # vs 2724004325). Both are tenant-led composite indexes
+        # shipped with the query (0001); the falsifiable guard stays
+        # the no-Seq-Scan gate below (drop both indexes -> Seq Scan).
+        assert "idx_schedules_due" in npl_month or "idx_schedules_loan" in npl_month
         assert "idx_exports_requested" in claim
         assert "csv_token" in download
         assert "pdf_token" in download

@@ -50,10 +50,17 @@ Workflow (mirrors the P12 exit machinery, reused not forked):
      pre-check); postings + both balance updates + the transfer row +
      audit + outbox commit in ONE transaction.
 
-Population rules (failure mode 5, all falsifiable): only active and
-arrears members are scanned (allow-list — exited members are never
-even read; the partial index cannot serve them); zero-entitlement
-members are SKIPPED — no claim row, no 0.00 posting, no noise rows.
+Population rules (failure mode 5 and issue #19, all falsifiable):
+active, arrears AND dormant members are scanned (allow-list — the
+issue-#19 policy decision: dormant members remain shareholders and are
+paid on their share basis; entitlement follows the RECORD DATE, i.e.
+the persisted declaration snapshot, so a member going dormant between
+declaration and distribution is still paid). Exited members are never
+scanned and never paid directly (the partial index cannot serve them);
+a member who EXITS mid-run terminates in the explicit 'unclaimed'
+disposition below — never a permanent silent pending_members
+shortfall. Zero-entitlement members are SKIPPED — no claim row, no
+0.00 posting, no noise rows.
 Documented trade-off: because zero-entitlement members are (by design)
 never claimed, a re-run re-examines exactly that class; the lock-free
 no-op guarantee of the anti-join applies to every member who was paid.
@@ -66,6 +73,27 @@ their reconstructed basis, so recomputing the aggregate would no longer
 match the snapshot; unpaid members' bases are member-attributed and
 therefore unaffected, and the write-once snapshot plus the per-member
 claims carry the approved figures for the remainder of the run.
+
+Unclaimed disposition (issue #19 P3, the SACCO-standard treatment of
+mid-run exit drift): after the paying batches, the distribution job
+runs a disposition pass over members who EXITED AFTER the declaration
+was created — fenced by member_exits.settled_at > the declaration's
+created_at, so members who exited before the record date were never on
+the register and stay excluded ('exited stays excluded from direct
+payment'). Each such member's snapshot-rate entitlement is claimed on
+the same (tenant, declaration, member) UNIQUE key with
+disposition='unclaimed' (exactly-once, v1.1 rule 5) and posted
+DR expense / CR liability.unclaimed_dividends — an explicit payable;
+their settled member accounts are never credited. The audit row
+carries the exact figures (rule 7) and the dividend.unclaimed outbox
+event is the alert surface. Because the unclaimed claim participates
+in the snapshot reconciliation, the run COMPLETES (distributed)
+instead of pending forever. The payable is resolvable only through
+the P13.15 correction paths (forward reference — reversing entries,
+never UPDATE/DELETE). An exit BEFORE any claim exists stays on the
+existing loud path instead: first-run verification 409s, the
+declaration is voided and redeclared, and the leaver is simply not on
+the new register.
 
 Failure-mode boundaries: missing config (any of dividend rate, rebate
 rate, financial-year-end month) fails CLOSED — the declaration is
@@ -92,7 +120,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application.audit import record_audit
 from genesis.application.batch_runner import SessionScope, run_in_batches
-from genesis.application.ledger import post_dividend_distribution, post_share_transfer
+from genesis.application.ledger import (
+    post_dividend_distribution,
+    post_share_transfer,
+    post_unclaimed_dividend,
+)
 from genesis.application.outbox import enqueue_event
 from genesis.application.pagination import build_created_id_cursor, parse_created_id_cursor
 from genesis.application.period_balances import average_daily_balance
@@ -130,6 +162,7 @@ __all__ = [
     "parse_dividend_config",
     "resolve_dividend_config",
     "transfer_shares",
+    "unclaimed_scan_sql",
     "void_declaration",
 ]
 
@@ -288,10 +321,12 @@ async def compute_member_entitlement(
 
 
 def members_scan_sql(*, with_after: bool, with_claims: bool, for_update: bool) -> str:
-    """The eligible-population scan (id-keyset over active/arrears).
+    """The eligible-population scan (id-keyset over active/arrears/dormant).
 
-    Served by idx_members_dividend_scan (0020, partial: exited members
-    never widen the scan); the claim anti-join by
+    Served by idx_members_dividend_scan (predicate widened to include
+    dormant members in 0022 per the issue-#19 policy decision, shipped
+    with this query; exited members still never widen the scan — they
+    are excluded from direct payment); the claim anti-join by
     uq_dividend_distributions_claim (0020 — the index ships with this
     query, gate 1.3). Fragments are static literals chosen in code;
     every value is a bound parameter (v1.1 rule 6). Explicit tenant
@@ -315,8 +350,43 @@ def members_scan_sql(*, with_after: bool, with_claims: bool, for_update: bool) -
         # Static fragments chosen in code; all values bound parameters.
         "SELECT m.id FROM members m "  # noqa: S608
         "WHERE m.tenant_id = CAST(:tid AS uuid) "
-        f"AND m.status IN ('active', 'arrears') {after}{anti}"
+        f"AND m.status IN ('active', 'arrears', 'dormant') {after}{anti}"
         f"ORDER BY m.id LIMIT :limit {lock}"
+    )
+
+
+def unclaimed_scan_sql(*, with_after: bool) -> str:
+    """Members owed an unclaimed disposition (issue #19 P3, id-keyset).
+
+    Exited members with a settled P12 exit AFTER the declaration was
+    created (the record-date fence: whoever exited before the
+    declaration was never on the register) and no claim yet for this
+    declaration. Served by idx_members_exited_scan (0022 — shipped
+    with this query, gate 1.3); the exit probe by idx_exits_member
+    (0001) and the claim anti-join by uq_dividend_distributions_claim
+    (0020). FOR UPDATE SKIP LOCKED on the member row only — the ROOT
+    tier of the established chain, exactly like the paying scan; the
+    disposition never touches account rows, so no new lock-graph
+    edges. Fragments are static literals chosen in code; every value
+    is a bound parameter (v1.1 rule 6). Explicit tenant predicate on
+    top of forced RLS (v1.1 rule 4). Exported for the EXPLAIN capture
+    (tests/test_p1311_explain.py).
+    """
+    after = "AND m.id > CAST(:after AS uuid) " if with_after else ""
+    return (
+        # Static fragments chosen in code; all values bound parameters.
+        "SELECT m.id FROM members m "  # noqa: S608
+        "WHERE m.tenant_id = CAST(:tid AS uuid) "
+        "AND m.status = 'exited' "
+        "AND EXISTS (SELECT 1 FROM member_exits e "
+        " WHERE e.tenant_id = m.tenant_id AND e.member_id = m.id "
+        " AND e.status = 'settled' AND e.settled_at > :declared_at) "
+        "AND NOT EXISTS (SELECT 1 FROM dividend_distributions dd "
+        " WHERE dd.tenant_id = m.tenant_id "
+        " AND dd.declaration_id = CAST(:decl AS uuid) "
+        " AND dd.member_id = m.id) "
+        f"{after}"
+        "ORDER BY m.id LIMIT :limit FOR UPDATE OF m SKIP LOCKED"
     )
 
 
@@ -853,6 +923,9 @@ class DistributionRunResult:
     claimed: int
     skipped_zero: int
     skipped_claimed: int
+    #: Mid-run-exited members disposed as unclaimed by THIS run
+    #: (issue #19 P3); the claim rows/audit carry the exact figures.
+    unclaimed: int
     dividend_total: Decimal
     rebate_total: Decimal
     payout_total: Decimal
@@ -891,8 +964,12 @@ async def _verify_snapshot(
     component drift, posting nothing. A P13.7 rate change is NOT
     drift: figures always derive from the snapshot rates, so a rate
     change applies to future declarations only. Basis or population
-    drift (a backdated posting into the FY, a member exit) means the
-    committee approved different totals — refuse; void and redeclare.
+    drift (a backdated posting into the FY, a member exiting right
+    after approval) means the committee approved different totals —
+    refuse; void and redeclare. A PRE-distribution exit therefore
+    never needs the unclaimed disposition: the redeclared snapshot
+    simply excludes the leaver (issue #19 — 'exited stays excluded
+    from direct payment').
     """
     fy = FinancialYear(start=snapshot.fy_start, end=snapshot.fy_end)
     totals = await compute_declaration_totals(
@@ -1065,6 +1142,143 @@ async def _distribute_one(
     return 1, 0, entitlement.dividend, entitlement.rebate
 
 
+async def _dispose_unclaimed_one(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID | None,
+    snapshot: DeclarationRecord,
+    member_id: uuid.UUID,
+    *,
+    fy: FinancialYear,
+    posted_at: datetime,
+) -> int:
+    """Dispose one LOCKED mid-run-exited member as unclaimed; 0 or 1.
+
+    Caller holds the member row lock from the disposition scan (root
+    tier only — no account rows are locked or written: the member
+    exited and their balances are settled). The entitlement is
+    recomputed at the SNAPSHOT rates via the exact declaration
+    function; it reconstructs to the record-date figure identically
+    because every post-exit posting (settlement, share transfer)
+    carries occurred_at AFTER the financial year end — the append-only
+    trigger and the open-period guard make a backdated posting into
+    the FY unrepresentable. The claim reuses the one
+    (tenant, declaration, member) UNIQUE key with
+    disposition='unclaimed' (v1.1 rule 5: exactly-once even against a
+    concurrent runner), the posting parks the money as the
+    liability.unclaimed_dividends payable, and claim + posting + audit
+    + outbox commit atomically with the batch (issue #19 P3).
+    """
+    entitlement = await compute_member_entitlement(
+        session,
+        tenant_id,
+        member_id,
+        fy=fy,
+        dividend_rate_pct=snapshot.dividend_rate_pct,
+        rebate_rate_pct=snapshot.rebate_rate_pct,
+    )
+    if entitlement.total <= ZERO:
+        # Never part of the eligible count: nothing owed, no noise row.
+        return 0
+    claim_id = uuid.uuid4()
+    claim = cast(
+        CursorResult[Any],
+        await session.execute(
+            text(
+                # The same atomic claim as the paying path (v1.1 rule
+                # 5) with the explicit terminal disposition; the
+                # 'unclaimed' literal is a code-owned static fragment
+                # (rule 6). Bases and snapshot rates are recorded
+                # verbatim so the payable stays reconstructable.
+                "INSERT INTO dividend_distributions "
+                "(id, tenant_id, declaration_id, member_id, share_basis, "
+                " deposit_basis, dividend_rate_pct, rebate_rate_pct, "
+                " dividend_amount, rebate_amount, total_amount, disposition) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), "
+                "CAST(:did AS uuid), CAST(:mid AS uuid), :share_basis, "
+                ":deposit_basis, :d_rate, :r_rate, :dividend, :rebate, "
+                ":total, 'unclaimed') "
+                "ON CONFLICT (tenant_id, declaration_id, member_id) DO NOTHING"
+            ),
+            {
+                "id": str(claim_id),
+                "tid": str(tenant_id),
+                "did": str(snapshot.id),
+                "mid": str(member_id),
+                "share_basis": str(entitlement.share_basis),
+                "deposit_basis": str(entitlement.deposit_basis),
+                "d_rate": str(snapshot.dividend_rate_pct),
+                "r_rate": str(snapshot.rebate_rate_pct),
+                "dividend": str(entitlement.dividend),
+                "rebate": str(entitlement.rebate),
+                "total": str(entitlement.total),
+            },
+        ),
+    )
+    if claim.rowcount == 0:
+        # A concurrent runner disposed (or paid) this member between
+        # the anti-join scan and the insert; idempotency wins.
+        return 0
+    posting = await post_unclaimed_dividend(
+        session,
+        tenant_id,
+        member_id,
+        dividend=entitlement.dividend,
+        rebate=entitlement.rebate,
+        actor_id=actor_id,
+        occurred_at=posted_at,
+    )
+    await session.execute(
+        text(
+            "UPDATE dividend_distributions SET transaction_id = CAST(:txn AS uuid) "
+            "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+        ),
+        {"txn": str(posting.txn_id), "id": str(claim_id), "tid": str(tenant_id)},
+    )
+    # Exact figures live here (rule 7): the payable is reconstructable
+    # to the cent, and the disposition is resolvable only through the
+    # P13.15 correction paths (forward reference).
+    await record_audit(
+        session,
+        tenant_id,
+        actor_id,
+        action="dividend_distribution.unclaimed",
+        entity="dividend_distributions",
+        entity_id=str(claim_id),
+        after={
+            "declaration_id": str(snapshot.id),
+            "member_id": str(member_id),
+            "disposition": "unclaimed",
+            "fy_start": fy.start.isoformat(),
+            "fy_end": fy.end.isoformat(),
+            "share_basis": str(entitlement.share_basis),
+            "deposit_basis": str(entitlement.deposit_basis),
+            "dividend_rate_pct": str(snapshot.dividend_rate_pct),
+            "rebate_rate_pct": str(snapshot.rebate_rate_pct),
+            "dividend_amount": str(entitlement.dividend),
+            "rebate_amount": str(entitlement.rebate),
+            "total_amount": str(entitlement.total),
+            "txn_ref": posting.txn_ref,
+        },
+    )
+    # The alert surface (issue #19 P3): operators subscribe to the
+    # unclaimed disposition exactly like other money events.
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="dividend.unclaimed",
+        payload={
+            "declaration_id": str(snapshot.id),
+            "member_id": str(member_id),
+            "dividend": str(entitlement.dividend),
+            "rebate": str(entitlement.rebate),
+            "total": str(entitlement.total),
+            "txn_ref": posting.txn_ref,
+        },
+    )
+    return 1
+
+
 async def distribute_dividend(
     session_scope: SessionScope,
     tenant_id: uuid.UUID,
@@ -1081,7 +1295,10 @@ async def distribute_dividend(
     concurrent exit settlement or share transfer holds their lock) are
     picked up by an idempotent re-run (failure mode 8). The
     declaration is marked distributed only when nothing is pending and
-    the claims reconcile exactly with the approved snapshot.
+    the claims reconcile exactly with the approved snapshot. Mid-run
+    exits are settled by the unclaimed disposition pass after the
+    paying batches (issue #19 P3 — see the module docstring), so an
+    exit never strands the declaration in a permanent pending state.
     """
     async with session_scope() as session:
         row = (
@@ -1201,6 +1418,64 @@ async def distribute_dividend(
     dividend_total = sum((p[3] for p in payloads), ZERO)
     rebate_total = sum((p[4] for p in payloads), ZERO)
 
+    async def process_unclaimed(
+        session: AsyncSession, after_id: uuid.UUID | None
+    ) -> tuple[int, uuid.UUID | None, int]:
+        # Unclaimed disposition pass (issue #19 P3): members who EXITED
+        # after the declaration was created and hold no claim yet. Runs
+        # AFTER the paying batches so a member who exits mid-run is
+        # caught in the same run; a member merely SKIP LOCKED-skipped
+        # is still in the paying population and is never disposed here
+        # (the scan's status/exit-fence predicates exclude them). Same
+        # void-vs-distribute fence as the paying batches (review
+        # finding F1): the FOR SHARE re-check is held to batch commit,
+        # so a racing void either wins before any disposition or is
+        # refused by the committed claims.
+        status_row = (
+            await session.execute(
+                text(
+                    "SELECT status FROM dividend_declarations "
+                    "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
+                    "FOR SHARE"
+                ),
+                {"id": str(declaration_id), "tid": str(tenant_id)},
+            )
+        ).first()
+        if status_row is None or str(status_row[0]) == DeclarationStatus.REJECTED.value:
+            raise ConflictError(
+                "dividend declaration was voided while distribution was starting; "
+                "nothing was posted by this batch"
+            )
+        params: dict[str, object] = {
+            "tid": str(tenant_id),
+            "decl": str(declaration_id),
+            "declared_at": snapshot.created_at,
+            "limit": batch_size,
+        }
+        if after_id is not None:
+            params["after"] = str(after_id)
+        rows = (
+            await session.execute(text(unclaimed_scan_sql(with_after=after_id is not None)), params)
+        ).all()
+        disposed = 0
+        for (member_id_raw,) in rows:
+            disposed += await _dispose_unclaimed_one(
+                session,
+                tenant_id,
+                actor_id,
+                snapshot,
+                uuid.UUID(str(member_id_raw)),
+                fy=fy,
+                posted_at=posted_at,
+            )
+        last_id = uuid.UUID(str(rows[-1][0])) if rows else None
+        return len(rows), last_id, disposed
+
+    _, _, unclaimed_payloads = await run_in_batches(
+        session_scope, process_unclaimed, batch_size=batch_size
+    )
+    unclaimed = sum(unclaimed_payloads)
+
     async with session_scope() as session:
         claims_row = (
             await session.execute(
@@ -1215,12 +1490,27 @@ async def distribute_dividend(
         ).one()
         claims_count = int(claims_row[0])
         claims_total = Decimal(str(claims_row[1]))
+        unclaimed_count = int(
+            (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM dividend_distributions "
+                        "WHERE declaration_id = CAST(:did AS uuid) "
+                        "AND tenant_id = CAST(:tid AS uuid) "
+                        "AND disposition = 'unclaimed'"
+                    ),
+                    {"did": str(declaration_id), "tid": str(tenant_id)},
+                )
+            ).scalar_one()
+        )
         # The unpaid remainder of the APPROVED eligible set. A member
-        # whose claim is still missing was either SKIP LOCKED-skipped
-        # (an idempotent re-run picks them up) or left the population
-        # mid-run (the documented permanent shortfall). Zero-entitlement
-        # members are not part of the eligible count and never hold the
-        # declaration open.
+        # whose claim is still missing was SKIP LOCKED-skipped (an
+        # idempotent re-run picks them up); a member who EXITED mid-run
+        # was disposed as an 'unclaimed' claim by the disposition pass
+        # above (issue #19 P3), so exits count against the snapshot
+        # exactly like paid members and the run can COMPLETE instead of
+        # pending forever. Zero-entitlement members are not part of the
+        # eligible count and never hold the declaration open.
         pending = snapshot.eligible_members - claims_count
         status = DeclarationStatus.APPROVED
         if claims_count == snapshot.eligible_members and claims_total == snapshot.total_payout:
@@ -1255,6 +1545,7 @@ async def distribute_dividend(
                     after={
                         "status": DeclarationStatus.DISTRIBUTED.value,
                         "claims": claims_count,
+                        "unclaimed_members": unclaimed_count,
                         "payout_total": str(claims_total),
                     },
                 )
@@ -1265,6 +1556,7 @@ async def distribute_dividend(
                     payload={
                         "declaration_id": str(declaration_id),
                         "claims": claims_count,
+                        "unclaimed_members": unclaimed_count,
                         "payout_total": str(claims_total),
                     },
                 )
@@ -1278,6 +1570,7 @@ async def distribute_dividend(
         claimed=claimed,
         skipped_zero=skipped_zero,
         skipped_claimed=skipped_claimed,
+        unclaimed=unclaimed,
         dividend_total=dividend_total,
         rebate_total=rebate_total,
         payout_total=to_cents(dividend_total + rebate_total),

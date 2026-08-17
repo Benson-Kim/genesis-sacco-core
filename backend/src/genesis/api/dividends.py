@@ -140,6 +140,9 @@ class DistributionRunOut(BaseModel):
     claimed: int
     skipped_zero: int
     skipped_claimed: int
+    #: Mid-run-exited members disposed as unclaimed by this run
+    #: (issue #19 P3); exact figures live in the audit rows.
+    unclaimed: int
     dividend_total: str
     rebate_total: str
     payout_total: str
@@ -264,6 +267,7 @@ async def distribute(
         claimed=result.claimed,
         skipped_zero=result.skipped_zero,
         skipped_claimed=result.skipped_claimed,
+        unclaimed=result.unclaimed,
         dividend_total=str(result.dividend_total),
         rebate_total=str(result.rebate_total),
         payout_total=str(result.payout_total),

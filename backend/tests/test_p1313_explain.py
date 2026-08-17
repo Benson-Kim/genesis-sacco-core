@@ -10,7 +10,14 @@ actually runs, DORMANCY_CONFIG_SQL the once-per-run config probe.
 Index story:
 
   * driving scan: idx_members_dormancy_scan (0021 — partial over
-    status = 'active', shipped in the SAME migration as the query);
+    status = 'active', shipped in the SAME migration as the query).
+    Since 0022 (issue #19) widened idx_members_dividend_scan to
+    status IN ('active','arrears','dormant'), BOTH partial indexes'
+    predicates are implied by this scan's status = 'active', on the
+    same (tenant_id, id) key: at scale the planner prefers the
+    smaller exact-predicate 0021 index, but on the tiny CI tables the
+    costs tie and it may pick either — the gate accepts both shapes
+    (the 0001/0008 transaction-index precedent below);
   * activity anti-join + last-activity subselect: the member-
     attributed transaction indexes (idx_txns_member_keyset, 0008 /
     idx_transactions_member, 0001) — occurred_at range under
@@ -20,7 +27,7 @@ Index story:
 Tiny CI tables make seqscan the cheaper plan; the capture disables it
 for the session to prove each relation is SERVABLE by its index (plan
 shape at scale — the P10..P13.11 precedent). Falsifiable guards: drop
-idx_members_dormancy_scan or the transaction member indexes and the
+both members partial indexes or the transaction member indexes and the
 index-name / no-sequential-scan gates below fail.
 """
 
@@ -85,8 +92,10 @@ def test_p1313_dormancy_queries_are_index_backed() -> None:
             "P13.13 dormancy EXPLAIN (ANALYZE, BUFFERS) — captured in CI\n"
             "against the migrated Postgres service under the RLS app role.\n"
             "enable_seqscan=off because CI tables are tiny; the assertion is\n"
-            "that the dormancy scan is served by idx_members_dormancy_scan\n"
-            "(shipped in 0021 with this query) with the member-initiated\n"
+            "that the dormancy scan is served by a members partial index\n"
+            "(idx_members_dormancy_scan, 0021 — or idx_members_dividend_scan\n"
+            "since 0022 widened its predicate over status='active' too; the\n"
+            "planner ties on tiny tables) with the member-initiated\n"
             "activity anti-join on the member-attributed transaction indexes\n"
             "(0001/0008), and the config read by the tenant_settings PK\n"
             f"(plan shape at scale). Captured {datetime.now(UTC).isoformat()}.\n"
@@ -98,7 +107,12 @@ def test_p1313_dormancy_queries_are_index_backed() -> None:
         body = "\n\n".join(f"=== {name} ===\n{plan}" for name, plan in sections)
         OUT_PATH.write_text(f"{header}\n{body}\n")
 
-        assert "idx_members_dormancy_scan" in scan_plan
+        # Either members partial index serves the scan (see the module
+        # docstring: 0022 made the predicates overlap on status =
+        # 'active'; on tiny CI tables the equal costs tie-break
+        # arbitrarily). Falsifiable: drop both and the no-seq-scan
+        # gate below fails.
+        assert "idx_members_dormancy_scan" in scan_plan or "idx_members_dividend_scan" in scan_plan
         # The activity anti-join and the last-activity subselect are
         # driven by a member-attributed transactions index; on the tiny
         # CI tables the planner may pick either (0001 or 0008 shape).

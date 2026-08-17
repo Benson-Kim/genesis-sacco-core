@@ -42,6 +42,7 @@ rule 11).
 ```mermaid
 flowchart TD
     %% Authored against main @ bb220ad2a9056d6b0daecd646011216b20c5309d
+    %% As-built update (P13.13/P13.9 flip) @ 5922b924c68c5ac18e0b097f944855a5786ea268
     %% Edge ids E1..E19 are annotated with code sites in lock-order.md §3.
 
     subgraph T0["Tier 0 — workflow anchors"]
@@ -52,7 +53,7 @@ flowchart TD
     end
 
     subgraph T1["Tier 1 — member rows (root of the money chain)"]
-        MSELF["members (self/borrower)<br/>FOR UPDATE — multi-member ops in global<br/>member-id order; batch scans SKIP LOCKED in id order<br/>FOR SHARE — status guards on tx/apply/create"]
+        MSELF["members (self/borrower)<br/>FOR UPDATE — multi-member ops in global<br/>member-id order; batch scans SKIP LOCKED in id order<br/>(!30 distribution; P13.13 dormancy);<br/>FOR SHARE — status guards on withdraw/top-up/apply/create<br/>(deposit path upgraded to FOR UPDATE by P13.13)"]
         MGUAR["members (guarantor)<br/>FOR SHARE"]
     end
 
@@ -98,9 +99,6 @@ flowchart TD
     TXN -->|E15| ADVP
     ADVP -->|E16| ADVR
 
-    P1313(["INCOMING (P13.13) — dormancy batch:<br/>members FOR UPDATE SKIP LOCKED, id order (root tier);<br/>reactivation rides E10 inside the deposit txn"])
-    P1313 -.-> MSELF
-
     subgraph ISO["Disjoint subgraphs (never held together with money locks)"]
         UADM["users — active-admin set<br/>FOR UPDATE, ORDER BY id"]
         UTGT["users — target/authenticating row<br/>FOR UPDATE"]
@@ -118,31 +116,32 @@ flowchart TD
     classDef advisory fill:#fff3cd,stroke:#b8860b;
     classDef incoming fill:#f8f9fa,stroke:#999,stroke-dasharray: 5 5;
     class ADVP,ADVR advisory;
-    class P1313 incoming;
 ```
 
 ## 3. Edges — every code path that takes them
 
-Line numbers are valid at the authoring SHA
-`bb220ad2a9056d6b0daecd646011216b20c5309d`; functions are the stable
+Line numbers were authored at
+`bb220ad2a9056d6b0daecd646011216b20c5309d` and re-verified (updated
+where P13.13's !32 shifted them) for the as-built pass at
+`5922b924c68c5ac18e0b097f944855a5786ea268`; functions are the stable
 citation.
 
 | Edge | Taken while holding → acquires | Mode | Code sites (file:function) | Since |
 |---|---|---|---|---|
-| E1 | member_exits → members (self) | FU → FU | `application/member_exits.py:post_settlement` (exit row L714, then `_lock_member` L215) | P12 |
-| E2 | dividend_declarations → members (self) | FS → FU SKIP LOCKED, id order | `application/dividends.py:distribute_dividend.process` (decl FOR SHARE L1141, then `members_scan_sql` L312 `FOR UPDATE OF m SKIP LOCKED ORDER BY m.id`) | !30 |
-| E3 | loan_applications → members (guarantor) | FU → FS | `application/guarantees.py:pledge_guarantee` (app L177) → `_guarantor_available_capacity` (member FOR SHARE L129) | P9 |
-| E4 | loan_applications → loans | FU → FU | `application/guarantees.py:_lock_release_anchor` (app L440, then loan L451). P7 disbursement locks the app and *creates* the loan (no second lock) — same direction, `application/ledger.py:disburse_loan` | P13.14 (!29) |
+| E1 | member_exits → members (self) | FU → FU | `application/member_exits.py:post_settlement` (exit row L717, then `_lock_member` L216) | P12 |
+| E2 | dividend_declarations → members (self) | FS → FU SKIP LOCKED, id order | `application/dividends.py:distribute_dividend.process` (decl FOR SHARE L1142, then `members_scan_sql` L313 `FOR UPDATE OF m SKIP LOCKED ORDER BY m.id`) | !30 |
+| E3 | loan_applications → members (guarantor) | FU → FS | `application/guarantees.py:pledge_guarantee` (app L182) → `_guarantor_available_capacity` (member FOR SHARE L130) | P9 |
+| E4 | loan_applications → loans | FU → FU | `application/guarantees.py:_lock_release_anchor` (app L445, then loan L456). P7 disbursement locks the app and *creates* the loan (no second lock) — same direction, `application/ledger.py:disburse_loan` | P13.14 (!29) |
 | E5 | loan_applications → deposit_accounts (borrower) | FU → FU | `application/ledger.py:disburse_loan` step 2b (deposit-multiplier check, L903) | P7/issue #15 |
-| E6 | loan_applications → guarantees | FU → FU | `application/guarantees.py:release_guarantee` / `substitute_guarantee` (`_lock_release_anchor` then `_read_guarantee(for_update=True)` L410/L440). Row-write form: `loan_applications.py:_release_application_pledges` (rejection sweep, under the app lock) | P13.14 (!29) — see Finding F1 in §9 |
+| E6 | loan_applications → guarantees | FU → FU | `application/guarantees.py:release_guarantee` / `substitute_guarantee` (`_lock_release_anchor` then `_read_guarantee(for_update=True)` L415/L445). Row-write form: `loan_applications.py:_release_application_pledges` (rejection sweep, under the app lock) | P13.14 (!29) — see Finding F1 in §9 |
 | E7 | loans → guarantees | FU → FU / row write | `application/guarantees.py:_lock_release_anchor` (loan-anchored release/substitution); `application/loans.py:_close_loan` → `release_guarantees_for_loan` (row UPDATE); `application/member_exits.py:post_settlement` received-guarantee sweep | P10 |
 | E8 | guarantees → members (guarantor) | FU → FS | `application/guarantees.py:substitute_guarantee` (guarantee row locked, then `_guarantor_available_capacity`) | P13.14 (!29) |
-| E9 | guarantees → deposit_accounts (borrower) | FU → FU | `application/guarantees.py:release_guarantee` cover guard (borrower deposit L585, after the release write) | P13.14 (!29) |
-| E10 | members (self) → deposit_accounts (self) | FS/FU → FU | `application/transactions.py:record_deposit`/`record_withdrawal` (`_require_member` FOR SHARE L73 → `_lock_account` L102); `application/member_exits.py:_compute_under_locks`; `application/dividends.py:_distribute_one` (member held from the E2 scan) | P11/P12 |
-| E11 | members (guarantor) → deposit_accounts (guarantor) | FS → FU | `application/guarantees.py:_guarantor_available_capacity` (L129 → L147) | P9 |
+| E9 | guarantees → deposit_accounts (borrower) | FU → FU | `application/guarantees.py:release_guarantee` cover guard (borrower deposit L590, after the release write) | P13.14 (!29) |
+| E10 | members (self) → deposit_accounts (self) | FU/FS → FU | `application/transactions.py:record_deposit` — member **FOR UPDATE** since P13.13 (!32 upgraded it from FOR SHARE: a deposit may have to write a Dormant→Active reactivation, and taking FOR UPDATE from the start avoids the share→update lock upgrade that would deadlock two concurrent deposits to the same dormant member): `_require_member(for_update=True)` L182 → `_lock_account` L124; `record_withdrawal` still takes member FOR SHARE (call L233 → `_lock_account`) — the two modes coexist safely, conflicting at the member row (§4); `application/member_exits.py:_compute_under_locks`; `application/dividends.py:_distribute_one` (member held from the E2 scan) | P11/P12; deposit-path mode upgraded by P13.13 (!32) |
+| E11 | members (guarantor) → deposit_accounts (guarantor) | FS → FU | `application/guarantees.py:_guarantor_available_capacity` (L130 → L152) | P9 |
 | E12 | deposit_accounts (self) → share_accounts (self) | FU → FU | `application/member_exits.py:_compute_under_locks` (deposit then share via `_lock_account`); `application/dividends.py:_distribute_one` (same order) | P12 |
-| E13 | members (self) → share_accounts (self) | FS/FU → FU | `application/dividends.py:transfer_shares` (both members `sorted()` L1364, then both share accounts in the same member-id order L1379); `application/transactions.py:record_share_topup` (member FOR SHARE guard → share account, single member) — the deposit tier is skipped, which is always safe (§4) | P11/!30 |
-| E14 | share_accounts (self) → loans (self, id order) | FU → FU | `application/member_exits.py:_compute_under_locks` → `_active_loan_payoffs` (`ORDER BY id FOR UPDATE` L258) | P12 |
+| E13 | members (self) → share_accounts (self) | FS/FU → FU | `application/dividends.py:transfer_shares` (both members `sorted()` L1365, then both share accounts in the same member-id order L1384); `application/transactions.py:record_share_topup` (member FOR SHARE guard → share account, single member) — the deposit tier is skipped, which is always safe (§4) | P11/!30 |
+| E14 | share_accounts (self) → loans (self, id order) | FU → FU | `application/member_exits.py:_compute_under_locks` → `_active_loan_payoffs` (`ORDER BY id FOR UPDATE` L259) | P12 |
 | E15 | last row lock of any posting chain → advisory period barrier (shared) | row → advisory | `application/ledger.py:_post` → `accounting_periods.py:assert_open_period` (`pg_advisory_xact_lock_shared` L110) — called by EVERY posting: deposits/withdrawals/top-ups, disbursement, repayment, exit set-off, deposit interest, dividends/rebates, share transfer, reversal | issue #12 |
 | E16 | advisory period barrier → advisory ref generator | advisory → advisory | `application/ledger.py:_post` (barrier first, then `_next_ref` `pg_advisory_xact_lock` L108 + `txn_ref_sequences` upsert). Member numbering (`members.py:_next_member_no` L91) takes ADVR with **no** row locks held | P7 |
 | E17 | users (admin set, id order) → users (target) | FU → FU | `application/users.py:change_user_status` / `assign_role` / `update_user` (`_lock_admin_set` L467 → `_lock_user_row` L483) | P13.5 |
@@ -154,12 +153,13 @@ and stop, or never touch it):
 
 | Site | Lock | Code |
 |---|---|---|
-| Application stage / committee vote / create | APP alone; create takes MSELF FOR SHARE alone | `loan_applications.py:transition_stage` L408, `cast_vote` L498, `create_application` L219 |
-| Exit vote / void | EXIT alone | `member_exits.py:cast_exit_vote` L495, `void_exit` L626 |
-| Dividend vote / void / distribution-open | DECL alone | `dividends.py:cast_dividend_vote` L657, `void_declaration` L783, `distribute_dividend` opening txn L1091 |
-| Guarantee consent | GUAR alone | `guarantees.py:consent_guarantee` L268 |
+| Application stage / committee vote / create | APP alone; create takes MSELF FOR SHARE alone | `loan_applications.py:transition_stage` L413, `cast_vote` L503, `create_application` L220 |
+| Exit vote / void | EXIT alone | `member_exits.py:cast_exit_vote` L498, `void_exit` L629 |
+| Dividend vote / void / distribution-open | DECL alone | `dividends.py:cast_dividend_vote` L658, `void_declaration` L784, `distribute_dividend` opening txn L1092 |
+| Guarantee consent | GUAR alone | `guarantees.py:consent_guarantee` L273 |
 | Repayment (P10) | LOANS alone (mid-chain entry) → E7 on payoff (closure releases guarantees) → E15 | `loans.py:record_repayment` L309 |
 | Arrears + penalty batch | LOANS alone, `ORDER BY l.id … FOR UPDATE OF l SKIP LOCKED`; **no ledger rows, no advisory** | `arrears.py:arrears_scan_sql` L223 |
+| Dormancy batch (P13.13) | MSELF alone, `ORDER BY m.id … FOR UPDATE OF m SKIP LOCKED` (root tier, id order); the transition UPDATE, audit row and outbox INSERT happen under the held member row — **no ledger rows, no advisory, nothing below T1**. Reactivation is NOT this job: it rides E10 inside `record_deposit` | `dormancy.py:dormancy_scan_sql` L215; the worker cycle (`infrastructure/dormancy_worker.py`) takes no locks |
 | Deposit-interest batch | DSELF alone (SKIP LOCKED, id order) → E15/E16 posting | `deposit_interest.py:_accrue_batch` L231 |
 | Ledger reversal | TXN → E15 | `ledger.py:reverse_transaction` L694 |
 | Period close | ADVP **exclusive** only, then `ON CONFLICT` claim — no row locks | `accounting_periods.py:close_period` L159 |
@@ -262,6 +262,17 @@ the !29/!30 prose, diagrammatic:
   holds the member row and waits on that deposit. Disbursement never
   waits on the member row (it only moves down to T6), so the wait is
   one-directional.
+- *P13.13 dormancy batch vs deposits (reactivation)*: the batch locks
+  member rows only (SKIP LOCKED, id order — root tier; nothing below
+  T1 is ever acquired). A concurrent deposit takes the same member row
+  `FOR UPDATE` first, so the two serialise (or skip) at T1 and exactly
+  one final status wins (P13.13 FM3). The deposit path holds the member
+  row `FOR UPDATE` from the start (!32 upgraded it from FOR SHARE)
+  precisely so a reactivating deposit never upgrades share→update
+  mid-transaction — the upgrade two concurrent deposits to the same
+  dormant member would deadlock on. `record_withdrawal`'s member FOR
+  SHARE coexists safely: FOR SHARE and FOR UPDATE conflict at the
+  member row, and neither path ever upgrades its own lock.
 - *Anchors above the member tier*: the P12 exit row and the !30
   declaration row are locked **before** the member row (E1/E2) and
   nothing ever acquires them while holding T1+ locks (votes/voids lock
@@ -287,22 +298,24 @@ verify-vs-suspend deadlock, fixed in P13.5).
 
 ## 5. SKIP LOCKED — how it changes the waiting analysis
 
-`FOR UPDATE SKIP LOCKED` sites (E2 member scan; arrears/penalty loans
-scan; deposit-interest scan; exports claim; outbox claim) **do not
+`FOR UPDATE SKIP LOCKED` sites (E2 member scan; P13.13 dormancy
+member scan; arrears/penalty loans scan; deposit-interest scan;
+exports claim; outbox claim) **do not
 wait** at their scan tier — a locked row is skipped, not queued. Two
 consequences the MRs rely on:
 
 1. **They cannot deadlock at the scan tier** — no wait edge is ever
    created there. Deadlock analysis for batch jobs therefore reduces to
    the locks they take *after* the scan (E10/E12/E15/E16 for
-   distribution and deposit-interest; none for arrears; none for
-   exports/outbox).
+   distribution and deposit-interest; none for arrears; none for the
+   dormancy batch; none for exports/outbox).
 2. **They trade waiting for incompleteness** — a skipped row is simply
    not processed this run. Every SKIP LOCKED job is therefore paired
    with an idempotent re-run guard (anti-join + `ON CONFLICT` claim,
    v1.1 rules 5/8) so the skipped row is picked up later: the !30
    `pending_members` reconciliation, the arrears "picked up next run"
-   rule, the outbox lease. A SKIP LOCKED scan **without** a claimed
+   rule, the P13.13 anti-join on status + ledger-derived last activity
+   (a re-run scans zero rows), the outbox lease. A SKIP LOCKED scan **without** a claimed
    re-run path would be a correctness bug, not just a liveness one.
 
 Concurrent runners of the same job claim disjoint row sets via SKIP
@@ -321,16 +334,25 @@ commit/rollback, per-tenant keys so tenants never serialise each other.
 
 ## 7. Concurrent-prompt claims recorded at authoring (rule 11 landing zone)
 
-- **P13.13 (dormancy) — INCOMING, claimed by its BUILD_PROMPTS section:**
-  the dormancy batch locks member rows `FOR UPDATE SKIP LOCKED` in id
-  order — the ROOT tier of the established chain (the !30 distribution
-  precedent); reactivation-on-deposit already rides E10 inside the
-  deposit transaction. **No new lock-graph edges.** The P13.13 MR flips
-  the dashed node in §2 to as-built in the same MR (rule 11).
-- **P13.9 (dashboard aggregates) — NO LOCKS, claimed by its section:**
-  read-only MVCC snapshot reads, documented as advisory vs the binding
-  gates; no new lock-graph edges. Nothing to draw; recorded here so the
-  claim is checkable when the MR lands.
+- **P13.13 (dormancy) — AS-BUILT, verified against merged !32:** the
+  dormancy batch locks member rows only — `dormancy.py:
+  dormancy_scan_sql` L215, `ORDER BY m.id … FOR UPDATE OF m SKIP
+  LOCKED` (root tier, id order; a single-node locker, §3): the
+  transition UPDATE, audit row and outbox INSERT all happen under the
+  held member row and nothing below T1 is acquired; the worker cycle
+  takes no locks. Reactivation rides E10 inside `record_deposit`,
+  whose member lock !32 **upgraded from FOR SHARE to FOR UPDATE** (E10
+  row; §4 dormancy bullet — the share→update-upgrade deadlock
+  avoidance). **No new lock-graph edges** — confirmed by the §8
+  re-derivation: one new executable lock site (the scan), zero new
+  edges. The formerly dashed §2 node is flipped to as-built in this
+  update (rule 11; handed off from the !32/!33 reviews).
+- **P13.9 (dashboard aggregates) — NO LOCKS, verified as-built (!34,
+  refreshed head):** `application/dashboard.py` and `api/dashboard.py`
+  contain no `FOR UPDATE` / `FOR SHARE` / `SKIP LOCKED` / advisory
+  sites (the lock keywords appear only in docstrings stating this);
+  all slices read from one `REPEATABLE READ` snapshot. Nothing to
+  draw; the no-new-edges claim holds.
 - **P13.15 (corrections/write-off), P19 (M-Pesa)** and later prompts:
   any lock they take must land as an edge here first-class, in the same
   MR.
@@ -338,22 +360,25 @@ commit/rollback, per-tenant keys so tenants never serialise each other.
 ## 8. Derivation & re-verification (falsifiable completeness)
 
 Derived from code at `bb220ad2a9056d6b0daecd646011216b20c5309d`, not
-from MR prose. Re-run and diff:
+from MR prose; re-derived for the P13.13/P13.9 as-built pass at
+`5922b924c68c5ac18e0b097f944855a5786ea268`. Re-run and diff:
 
 ```sh
 cd backend/src
-grep -rniE "for update"            --include='*.py' . | wc -l   # 75
+grep -rniE "for update"            --include='*.py' . | wc -l   # 85 (was 75)
 grep -rniE "for share"             --include='*.py' . | wc -l   # 12
-grep -rniE "skip locked"           --include='*.py' . | wc -l   # 13
+grep -rniE "skip locked"           --include='*.py' . | wc -l   # 18 (was 13)
 grep -rniE "for no key update"     --include='*.py' . | wc -l   # 0
 grep -rniE "advisory"              --include='*.py' . | wc -l   # 28
 grep -rniE "for update|for share|for no key update|skip locked|advisory" \
-                                   --include='*.py' . | wc -l   # 118
+                                   --include='*.py' . | wc -l   # 130 (was 118)
 ```
 
-The 118 matches include comments/docstrings restating the chains; the
-**49 executable SQL lock sites** (lines inside `text()` literals
-matching `FOR UPDATE|FOR SHARE|SKIP LOCKED|pg_advisory`) are what §3
+The 130 matches include comments/docstrings restating the chains; the
+**50 executable SQL lock sites** (lines inside `text()` literals
+matching `FOR UPDATE|FOR SHARE|SKIP LOCKED|pg_advisory`; was 49 —
+P13.13 added exactly one, the dormancy scan, and parameterised the
+`_require_member` mode literal without adding a site) are what §3
 catalogues — every one of them maps to an edge, a single-node locker,
 or the advisory tier above. `FOR NO KEY UPDATE` is not used anywhere.
 A new grep hit that maps to none of §3's rows means this file is stale
@@ -363,7 +388,8 @@ and the MR introducing it is rejected until it updates this file
 ## 9. Cross-check: MR prose vs code-derived DAG (P-DIAG.0 step 3)
 
 Every lock-order statement in the merged MR descriptions !17, !26,
-!28, !29, !30 was checked against the code-derived graph.
+!28, !29, !30 was checked against the code-derived graph; the as-built
+pass extended the check to !32 (P13.13) and !34 (P13.9), the same way.
 
 | MR | Claimed order | Code-derived | Verdict |
 |---|---|---|---|
@@ -372,10 +398,14 @@ Every lock-order statement in the merged MR descriptions !17, !26,
 | !28 (P13.8) | job locks **loans only**, `ORDER BY l.id … FOR UPDATE OF l SKIP LOCKED`; loans is the terminal node of the settlement chain; config read lock-free | `arrears.py` L223; no further locks, no ledger rows | **Match.** Refinement: "terminal" holds for the *named* chain — the as-built graph has guarantee row **writes** (E7) and the advisory tier (E15/E16) below loans on *other* paths; the arrears job itself touches neither |
 | !29 (P13.14) | "application/loan row → guarantor member FOR SHARE → guarantor deposit account FOR UPDATE — the established pledge chain; **no new lock-graph edges**"; cover guard at "application → borrower deposit" (the P7 position) | Code additionally takes the **guarantee row FOR UPDATE** between the anchor and the rest of the chain (`_read_guarantee(for_update=True)` after `_lock_release_anchor`): the as-built chains are anchor → **guarantees** → guarantor member → guarantor deposit (substitution, E6/E7→E8→E11) and anchor → **guarantees** → borrower deposit (release, E6/E7→E9). E4 (app → loan) is also first *locked* (vs created) here | **FINDING F1 — prose-vs-code divergence, documentation-level.** The !29 verbatim chain omits the guarantee-row lock its own code takes (the MR's code comments do state it). **Not an ordering bug**: every path locking a guarantee row takes it after the borrower's anchor (E6/E7) or alone (consent), so the tier order stands and no cycle is possible — verified in §4. No code change needed (docs-only prompt); no blocker issue required. Disposition: this file now records E6/E8/E9 as the authoritative chain; future restatements must include the guarantees tier |
 | !30 (P13.11) | batch scans lock the root tier `FOR UPDATE SKIP LOCKED` in id order; two-member ops lock member rows in global member-id order, then share accounts in the same order; distribution: declaration FOR SHARE per batch → member → deposit → share (the P12 chain prefix); DV-/ST- refs via the advisory generator | E2, E13, E10→E12, E15/E16 — `dividends.py` L312/L1141/`_distribute_one`/`transfer_shares` | **Match** |
+| !32 (P13.13) | Verbatim: "the batch locks member rows FOR UPDATE SKIP LOCKED in id order — the ROOT tier of the established chain member → accounts → loans (the !30 distribution precedent); reactivation already holds member → deposit account in chain order inside the deposit transaction. No new lock-graph edges." Plus the disclosed mode change: `record_deposit` "now takes the member row FOR UPDATE (previously FOR SHARE) *before* the deposit-account FOR UPDATE" to avoid the share→update upgrade deadlock | `dormancy.py:dormancy_scan_sql` L215 (`ORDER BY m.id … FOR UPDATE OF m SKIP LOCKED`, member rows only — the transition UPDATE, audit row and outbox INSERT are plain writes under the held row; nothing below T1; `infrastructure/dormancy_worker.py` takes no locks); `transactions.py:record_deposit` member FOR UPDATE (`_require_member(for_update=True)` L182) → deposit FOR UPDATE (`_lock_account` L124); `record_withdrawal` still member FOR SHARE (call L233) → deposit FOR UPDATE | **Match.** The job is a single-node locker at the root tier; zero new edges (§8: exactly one new executable site, the scan). The E10 mode upgrade is not a new edge and was disclosed verbatim in the MR; this file's E10 annotation and citations are corrected accordingly (the pre-!32 row cited `_require_member` FOR SHARE for the deposit path — stale after !32, fixed in this update). The FOR SHARE → deposit FOR UPDATE form survives on the withdrawal path only, drawn in E10 |
+| !34 (P13.9) | "this endpoint takes NO row locks and adds no lock-graph edges"; all slices read from one `REPEATABLE READ` snapshot; documented advisory vs the binding gates | zero `FOR UPDATE` / `FOR SHARE` / `SKIP LOCKED` / advisory sites in `application/dashboard.py` and `api/dashboard.py` (lock keywords appear only in docstrings stating the claim), verified on the refreshed !34 head | **Match** — recorded as verified-as-built in §7 |
 
 **Findings summary: one documentation-level divergence (F1, !29), zero
-ordering bugs, zero blocker issues.** The graph as built is acyclic
-(§4).
+ordering bugs, zero blocker issues.** The as-built pass over !32/!34
+found **zero divergences** (both MRs' verbatim statements match the
+merged code; the only correction needed was this file's own pre-!32
+E10 citation, updated here). The graph as built is acyclic (§4).
 
 ## 10. Rules for future MRs (binding, v1.2 rule 11)
 

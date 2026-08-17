@@ -22,6 +22,7 @@ from genesis.domain.ledger import (
     build_repayment_posting,
     build_reversal_posting,
     build_share_topup_posting,
+    build_unclaimed_dividend_posting,
     build_withdrawal_posting,
     member_initiated_types,
     ref_prefix,
@@ -325,6 +326,41 @@ def test_deposit_amount_rounded_to_cents() -> None:
 # ---------------------------------------------------------------------------
 # P13.13 FM1 — the member-initiated activity classification
 # ---------------------------------------------------------------------------
+
+
+def test_unclaimed_dividend_posting_parks_the_payable_never_member_accounts() -> None:
+    """Issue #19 P3: DR expense / CR liability.unclaimed_dividends,
+    balanced; member accounts NEVER appear (the member exited — their
+    balances are settled). HAND-COMPUTED: 600.00 dividend + 36.00
+    rebate -> 636.00 credited to the payable, DV- semantics preserved
+    (dividend_posting type, ACCRUAL channel). Falsifiable: point a
+    credit leg back at member.shares/member.deposits and the
+    account-absence asserts fail."""
+    spec = build_unclaimed_dividend_posting(Decimal("600.00"), Decimal("36.00"))
+    spec.assert_balanced()
+    assert spec.txn_type is TxnType.DIVIDEND_POSTING
+    assert spec.channel is Channel.ACCRUAL
+    assert spec.amount == Decimal("636.00")
+    accounts = {ln.account for ln in spec.lines}
+    assert Account.UNCLAIMED_DIVIDENDS in accounts
+    assert Account.MEMBER_SHARES not in accounts
+    assert Account.MEMBER_DEPOSITS not in accounts
+    payable = sum(
+        (
+            ln.amount
+            for ln in spec.lines
+            if ln.account is Account.UNCLAIMED_DIVIDENDS and ln.side is Side.CREDIT
+        ),
+        Decimal("0"),
+    )
+    assert payable == Decimal("636.00")
+
+
+def test_unclaimed_dividend_posting_rejects_zero_and_negative_components() -> None:
+    with pytest.raises(ValueError, match="zero unclaimed"):
+        build_unclaimed_dividend_posting(Decimal("0"), Decimal("0"))
+    with pytest.raises(ValueError, match="negative"):
+        build_unclaimed_dividend_posting(Decimal("-1"), Decimal("0"))
 
 
 def test_member_initiated_map_classifies_every_transaction_type() -> None:

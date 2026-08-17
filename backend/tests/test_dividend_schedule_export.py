@@ -55,6 +55,7 @@ _HEADERS = [
     "Rebate",
     "Total",
     "Reference",
+    "Disposition",
 ]
 
 
@@ -170,6 +171,9 @@ def test_schedule_renders_the_hand_computed_figures() -> None:
         assert row[7] == "0.00"
         assert row[8] == "600.00"
         assert row[9] == "DV-000001"
+        # Issue #19 P3: the disposition column is the report's slice of
+        # the unclaimed-payable alert surface; a normal payout is 'paid'.
+        assert row[10] == "paid"
 
         # Export audit rows exist (P13 blocker f: the audit IS the
         # control on the exfiltration channel).

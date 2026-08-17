@@ -22,7 +22,11 @@ falsifiable test here (remove the guard and the test fails):
       snapshot is write-once at the database level.
   5.  Wrong population — exited members are never scanned; zero-ADB
       members get no claim and no 0.00 posting; arrears members with a
-      basis are paid (documented allow-list).
+      basis are paid (documented allow-list); dormant members ARE paid
+      on their basis (issue #19 P1/P2 — the widened allow-list; the
+      dedicated dormancy failure-mode suite lives in
+      test_dividend_dormant_policy.py, and mid-run exits terminate in
+      the audited unclaimed disposition, tested below).
   6.  Missing/NULL config fails closed — refused, not defaulted, not a
       500; corrupt config is unit-tested in test_dividends_domain.
   8.  Distribution-vs-lock race — a held member row lock is SKIP
@@ -55,6 +59,7 @@ from sqlalchemy.exc import DBAPIError
 from db_helpers import api_client, factory
 from export_helpers import add_user, count, seed_actor, seed_member
 from genesis.application import dividends as dividends_module
+from genesis.application import member_exits as exits_service
 from genesis.application import tenant_settings as settings_service
 from genesis.application.dividends import (
     DeclarationStatus,
@@ -68,6 +73,7 @@ from genesis.application.ledger import post_deposit, post_share_topup
 from genesis.application.period_balances import average_daily_balance
 from genesis.domain.committee import Vote
 from genesis.domain.dividends import FinancialYear
+from genesis.domain.exits import ExitStatus
 from genesis.domain.ledger import Channel
 from genesis.errors import ConflictError, ForbiddenError, NotFoundError
 from genesis.infrastructure.tenancy import tenant_session
@@ -167,6 +173,30 @@ async def _approve(tid: uuid.UUID, declaration_id: uuid.UUID) -> None:
     async with tenant_session(factory(), tid) as session:
         tally = await cast_dividend_vote(session, tid, voter_two, declaration_id, Vote.APPROVE)
     assert tally.status is DeclarationStatus.APPROVED
+
+
+async def _exit_via_p12(tid: uuid.UUID, member_id: uuid.UUID) -> None:
+    """Exit a member through the REAL P12 workflow (request -> quorum ->
+    settlement), so member_exits.settled_at records the exit moment —
+    the record-date fence the issue-#19 unclaimed disposition scan
+    relies on (an exit outside P12 is unrepresentable in production).
+    """
+    requester, _ = await add_user(tid, "Branch Manager")
+    async with tenant_session(factory(), tid) as session:
+        record = await exits_service.request_exit(session, tid, requester, member_id)
+    voter_one, _ = await add_user(tid, "System Admin")
+    voter_two, _ = await add_user(tid, "System Admin")
+    async with tenant_session(factory(), tid) as session:
+        await exits_service.cast_exit_vote(session, tid, voter_one, record.id, Vote.APPROVE)
+    async with tenant_session(factory(), tid) as session:
+        tally = await exits_service.cast_exit_vote(session, tid, voter_two, record.id, Vote.APPROVE)
+    assert tally.status is ExitStatus.APPROVED
+    async with tenant_session(factory(), tid) as session:
+        fresh = await exits_service.get_exit(session, tid, record.id)
+        settled = await exits_service.post_settlement(
+            session, tid, voter_one, record.id, version=fresh.version, channel=Channel.BANK
+        )
+    assert settled.exit.status is ExitStatus.SETTLED
 
 
 async def _sum(tid: uuid.UUID, sql: str, **params: object) -> Decimal:
@@ -730,9 +760,14 @@ def test_declarer_cannot_execute_their_own_distribution() -> None:
 def test_exited_zero_basis_and_arrears_members_get_the_documented_treatment() -> None:
     """Exited members are never scanned (partial index + allow-list);
     zero-ADB members are skipped without a claim or a 0.00 posting;
-    arrears members WITH a basis are paid. Falsifiable per class:
-    widen the status allow-list (exited paid), or claim zero
-    entitlements (noise rows appear)."""
+    arrears members WITH a basis are paid. The pre-declaration exited
+    member is also invisible to the issue-#19 unclaimed disposition
+    pass (no settled P12 exit after the declaration's record date —
+    'exited stays excluded from direct payment'). Falsifiable per
+    class: widen the status allow-list (exited paid), claim zero
+    entitlements (noise rows appear), or drop the settled_at
+    record-date fence and dispose pre-declaration exits (the
+    unclaimed == 0 assert fails)."""
 
     async def run() -> None:
         tid, admin_id, _ = await seed_actor()
@@ -772,6 +807,7 @@ def test_exited_zero_basis_and_arrears_members_get_the_documented_treatment() ->
         assert result.scanned == 3
         assert result.claimed == 2
         assert result.skipped_zero == 1
+        assert result.unclaimed == 0  # pre-declaration exits are never disposed
         assert result.status is DeclarationStatus.DISTRIBUTED
 
         assert await _balance(tid, m_active, table="share_accounts") == Decimal("12600.00")
@@ -961,14 +997,23 @@ def test_locked_member_is_skipped_and_paid_exactly_once_by_the_rerun() -> None:
     asyncio.run(run())
 
 
-def test_member_exiting_mid_run_is_skipped_and_the_declaration_stays_approved() -> None:
-    """The documented mid-run population change (the verification-vs-
-    rerun convention): a member who leaves the eligible population
-    AFTER the first-run verification is skipped by the status
-    allow-list in the locked batch scan; the declaration stays
-    APPROVED with the shortfall visible as pending_members, the FY
-    slot stays held, and nobody is re-posted. Falsifiable: widen the
-    scan allow-list to exited members and the leaver is paid."""
+def test_member_exiting_mid_run_terminates_in_the_audited_unclaimed_disposition() -> None:
+    """Issue #19 P3 (FM3), superseding the !30 permanent-shortfall
+    behaviour this test used to pin: a member who EXITS between the
+    first claim and their own batch terminates in an explicit, audited
+    'unclaimed' disposition — the run COMPLETES (distributed), and a
+    re-run distributes nothing new (side-effect counts).
+
+    HAND-COMPUTED: A held 12,000.00 shares all 365 days -> dividend
+    600.00, rebate 0.00 (no deposits) — the exact record-date figure,
+    reconstructable after the exit because the settlement posting
+    lands AFTER the FY end. The payable posting is
+    DR expense.dividends 600.00 / CR liability.unclaimed_dividends
+    600.00; A's settled accounts stay zeroed. Falsifiable: remove the
+    disposition pass and the declaration stays 'approved' with
+    pending_members == 1 forever (the status/DISTRIBUTED asserts
+    fail); credit member accounts instead of the payable and the
+    zero-balance assert fails."""
 
     async def run() -> None:
         tid, admin_id, m_a, _, _ = await _oracle_tenant()
@@ -976,7 +1021,8 @@ def test_member_exiting_mid_run_is_skipped_and_the_declaration_stays_approved() 
         await _approve(tid, record.id)
 
         # First run with A's member row locked elsewhere (verification
-        # passes; A is SKIP LOCKED-skipped, B and C are paid).
+        # passes; A is SKIP LOCKED-skipped, B and C are paid) — the
+        # documented mid-run window.
         holder = tenant_session(factory(), tid)
         session = await holder.__aenter__()
         await session.execute(
@@ -991,38 +1037,96 @@ def test_member_exiting_mid_run_is_skipped_and_the_declaration_stays_approved() 
         finally:
             await holder.__aexit__(None, None, None)
         assert first.claimed == 2
+        assert first.unclaimed == 0  # A is still active: never disposed
+        assert first.pending_members == 1
+        assert first.status is DeclarationStatus.APPROVED
 
-        # A exits between the verification and their batch.
-        async with tenant_session(factory(), tid) as session_two:
-            await session_two.execute(
-                text(
-                    "UPDATE members SET status = 'exited' "
-                    "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
-                ),
-                {"id": str(m_a), "tid": str(tid)},
-            )
+        # A exits mid-run through the REAL P12 workflow (request ->
+        # quorum -> settlement): 12,000.00 equity refunded, balances
+        # zeroed, terminal 'exited', member_exits.settled_at stamped.
+        await _exit_via_p12(tid, m_a)
+        assert await _balance(tid, m_a, table="share_accounts") == Decimal("0.00")
 
         second = await distribute_dividend(_scope(tid), tid, None, record.id)
-        assert second.scanned == 0  # the leaver is never even scanned
+        assert second.scanned == 0  # the leaver left the paying population
         assert second.claimed == 0
-        assert second.pending_members == 1  # the shortfall stays visible
-        assert second.status is DeclarationStatus.APPROVED
+        assert second.unclaimed == 1  # ... and was disposed, not stranded
+        assert second.pending_members == 0
+        assert second.status is DeclarationStatus.DISTRIBUTED
 
-        # Paid members were paid exactly once; the leaver never was.
-        assert await count(tid, "SELECT count(*) FROM dividend_distributions") == 2
+        # The disposition row carries the exact record-date figures on
+        # the SAME (tenant, declaration, member) claim key.
+        async with tenant_session(factory(), tid) as check:
+            row = (
+                await check.execute(
+                    text(
+                        "SELECT disposition, dividend_amount, rebate_amount, "
+                        "total_amount, transaction_id FROM dividend_distributions "
+                        "WHERE member_id = CAST(:m AS uuid) "
+                        "AND tenant_id = CAST(:tid AS uuid)"
+                    ),
+                    {"m": str(m_a), "tid": str(tid)},
+                )
+            ).one()
+        assert str(row[0]) == "unclaimed"
+        assert Decimal(str(row[1])) == Decimal("600.00")
+        assert Decimal(str(row[2])) == Decimal("0.00")
+        assert Decimal(str(row[3])) == Decimal("600.00")
+        assert row[4] is not None  # the DV- payable posting
+
+        # The money is recognised as the explicit payable — never a
+        # member-account credit (A's accounts are settled and zeroed).
+        assert await _sum(
+            tid,
+            "SELECT COALESCE(SUM(le.amount), 0) FROM ledger_entries le "
+            "WHERE le.account = 'liability.unclaimed_dividends' AND le.side = 'credit'",
+        ) == Decimal("600.00")
+        assert await _balance(tid, m_a, table="share_accounts") == Decimal("0.00")
+
+        # Audited with exact figures + the alert event (side-effects).
         assert (
             await count(
                 tid,
-                "SELECT count(*) FROM dividend_distributions WHERE member_id = CAST(:m AS uuid)",
-                m=str(m_a),
+                "SELECT count(*) FROM audit_log "
+                "WHERE action = 'dividend_distribution.unclaimed' "
+                "AND after->>'total_amount' = '600.00'",
             )
-            == 0
+            == 1
         )
-        assert await _balance(tid, m_a, table="share_accounts") == Decimal("12000.00")
-        # The approved declaration still holds the FY slot: the year
-        # can never be re-declared over a distributed remainder.
-        with pytest.raises(ConflictError, match="already exists"):
-            await declare_dividend(_scope(tid), tid, admin_id, today=TODAY)
+        assert (
+            await count(
+                tid,
+                "SELECT count(*) FROM outbox_events WHERE event_type = 'dividend.unclaimed'",
+            )
+            == 1
+        )
+
+        # Conservation: SUM(all claims) == the approved payout, so the
+        # snapshot reconciliation closed the run (933.53 = 600.00 A
+        # unclaimed + 297.53 B + 36.00 C).
+        assert await _sum(
+            tid, "SELECT COALESCE(SUM(total_amount), 0) FROM dividend_distributions"
+        ) == Decimal("933.53")
+
+        # Re-run: the distributed year is closed — refused loudly, and
+        # nothing new lands (side-effect counts).
+        with pytest.raises(ConflictError, match="only approved"):
+            await distribute_dividend(_scope(tid), tid, None, record.id)
+        assert await count(tid, "SELECT count(*) FROM dividend_distributions") == 3
+        assert (
+            await count(
+                tid,
+                "SELECT count(*) FROM transactions WHERE type = 'dividend_posting'",
+            )
+            == 3
+        )
+        assert (
+            await count(
+                tid,
+                "SELECT count(*) FROM outbox_events WHERE event_type = 'dividend.unclaimed'",
+            )
+            == 1
+        )
 
     asyncio.run(run())
 

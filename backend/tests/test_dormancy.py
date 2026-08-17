@@ -862,9 +862,69 @@ def test_nightly_cycle_refuses_bad_tenants_loudly_and_serves_the_rest(
 
         assert summary.tenants == 2
         assert summary.refused == 1  # tenant A, loudly, zero transitions
+        assert summary.errored == 0  # a refusal is NOT an unexpected error (R1)
         assert summary.transitioned >= 1
         assert (await _status(tid_b, due_b))[0] == "dormant"
         assert await _dormancy_audits(tid_a) == 0
+
+    asyncio.run(run())
+
+
+def test_nightly_cycle_isolates_unexpected_per_tenant_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """!32 review finding R1: an UNEXPECTED per-tenant failure (a
+    transient DB error, pool exhaustion — anything that is not the FM8
+    ConflictError refusal) must not abort the remaining tenants'
+    nightly cycle. Tenant A's run raises RuntimeError; tenant B's due
+    member still transitions in the SAME cycle, and the failure is
+    counted on the NEW 'errored' counter — distinct from 'refused' so
+    operators can alert on each class independently. Fail-closed
+    semantics are unchanged (refused == 0 here). Falsifiable: remove
+    the broad per-tenant catch in run_dormancy_cycle and the
+    RuntimeError escapes to this test before tenant B is ever served —
+    the whole test fails, exactly the outage class R1 names."""
+
+    async def run() -> None:
+        tid_a, admin_a, _ = await seed_actor()
+        tid_b, admin_b, _ = await seed_actor()
+        # BOTH tenants are fully configured: a refusal is impossible,
+        # so the only countable outcome for A is the errored path.
+        await _configure_dormancy(tid_a, admin_a, months=1)
+        await _configure_dormancy(tid_b, admin_b, months=1)
+        due_b = await seed_member(tid_b, name="Cycle Due Despite A")
+        long_ago = datetime.now(UTC).replace(microsecond=0) - timedelta(days=90)
+        async with tenant_session(factory(), tid_b) as session:
+            await session.execute(
+                text(
+                    "UPDATE members SET created_at = :ts "
+                    "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                ),
+                {"ts": long_ago, "id": str(due_b), "tid": str(tid_b)},
+            )
+        await _deposit_at(tid_b, due_b, "15.00", long_ago)
+
+        real_run = dormancy_worker.run_dormancy_for_tenant
+
+        async def exploding_run(scope: Any, tenant_id: uuid.UUID, **kwargs: Any) -> Any:
+            if tenant_id == tid_a:
+                raise RuntimeError("simulated transient per-tenant failure")
+            return await real_run(scope, tenant_id, **kwargs)
+
+        async def two_tenants(_factory: Any) -> list[uuid.UUID]:
+            return [tid_a, tid_b]  # A errors FIRST; B must still be served
+
+        with monkeypatch.context() as m:
+            m.setattr(dormancy_worker, "list_active_tenants", two_tenants)
+            m.setattr(dormancy_worker, "run_dormancy_for_tenant", exploding_run)
+            summary = await dormancy_worker.run_dormancy_cycle(factory())
+
+        assert summary.tenants == 2
+        assert summary.errored == 1  # tenant A: logged, counted, skipped
+        assert summary.refused == 0  # distinct from the FM8 fail-closed class
+        assert summary.transitioned >= 1
+        assert (await _status(tid_b, due_b))[0] == "dormant"
+        assert await _dormancy_audits(tid_a) == 0  # zero writes for the errored tenant
 
     asyncio.run(run())
 

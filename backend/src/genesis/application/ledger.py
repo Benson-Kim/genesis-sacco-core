@@ -49,6 +49,7 @@ from genesis.domain.ledger import (
     build_share_topup_posting,
     build_share_transfer_in_posting,
     build_share_transfer_out_posting,
+    build_unclaimed_dividend_posting,
     build_withdrawal_posting,
     ref_prefix,
 )
@@ -551,6 +552,48 @@ async def post_dividend_distribution(
         session,
         tenant_id,
         event_type="ledger.dividend_posted",
+        payload={
+            "txn_id": str(result.txn_id),
+            "txn_ref": result.txn_ref,
+            "member_id": str(member_id),
+            "dividend": str(to_cents(dividend)),
+            "rebate": str(to_cents(rebate)),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
+        },
+    )
+    return result
+
+
+async def post_unclaimed_dividend(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    dividend: Decimal,
+    rebate: Decimal,
+    actor_id: uuid.UUID | None = None,
+    occurred_at: datetime | None = None,
+) -> PostingResult:
+    """Park a mid-run-exited member's entitlement as a payable (issue #19 P3).
+
+    DV- ref: DR expense.dividends / expense.rebates, CR
+    liability.unclaimed_dividends — the member's accounts are never
+    touched (they exited; their balances are settled and zeroed). The
+    transaction stays member-attributed so the payable is traceable to
+    the member it is owed to; it carries no member-account legs, so no
+    ledger-reconstructed basis anywhere changes. Runs in the caller's
+    transaction; the P13.11 distribution job owns the atomic unit
+    (claim + posting + audit). The outbox event is the ALERT surface
+    (gate 1.2): operators watch dividend.unclaimed via
+    ledger.dividend_unclaimed exactly like the other posting events.
+    Payload carries ids and amounts only — never names (gate 1.6).
+    """
+    spec = build_unclaimed_dividend_posting(dividend, rebate)
+    result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="ledger.dividend_unclaimed",
         payload={
             "txn_id": str(result.txn_id),
             "txn_ref": result.txn_ref,

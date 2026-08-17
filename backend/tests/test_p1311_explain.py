@@ -10,8 +10,13 @@ and DIVIDEND_CONFIG_SQL the once-per-run config probe.
 
 Index story:
 
-  * driving scan: idx_members_dividend_scan (0020 — partial over
-    active/arrears, shipped in the SAME migration as the query);
+  * driving scan: idx_members_dividend_scan (0020, predicate widened
+    to active/arrears/dormant in 0022 per the issue-#19 policy —
+    shipped in the SAME migration as the widened query);
+  * unclaimed disposition scan (issue #19 P3): idx_members_exited_scan
+    (0022, shipped with unclaimed_scan_sql), the member_exits
+    settled-after-declaration probe on the 0001/0010 exit indexes and
+    the claim anti-join on uq_dividend_distributions_claim;
   * claim anti-join: uq_dividend_distributions_claim (0020) — the
     UNIQUE idempotency claim doubles as the anti-join index;
   * ADB reconstruction: idx_txns_member_keyset /
@@ -25,9 +30,9 @@ Index story:
 Tiny CI tables make seqscan the cheaper plan; the capture disables it
 for the session to prove each relation is SERVABLE by its index (plan
 shape at scale — the P10..P13.8 precedent). Falsifiable guards: drop
-idx_members_dividend_scan, uq_dividend_distributions_claim or
-idx_dividend_distributions_page and the index-name / no-sequential-scan
-gates below fail.
+idx_members_dividend_scan, idx_members_exited_scan,
+uq_dividend_distributions_claim or idx_dividend_distributions_page and
+the index-name / no-sequential-scan gates below fail.
 """
 
 from __future__ import annotations
@@ -48,6 +53,7 @@ from genesis.application.dividends import (
     DIVIDEND_CONFIG_SQL,
     declare_dividend,
     members_scan_sql,
+    unclaimed_scan_sql,
 )
 from genesis.application.period_balances import DAILY_MOVEMENTS_SQL, eod_balance_sql
 from genesis.application.reports import dividend_schedule_page_sql
@@ -122,6 +128,17 @@ def test_p1311_dividend_queries_are_index_backed() -> None:
                 },
             )
             config_plan = await _explain(session, DIVIDEND_CONFIG_SQL, {"tid": str(tid)})
+            unclaimed_plan = await _explain(
+                session,
+                unclaimed_scan_sql(with_after=True),
+                {
+                    "tid": str(tid),
+                    "decl": str(declaration.id),
+                    "declared_at": declaration.created_at,
+                    "after": str(uuid.UUID(int=0)),
+                    "limit": 200,
+                },
+            )
 
         # Capture the artifact BEFORE any assertion so the CI job log
         # and backend/perf/ artifact always carry the full plans.
@@ -131,14 +148,17 @@ def test_p1311_dividend_queries_are_index_backed() -> None:
             "against the migrated Postgres service under the RLS app role.\n"
             "enable_seqscan=off because CI tables are tiny; the assertion is\n"
             "that the distribution scan is served by idx_members_dividend_scan\n"
-            "with the claim anti-join on uq_dividend_distributions_claim (both\n"
-            "shipped in 0020 with their queries), the ADB reconstruction by\n"
-            "the member-attributed transaction indexes, the schedule page by\n"
-            "idx_dividend_distributions_page, and the config read by the\n"
-            "tenant_settings PK (plan shape at scale).\n"
+            "(predicate widened to active/arrears/dormant in 0022, issue #19)\n"
+            "with the claim anti-join on uq_dividend_distributions_claim, the\n"
+            "issue-#19 unclaimed disposition scan by idx_members_exited_scan\n"
+            "(0022) with the exit fence on the member_exits indexes, the ADB\n"
+            "reconstruction by the member-attributed transaction indexes, the\n"
+            "schedule page by idx_dividend_distributions_page, and the config\n"
+            "read by the tenant_settings PK (plan shape at scale).\n"
         )
         sections = [
             ("distribution batch scan (anti-join + FOR UPDATE SKIP LOCKED)", scan_plan),
+            ("unclaimed disposition scan (issue #19 P3)", unclaimed_plan),
             ("ADB end-of-period anchor (single-statement, share account)", anchor_plan),
             ("ADB daily movements (member-attributed legs)", movements_plan),
             ("dividend & rebate schedule keyset page", report_plan),
@@ -150,6 +170,11 @@ def test_p1311_dividend_queries_are_index_backed() -> None:
         assert "idx_members_dividend_scan" in scan_plan
         assert "uq_dividend_distributions_claim" in scan_plan
         assert "Seq Scan" not in scan_plan
+        # Issue #19 P3: the disposition scan is served by the 0022
+        # partial index with index-served exit-fence and claim probes.
+        assert "idx_members_exited_scan" in unclaimed_plan
+        assert "uq_dividend_distributions_claim" in unclaimed_plan
+        assert "Seq Scan" not in unclaimed_plan
         # The reconstruction is driven by a member-attributed
         # transactions index and the UNIQUE account probe.
         assert "share_accounts" in anchor_plan
