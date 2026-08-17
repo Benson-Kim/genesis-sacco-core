@@ -157,6 +157,9 @@ class ArrearsRunOut(BaseModel):
     penalty_configured: bool
     penalties_accrued: int
     penalty_total: str
+    #: P13.16 — recovery cases auto-closed by this run's close pass.
+    cases_closed_cured: int
+    cases_closed_written_off: int
 
 
 def _loan_out(loan: loans_service.LoanRecord) -> LoanOut:
@@ -374,4 +377,6 @@ async def run_arrears(body: ArrearsRunBody, ctx: BookEditCtx) -> ArrearsRunOut:
         penalty_configured=result.penalty_configured,
         penalties_accrued=result.penalties_accrued,
         penalty_total=str(result.penalty_total),
+        cases_closed_cured=result.cases_closed_cured,
+        cases_closed_written_off=result.cases_closed_written_off,
     )

@@ -170,7 +170,15 @@ def test_p13_report_and_export_queries_are_index_backed() -> None:
         # vs 2724004325). Both are tenant-led composite indexes
         # shipped with the query (0001); the falsifiable guard stays
         # the no-Seq-Scan gate below (drop both indexes -> Seq Scan).
-        assert "idx_schedules_due" in npl_month or "idx_schedules_loan" in npl_month
+        # A third legitimate serve (observed pipeline 2724760307): the
+        # 0001 UNIQUE (tenant_id, loan_id, installment_no) backing
+        # index — the same tenant+loan-led nested-loop access path as
+        # idx_schedules_loan, chosen on cost ties over near-empty rows.
+        assert (
+            "idx_schedules_due" in npl_month
+            or "idx_schedules_loan" in npl_month
+            or "loan_schedules_tenant_id_loan_id_installment_no_key" in npl_month
+        )
         assert "idx_exports_requested" in claim
         assert "csv_token" in download
         assert "pdf_token" in download

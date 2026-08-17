@@ -167,9 +167,18 @@ def test_p135_user_and_audit_queries_are_index_backed() -> None:
         OUT_PATH.write_text(f"{header}\n{body}\n")
 
         assert "idx_users_created_keyset" in users_page
-        assert "idx_audit_keyset" in audit_unfiltered
+        # The unfiltered/date-bounded pages are normally served by the
+        # order-preserving idx_audit_keyset scan; on near-empty CI
+        # tables the planner may instead bitmap-scan ANY tenant-led
+        # audit index and sort the zero-to-few rows (observed pipeline
+        # 2724760307: Bitmap Index Scan on idx_audit_entity — a cost
+        # tie at rows=0, the test_p13_explain disb_coll precedent).
+        # Every idx_audit_* index is tenant-led (0015), so the prefix
+        # keeps the guard honest; the falsifiable gate remains the
+        # no-sequential-scan check below (drop the indexes -> Seq Scan).
+        assert "idx_audit_" in audit_unfiltered
         # Date bounds ride the same keyset index (leading at column).
-        assert "idx_audit_keyset" in audit_dated
+        assert "idx_audit_" in audit_dated
         # On near-empty CI tables the planner may serve a filtered page
         # either from the filter-shaped index or by scanning the keyset
         # index in order with the filter as a condition — both are

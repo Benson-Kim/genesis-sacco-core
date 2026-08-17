@@ -181,6 +181,7 @@ backend:test:
     - cat backend/perf/explain_p138.txt || true
     - cat backend/perf/explain_p1311.txt || true
     - cat backend/perf/explain_p1312.txt || true
+    - cat backend/perf/explain_p1316.txt || true
     - cat backend/perf/explain_codex_review.txt || true
   coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:

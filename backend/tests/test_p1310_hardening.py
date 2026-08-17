@@ -160,7 +160,9 @@ def test_h7_issue_17_probe_every_new_report_builder() -> None:
         own_income = await render(ReportName.INCOME_STATEMENT, tid_a)
         assert ("income", "income.interest", Decimal("75.00")) in own_income
         own_sasra = await render(ReportName.SASRA_RETURN, tid_a)
-        expected_i100 = ("SASRA-DS-2025.1", "I100", "Interest income on loans", Decimal("75.00"))
+        # 2025.2: P13.15 added the X400 write-off-expense line, bumping
+        # SASRA_RETURN_VERSION (see domain/sasra.py + test_sasra_domain).
+        expected_i100 = ("SASRA-DS-2025.2", "I100", "Interest income on loans", Decimal("75.00"))
         assert expected_i100 in own_sasra
 
         # Probe arm: foreign tenant argument -> zero rows / all-zero

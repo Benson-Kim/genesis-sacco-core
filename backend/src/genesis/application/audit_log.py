@@ -54,6 +54,10 @@ ENTITY_MODULES: dict[str, Module] = {
     "guarantees": Module.APPLICATIONS,
     "loan": Module.LOAN_BOOK,
     "loans": Module.LOAN_BOOK,
+    # P13.16: recovery-case payloads carry classification/dpd snapshots
+    # and collections notes; their routes are gated loan_book:*, so the
+    # payloads follow the loan_book entitlement.
+    "recovery_cases": Module.LOAN_BOOK,
     "transaction": Module.TRANSACTIONS,
     "transactions": Module.TRANSACTIONS,
     "accounting_periods": Module.TRANSACTIONS,

@@ -45,8 +45,8 @@ or test/artifact present on main).
 | P13.12 | ✅ DONE | 0018 member KYC; test_member_kyc_* |
 | P13.13 | ✅ DONE | 0021 dormancy (+0022 dividend-dormant policy fix); test_dormancy |
 | P13.14 | ✅ DONE | test_guarantee_release |
-| P13.15 | 🔄 IN PROGRESS | !46 (migration 0025; merging maintainer flips to ✅ DONE with evidence upon merge) |
-| P13.16 | ❌ TODO | no recovery_cases on main — claims the number after P13.15's |
+| P13.15 | ✅ DONE | 0025 (!46, merged 2026-08-02); test_corrections |
+| P13.16 | 🔄 IN PROGRESS | !47 — claims 0026, down_revision '0025'; merges AFTER the P13.15 track (rule 12); the merging maintainer flips this row to ✅ DONE upon merge |
 | P13.17 | 🔄 IN PROGRESS | (e) DSA-6 in !44 (0024) with maintainer-review fixes R6/R7 + flake disposition in flight; (a)–(d) NOT found on main — verify no in-flight MR before claiming |
 | P-DIAG.0 | ✅ DONE | docs/diagrams/lock-order.md |
 | P-DIAG.1 | ✅ DONE | c4-context/container/component + c4-spot-check.py |

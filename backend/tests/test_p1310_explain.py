@@ -143,7 +143,15 @@ def test_p1310_report_queries_are_index_backed() -> None:
         # test_p13_explain disb_coll precedent; observed run-to-run on
         # identical SQL). Both are tenant-led composite indexes from
         # 0001; the falsifiable guard is the no-Seq-Scan gate below.
-        assert "idx_schedules_due" in par_aging or "idx_schedules_loan" in par_aging
+        # Third legitimate serve (observed pipeline 2724760307 on the
+        # p13 twin of this CTE): the 0001 UNIQUE (tenant_id, loan_id,
+        # installment_no) backing index — the same tenant+loan-led
+        # nested-loop path as idx_schedules_loan on cost ties.
+        assert (
+            "idx_schedules_due" in par_aging
+            or "idx_schedules_loan" in par_aging
+            or "loan_schedules_tenant_id_loan_id_installment_no_key" in par_aging
+        )
         # The ledger aggregates must be index-served (trial-balance
         # precedent: any of the composite ledger/transactions indexes).
         assert "Index" in activity_windowed

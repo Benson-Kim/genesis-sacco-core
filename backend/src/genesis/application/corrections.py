@@ -555,6 +555,17 @@ async def adjust_repayment(
     # authority check as approvals (reuse, 1.1) — under the loan lock.
     await enforce_authority_band(session, tenant_id, actor_id, amount)
 
+    # Reopened? Decided HERE, under the loan lock and BEFORE the claim
+    # INSERT: reopened_loan is write-once (the 0025 trigger permits no
+    # post-insert change of it — only the reversal_transaction_id fill
+    # from NULL), so the decision must ride the INSERT itself. FM6: the
+    # ONE documented branch of the status map.
+    reopened = False
+    new_status: LoanStatus = status
+    if status is LoanStatus.CLOSED:
+        new_status = loan_transition(LoanStatus.CLOSED, LoanStatus.ACTIVE)
+        reopened = True
+
     # FM2: the atomic one-adjustment-per-repayment claim (v1.1 rule 5).
     adjustment_id = uuid.uuid4()
     claimed = (
@@ -562,10 +573,10 @@ async def adjust_repayment(
             text(
                 "INSERT INTO repayment_adjustments "
                 "(id, tenant_id, repayment_id, loan_id, original_transaction_id, "
-                " maker_id, reason, amount, penalties, interest, principal) "
+                " maker_id, reason, amount, penalties, interest, principal, reopened_loan) "
                 "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:rid AS uuid), "
                 " CAST(:lid AS uuid), CAST(:txn AS uuid), CAST(:maker AS uuid), "
-                " :reason, :amount, :pen, :int, :prn) "
+                " :reason, :amount, :pen, :int, :prn, :reopened) "
                 "ON CONFLICT (tenant_id, repayment_id) DO NOTHING RETURNING id"
             ),
             {
@@ -580,6 +591,7 @@ async def adjust_repayment(
                 "pen": str(penalties),
                 "int": str(interest),
                 "prn": str(principal),
+                "reopened": reopened,
             },
         )
     ).first()
@@ -610,27 +622,20 @@ async def adjust_repayment(
         },
     )
 
-    # Reopened? Must be decided before the loans UPDATE. FM6: the ONE
-    # documented branch of the status map.
-    reopened = False
-    new_status: LoanStatus = status
-    if status is LoanStatus.CLOSED:
-        new_status = loan_transition(LoanStatus.CLOSED, LoanStatus.ACTIVE)
-        reopened = True
-
-    # Fill the reversal linkage on the claim row (the only UPDATE the
-    # write-once trigger permits) — audited money history stays intact.
+    # Fill the reversal linkage on the claim row — the ONLY post-insert
+    # UPDATE the 0025 write-once trigger permits (reversal_transaction_id
+    # from NULL); every other column, reopened_loan included, was final
+    # at INSERT time. Audited money history stays intact.
     linked = cast(
         CursorResult[Any],
         await session.execute(
             text(
                 "UPDATE repayment_adjustments "
-                "SET reversal_transaction_id = CAST(:rev AS uuid), reopened_loan = :reopened "
+                "SET reversal_transaction_id = CAST(:rev AS uuid) "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
             ),
             {
                 "rev": str(reversal.txn_id),
-                "reopened": reopened,
                 "id": str(adjustment_id),
                 "tid": str(tenant_id),
             },

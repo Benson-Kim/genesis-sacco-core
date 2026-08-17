@@ -73,6 +73,12 @@ loan row lock, same short batch transactions:
     accrual and fully reconstructable from the claim row; "a repayment
     that cures the arrears before the job runs -> no accrual" is a
     snapshot-level guarantee, not a lock-level one.
+
+Recovery auto-close (P13.16): after the classify/accrue batches, the
+recovery close pass (application/recovery) closes open recovery cases
+whose loan has left NPL — keyed off the classification THIS job just
+persisted (single source of truth, 1.1; addendum A6), locking case
+rows only. See application/recovery.close_scan_sql.
 """
 
 from __future__ import annotations
@@ -90,6 +96,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from genesis.application.audit import record_audit
 from genesis.application.batch_runner import SessionScope, run_in_batches
 from genesis.application.outbox import enqueue_event
+from genesis.application.recovery import run_recovery_close_pass
 from genesis.domain.lending import classify, daily_penalty
 from genesis.domain.money import ZERO, to_cents
 from genesis.domain.tenant_config import PenaltyChargedOn
@@ -234,6 +241,12 @@ class ArrearsRunResult:
     penalty_configured: bool
     penalties_accrued: int
     penalty_total: Decimal
+    #: P13.16: recovery cases auto-closed by this run's close pass —
+    #: cure (the loan left NPL per THIS job's persisted classification,
+    #: or fully closed) vs write-off. Idempotent: a re-run closes
+    #: nothing new (side-effect counts).
+    cases_closed_cured: int
+    cases_closed_written_off: int
 
 
 async def _classify_loan(
@@ -552,6 +565,13 @@ async def run_arrears_for_tenant(
     complete penalty configuration accrues nothing (fail closed) while
     classification still runs. A config change mid-run affects the
     NEXT run; every claim/audit row records the values actually used.
+
+    P13.16: after the classify/accrue batches, the recovery close pass
+    runs (application/recovery.run_recovery_close_pass) — it reads the
+    classification THIS run just persisted (single source of truth,
+    1.1), so a loan curing today closes its open recovery case today.
+    The pass locks CASE rows only (no loan locks, no new lock-graph
+    edges) and is idempotent by side-effect counts.
     """
     async with session_scope() as session:
         penalty_config = await resolve_penalty_config(session, tenant_id)
@@ -566,6 +586,7 @@ async def run_arrears_for_tenant(
     total = ZERO
     for _, _, batch_total in payloads:
         total = to_cents(total + batch_total)
+    close_result = await run_recovery_close_pass(session_scope, tenant_id, batch_size=batch_size)
     return ArrearsRunResult(
         scanned=scanned,
         updated=sum(p[0] for p in payloads),
@@ -573,4 +594,6 @@ async def run_arrears_for_tenant(
         penalty_configured=penalty_config is not None,
         penalties_accrued=sum(p[1] for p in payloads),
         penalty_total=total,
+        cases_closed_cured=close_result.closed_cured,
+        cases_closed_written_off=close_result.closed_written_off,
     )

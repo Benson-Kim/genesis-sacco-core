@@ -1639,6 +1639,7 @@ def test_cross_tenant_corrections_rows_are_invisible() -> None:
         loan_id, _ = await _disburse(tid_a)
         repayment = await _repay(tid_a, actor_a, loan_id, "1000.00")
         await _adjust(tid_a, actor_a, await _repayment_id_for_txn(tid_a, repayment.txn_id))
+        await _classify_npl(tid_a, loan_id)  # FM9: write-off needs a stored NPL class
         record = await _request_write_off(tid_a, actor_a, loan_id)
 
         async with tenant_session(factory(), tid_b) as session:

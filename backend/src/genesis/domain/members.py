@@ -107,6 +107,9 @@ _MONEY_IN = frozenset({MemberStatus.ACTIVE, MemberStatus.ARREARS, MemberStatus.D
 MEMBER_OPERATIONS: dict[MoneyOperation, frozenset[MemberStatus]] = {
     MoneyOperation.DEPOSIT: _MONEY_IN,
     MoneyOperation.LOAN_REPAYMENT: _MONEY_IN,
+    # P13.15: a fee is money IN (the member settles it) — same statuses
+    # as deposit/repayment; exited members are refused by construction.
+    MoneyOperation.FEE: _MONEY_IN,
     MoneyOperation.SHARE_TOPUP: frozenset({MemberStatus.ACTIVE, MemberStatus.ARREARS}),
     MoneyOperation.WITHDRAWAL: _ACTIVE_ONLY,
     MoneyOperation.BORROW: _ACTIVE_ONLY,
