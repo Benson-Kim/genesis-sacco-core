@@ -36,6 +36,7 @@ from genesis.application.loan_applications import (
 )
 from genesis.application.outbox import enqueue_event
 from genesis.domain.lending import ApplicationStage
+from genesis.domain.members import MemberStatus, MoneyOperation, member_may
 from genesis.domain.money import ZERO, to_cents
 from genesis.domain.rbac import Action, Module
 from genesis.errors import (
@@ -133,9 +134,13 @@ async def _guarantor_available_capacity(
     ).first()
     if guarantor_row is None:
         raise NotFoundError(f"guarantor member {guarantor_member_id} not found")
-    if str(guarantor_row[0]) != "active":
+    guarantor_status = MemberStatus(str(guarantor_row[0]))
+    if not member_may(guarantor_status, MoneyOperation.PLEDGE):
+        # Code-owned capability map (P13.13 FM2): pledging is strictly
+        # active-only, so arrears/dormant/exited (and any future
+        # status) are refused by construction — the !29 R2 rule.
         raise ConflictError(
-            f"guarantor {guarantor_member_id} is '{guarantor_row[0]}': "
+            f"guarantor {guarantor_member_id} is '{guarantor_status.value}': "
             "only active members may pledge"
         )
     # Serialisation point: every capacity computation for this guarantor

@@ -92,6 +92,7 @@ from genesis.domain.exits import (
     exit_transition,
 )
 from genesis.domain.ledger import Channel
+from genesis.domain.members import MemberStatus, MoneyOperation, member_may
 from genesis.domain.money import ZERO
 from genesis.errors import ConflictError, ForbiddenError, NotFoundError
 
@@ -335,9 +336,11 @@ async def request_exit(
     status, _ = await _lock_member(session, tenant_id, member_id)
     if status == "exited":
         raise ConflictError(f"member {member_id} has already exited")
-    if status not in ("active", "arrears"):
-        # Allow-list, not deny-list: only members in good standing or in
-        # arrears may request an exit. Any other (or future) status is
+    if not member_may(MemberStatus(status), MoneyOperation.EXIT_REQUEST):
+        # Allow-list, not deny-list (the code-owned capability map,
+        # P13.13 FM2): members in good standing, in arrears AND dormant
+        # members may request an exit — Dormant -> Exited runs through
+        # this real P12 workflow. Any other (or future) status is
         # refused with a least-disclosure message (gate 1.6) instead of
         # silently passing through a deny-list gap.
         raise ConflictError(f"member {member_id} is not eligible to request an exit")

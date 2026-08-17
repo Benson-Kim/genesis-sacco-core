@@ -104,6 +104,7 @@ from genesis.domain.dividends import (
     entitlement_amount,
     last_completed_financial_year,
 )
+from genesis.domain.members import MemberStatus, MoneyOperation, member_may
 from genesis.domain.money import ZERO, to_cents
 from genesis.errors import ConflictError, ForbiddenError, InvalidInputError, NotFoundError
 
@@ -1363,12 +1364,16 @@ async def transfer_shares(
     statuses: dict[uuid.UUID, str] = {}
     for member_id in sorted((from_member_id, to_member_id)):
         statuses[member_id] = await _lock_member_status(session, tenant_id, member_id)
-    if statuses[from_member_id] != "active":
+    # Code-owned capability map (P13.13 FM2): both transfer sides are
+    # strictly active-only, so arrears/dormant/exited (and any future
+    # status) are refused by construction — the !30 strictly-active
+    # rule, now owned by the single domain gatekeeper.
+    if not member_may(MemberStatus(statuses[from_member_id]), MoneyOperation.SHARE_TRANSFER_OUT):
         raise ConflictError(
             f"member {from_member_id} is '{statuses[from_member_id]}': "
             "only active members may transfer shares"
         )
-    if statuses[to_member_id] != "active":
+    if not member_may(MemberStatus(statuses[to_member_id]), MoneyOperation.SHARE_TRANSFER_IN):
         raise ConflictError(
             f"member {to_member_id} is '{statuses[to_member_id]}': "
             "shares may only be transferred to an active member"

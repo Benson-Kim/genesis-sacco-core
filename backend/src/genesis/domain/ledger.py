@@ -559,3 +559,55 @@ def member_direction(txn_type: TxnType, *, is_reversal: bool = False) -> Side:
     if not is_reversal:
         return base
     return Side.CREDIT if base is Side.DEBIT else Side.DEBIT
+
+
+# ---------------------------------------------------------------------------
+# Member-initiated activity classification (P13.13 dormancy, FM1)
+# ---------------------------------------------------------------------------
+
+#: Code-owned classification of EVERY transaction type: does this type
+#: represent activity the MEMBER initiated? Only member-initiated
+#: activity resets the dormancy clock (P13.13 FM1 — the universal bank
+#: bug is counting system postings, so no account ever goes dormant).
+#: The completeness test pins this map to the TxnType enum, so a new
+#: transaction type cannot land unclassified; the dormancy tests pin
+#: the exact allow-list, so widening it is a failing diff.
+#:
+#:   * deposit / withdrawal / share_topup — the member moved money.
+#:   * loan_repayment — the member serviced their loan.
+#:   * loan_disbursement — the member borrowed (only reachable while
+#:     strictly active, and the ensuing repayments keep the clock
+#:     honest either way).
+#:   * share_transfer_out — the transferor's own instruction.
+#:   * exit_settlement — the member's own exit request (moot for
+#:     dormancy: the member is terminal-exited in the same
+#:     transaction).
+#:   * interest_posting — SYSTEM accrual (P11 INT- postings): never
+#:     member activity.
+#:   * dividend_posting — SYSTEM distribution (!30 DV- postings, with
+#:     occurred_at pinned to FY END, potentially far in the past):
+#:     never member activity.
+#:   * share_transfer_in — the TRANSFEREE did not act; counting it
+#:     would let a third party keep an account out of dormancy
+#:     monitoring.
+#:
+#: Reversal rows (reversal_of_id set) are staff corrections and never
+#: count regardless of type — the dormancy scan excludes them with an
+#: explicit predicate (application/dormancy.py).
+MEMBER_INITIATED: dict[TxnType, bool] = {
+    TxnType.DEPOSIT: True,
+    TxnType.WITHDRAWAL: True,
+    TxnType.SHARE_TOPUP: True,
+    TxnType.LOAN_DISBURSEMENT: True,
+    TxnType.LOAN_REPAYMENT: True,
+    TxnType.INTEREST_POSTING: False,
+    TxnType.EXIT_SETTLEMENT: True,
+    TxnType.DIVIDEND_POSTING: False,
+    TxnType.SHARE_TRANSFER_OUT: True,
+    TxnType.SHARE_TRANSFER_IN: False,
+}
+
+
+def member_initiated_types() -> tuple[str, ...]:
+    """The sorted member-initiated type values (for bound SQL parameters)."""
+    return tuple(sorted(t.value for t, member in MEMBER_INITIATED.items() if member))

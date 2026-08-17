@@ -1511,19 +1511,19 @@ def test_substitution_consent_attestation_is_first_class_audited_fact() -> None:
 
 def test_non_active_member_cannot_be_substitute_guarantor() -> None:
     """Review R2: the substitution path must enforce the P9 pledge rule
-    that only ACTIVE members pledge. Hand-computed: both candidates hold
+    that only ACTIVE members pledge. Hand-computed: all candidates hold
     deposit 10000 >= replacement 800, so capacity can never be the
     refusal — only the member-status guard inside
     _guarantor_available_capacity can refuse. Falsifiable: remove the
-    status check under the member FOR SHARE lock and both swaps land,
-    failing every assertion below. ('dormant' is P13.13 and not on main
-    yet; the guard refuses ANY non-active status, so it is covered by
-    construction when dormancy lands.)"""
+    status check under the member FOR SHARE lock and every swap lands,
+    failing every assertion below. ('dormant' landed with P13.13: the
+    guard is the code-owned capability map, PLEDGE = active-only, so
+    dormant is refused by construction and pinned here.)"""
 
     async def run() -> None:
         tid, _, _, token = await _seed_actor()
         pid = await _seed_product(tid)
-        for bad_status in ("exited", "arrears"):
+        for bad_status in ("exited", "arrears", "dormant"):
             borrower = await _seed_member(tid)
             old_g = await _seed_member(tid, deposit="2000.00")
             bad_sub = await _seed_member(tid, deposit="10000.00", status=bad_status)

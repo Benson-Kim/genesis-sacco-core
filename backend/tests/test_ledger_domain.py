@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 
 from genesis.domain.ledger import (
+    MEMBER_INITIATED,
     Account,
     Channel,
     LedgerLine,
@@ -22,6 +23,7 @@ from genesis.domain.ledger import (
     build_reversal_posting,
     build_share_topup_posting,
     build_withdrawal_posting,
+    member_initiated_types,
     ref_prefix,
 )
 
@@ -318,3 +320,35 @@ def test_deposit_amount_rounded_to_cents() -> None:
     assert spec.amount == Decimal("1000.00")
     for ln in spec.lines:
         assert ln.amount == Decimal("1000.00")
+
+
+# ---------------------------------------------------------------------------
+# P13.13 FM1 — the member-initiated activity classification
+# ---------------------------------------------------------------------------
+
+
+def test_member_initiated_map_classifies_every_transaction_type() -> None:
+    """Completeness pin: a NEW transaction type cannot land without a
+    deliberate dormancy classification here — the universal bank bug
+    is an unclassified system posting silently counting as activity."""
+    assert set(MEMBER_INITIATED) == set(TxnType)
+
+
+def test_member_initiated_allow_list_is_exactly_the_hand_written_set() -> None:
+    """The EXACT allow-list, restated by hand (never derived from the
+    map under test). Falsifiable both ways: widening it (e.g. counting
+    interest or dividend postings — the P13.13 FM1 gaming vector) or
+    narrowing it (dropping deposits) is a failing diff."""
+    assert member_initiated_types() == (
+        "deposit",
+        "exit_settlement",
+        "loan_disbursement",
+        "loan_repayment",
+        "share_topup",
+        "share_transfer_out",
+        "withdrawal",
+    )
+    # The system postings that must NEVER reset the dormancy clock.
+    assert not MEMBER_INITIATED[TxnType.INTEREST_POSTING]
+    assert not MEMBER_INITIATED[TxnType.DIVIDEND_POSTING]
+    assert not MEMBER_INITIATED[TxnType.SHARE_TRANSFER_IN]

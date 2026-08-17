@@ -391,6 +391,24 @@ async def change_member_status(
             "member exit is processed through the exit settlement workflow, "
             "not by direct status change"
         )
+    if new_status is MemberStatus.DORMANT:
+        # P13.13: the nightly dormancy job (application/dormancy.py) is
+        # the sole writer of the dormant state — it derives inactivity
+        # from the ledger (v1.1 rule 2); a manual flag would let staff
+        # park an account outside its real activity window.
+        raise ConflictError(
+            "dormancy is derived from ledger activity by the dormancy job, "
+            "not by direct status change"
+        )
+    if current_status is MemberStatus.DORMANT:
+        # P13.13: reactivation happens automatically inside the deposit
+        # transaction (with its own audit row and member notification —
+        # the insider-fraud detection control) or terminally via the
+        # P12 exit workflow; never by a bare status edit.
+        raise ConflictError(
+            "dormant members reactivate automatically on deposit or exit "
+            "through the settlement workflow, not by direct status change"
+        )
     try:
         transition(current_status, new_status)
     except InvalidStatusTransitionError as exc:
@@ -524,6 +542,80 @@ async def mark_member_exited(
             "member_id": str(member_id),
             "from": current_status.value,
             "to": MemberStatus.EXITED.value,
+        },
+    )
+
+
+async def reactivate_dormant_member(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID | None,
+    member_id: uuid.UUID,
+    *,
+    txn_ref: str,
+) -> None:
+    """Dormant -> Active, called ONLY inside the deposit transaction (P13.13).
+
+    The caller (application/transactions.record_deposit) already holds
+    the member row FOR UPDATE, so this status write can never race the
+    dormancy job (which locks the same row SKIP LOCKED) — exactly one
+    final state. The pure transition function validates the move (gate
+    1.4); the audit row and the outbox notification TO THE MEMBER
+    commit atomically with the deposit posting (gates 1.2/1.5). The
+    notification is the insider-fraud detection control: a fraudster
+    reactivating a dormant account to drain it leaves a trace the
+    victim sees — removing this enqueue fails the P13.13 outbox-count
+    test.
+
+    Version note: the row was read FOR UPDATE by the caller in THIS
+    transaction, so the version-less predicate is safe — nothing can
+    move the row between the lock and this write; status = 'dormant'
+    is re-checked as defence in depth and the version bumps like every
+    other status writer.
+    """
+    transition(MemberStatus.DORMANT, MemberStatus.ACTIVE)
+    result = cast(
+        CursorResult[Any],
+        await session.execute(
+            text(
+                # Explicit tenant predicate on the write, on top of RLS
+                # (defence in depth, gate 1.6 v1.1; issue #17).
+                "UPDATE members SET status = :st, version = version + 1, updated_at = now() "
+                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
+                "AND status = :from_st"
+            ),
+            {
+                "st": MemberStatus.ACTIVE.value,
+                "id": str(member_id),
+                "tid": str(tenant_id),
+                "from_st": MemberStatus.DORMANT.value,
+            },
+        ),
+    )
+    if result.rowcount != 1:  # pragma: no cover - unreachable under the row lock
+        raise ConflictError(f"member {member_id} changed state during reactivation; retry")
+    await _audit(
+        session,
+        tenant_id,
+        actor_id,
+        "member.status",
+        str(member_id),
+        before={"status": MemberStatus.DORMANT.value},
+        after={
+            "status": MemberStatus.ACTIVE.value,
+            "reason": "deposit_reactivation",
+            "txn_ref": txn_ref,
+        },
+    )
+    await enqueue_event(
+        session,
+        tenant_id,
+        event_type="member.status_changed",
+        payload={
+            "member_id": str(member_id),
+            "from": MemberStatus.DORMANT.value,
+            "to": MemberStatus.ACTIVE.value,
+            "reason": "deposit_reactivation",
         },
     )
 

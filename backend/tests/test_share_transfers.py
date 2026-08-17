@@ -228,18 +228,22 @@ def test_transfer_population_rules_are_enforced_under_the_locks() -> None:
         m_second = await seed_member(tid, name="Second", shares="1000.00")
         m_exited = await seed_member(tid, name="Exited", shares="0")
         m_arrears = await seed_member(tid, name="Arrears", shares="1000.00")
+        m_dormant = await seed_member(tid, name="Dormant", shares="1000.00")
         await _set_status(tid, m_exited, "exited")
         await _set_status(tid, m_arrears, "arrears")
+        await _set_status(tid, m_dormant, "dormant")
 
-        # Transferee must be strictly ACTIVE (checked under the lock).
-        for target in (m_exited, m_arrears):
+        # Transferee must be strictly ACTIVE (checked under the lock;
+        # dormant refused per the P13.13 capability map).
+        for target in (m_exited, m_arrears, m_dormant):
             with pytest.raises(ConflictError, match="active member"):
                 await _transfer(tid, m_active, target, "100.00")
 
         # Transferor must be strictly ACTIVE (the withdrawal rule: an
         # arrears member may not move equity out from under their debt;
-        # exited members cannot transact).
-        for source in (m_exited, m_arrears):
+        # exited members cannot transact; dormant equity moves only
+        # after a reactivating deposit — P13.13).
+        for source in (m_exited, m_arrears, m_dormant):
             with pytest.raises(ConflictError, match="active members may transfer"):
                 await _transfer(tid, source, m_active, "100.00")
 

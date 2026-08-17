@@ -222,7 +222,7 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = dict(
             "integer",
             "months",
             ">= 1 and <= 120",
-            ("stored for P13.13 dormancy job",),
+            ("application/dormancy.resolve_dormancy_period",),
         ),
         _spec(
             "financial_year_end_month",

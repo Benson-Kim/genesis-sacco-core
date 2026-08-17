@@ -10,12 +10,16 @@ are rejected by the service with 409.
 from __future__ import annotations
 
 import uuid
+from datetime import date
+from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from genesis.api.authz import RequirePermission
+from genesis.api.params import resolve_as_of
+from genesis.application import dormancy as dormancy_service
 from genesis.application import members as members_service
 from genesis.application.auth import AuthContext
 from genesis.domain.members import MemberStatus, MemberType
@@ -52,6 +56,26 @@ class MemberUpdateBody(BaseModel):
 class MemberStatusBody(BaseModel):
     version: int = Field(ge=1)
     status: MemberStatus
+
+
+class DormancyRunBody(BaseModel):
+    """extra="forbid": the dormancy period is NEVER caller-suppliable —
+    it resolves exclusively from tenant settings (v1.1 rule 1); a
+    period in the body is a 422."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: date | None = None
+    batch_size: int = Field(default=dormancy_service.DEFAULT_BATCH_SIZE, ge=1, le=1000)
+
+
+class DormancyRunOut(BaseModel):
+    as_of: str
+    cutoff: str
+    period_months: int
+    scanned: int
+    transitioned: int
+    batches: int
 
 
 class MemberOut(BaseModel):
@@ -187,6 +211,45 @@ async def update_member(member_id: uuid.UUID, body: MemberUpdateBody, ctx: EditC
             email=body.email,
         )
     return _out(record)
+
+
+@router.post("/jobs/dormancy")
+async def run_dormancy(body: DormancyRunBody, ctx: EditCtx) -> DormancyRunOut:
+    """Run the dormancy job for the caller's tenant (batched, idempotent).
+
+    The nightly cycle (infrastructure/dormancy_worker.py) drives the
+    same service per tenant; this route exists for operations and
+    backfills (the P10/P13.8 /jobs/arrears precedent). Members with no
+    MEMBER-INITIATED ledger activity inside the tenant-configured
+    window transition Active -> Dormant under their row lock; each
+    batch commits its own short transaction (gate 1.3).
+
+    Configuration (dormancy_period_months) is resolved server-side
+    from tenant settings only — this body accepts none of it
+    (extra="forbid"; v1.1 rule 1) — and an unconfigured or corrupt
+    period REFUSES the run with 409 and zero transitions (fail closed,
+    P13.13 FM8; never a silent default).
+
+    Permission (P4 matrix): members x EDIT — the job rewrites member
+    status rows, the same power the manual status route carries; no
+    ledger posting happens here.
+    """
+    as_of = resolve_as_of(body.as_of)
+    factory = get_sessionmaker(get_settings().database_url)
+    result = await dormancy_service.run_dormancy_for_tenant(
+        partial(tenant_session, factory, ctx.tenant_id),
+        ctx.tenant_id,
+        as_of=as_of,
+        batch_size=body.batch_size,
+    )
+    return DormancyRunOut(
+        as_of=as_of.isoformat(),
+        cutoff=result.cutoff.isoformat(),
+        period_months=result.period_months,
+        scanned=result.scanned,
+        transitioned=result.transitioned,
+        batches=result.batches,
+    )
 
 
 @router.post("/{member_id}/status")
