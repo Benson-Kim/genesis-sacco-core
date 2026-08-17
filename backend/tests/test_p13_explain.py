@@ -27,8 +27,8 @@ from db_helpers import factory
 from export_helpers import seed_actor, seed_member
 from genesis.application import transactions as txn_service
 from genesis.application.exports import CLAIM_SQL, DOWNLOAD_SQL
+from genesis.application.portfolio_reconstruction import NPL_TREND_MONTH_SQL
 from genesis.application.reports import (
-    NPL_TREND_MONTH_SQL,
     TRIAL_BALANCE_SQL,
     disbursement_collections_page_sql,
     loan_book_page_sql,
@@ -170,10 +170,16 @@ def test_p13_report_and_export_queries_are_index_backed() -> None:
         # vs 2724004325). Both are tenant-led composite indexes
         # shipped with the query (0001); the falsifiable guard stays
         # the no-Seq-Scan gate below (drop both indexes -> Seq Scan).
-        # A third legitimate serve (observed pipeline 2724760307): the
-        # 0001 UNIQUE (tenant_id, loan_id, installment_no) backing
-        # index — the same tenant+loan-led nested-loop access path as
-        # idx_schedules_loan, chosen on cost ties over near-empty rows.
+        # A third legitimate serve (observed pipeline 2724760307 job
+        # 15662887952, where it failed the then-two-way oracle; the
+        # same serve again on green main, pipeline 2725233129 job
+        # 15665250796): the 0001 UNIQUE (tenant_id, loan_id,
+        # installment_no) backing index — the same tenant+loan-led
+        # nested-loop access path as idx_schedules_loan, chosen on cost
+        # ties over near-empty rows; idx_schedules_due was the serve on
+        # green pipeline 2724765474 job 15662909824. Per issue #20/RF4,
+        # only OBSERVED index-backed serves are accepted — an unobserved
+        # plan must fail here and be dispositioned, never pre-accepted.
         assert (
             "idx_schedules_due" in npl_month
             or "idx_schedules_loan" in npl_month

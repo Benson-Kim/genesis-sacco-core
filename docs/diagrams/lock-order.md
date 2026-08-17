@@ -114,7 +114,7 @@ flowchart TD
         PERM["permissions<br/>FOR UPDATE (single row)"]
         EXP["exports<br/>FOR UPDATE SKIP LOCKED (single-row claim)"]
         OBX["outbox_events<br/>FOR UPDATE SKIP LOCKED (claim + set-based lease);<br/>retention purge: batched DELETE via SKIP LOCKED subquery<br/>(dispatched rows only — P13.17e);<br/>dispatch holds NO domain locks"]
-        IDEM["idempotency_keys<br/>ON CONFLICT claim in its OWN txn — no locks held"]
+        IDEM["idempotency_keys<br/>ON CONFLICT claim/expired-takeover in its OWN txn<br/>(row lock on the conflicting key row only — P13.17c);<br/>retention purge: batched DELETE via SKIP LOCKED subquery"]
         UADM -->|E17| UTGT
         UTGT -->|E18| OTP
         UTGT -->|E19| RT
@@ -174,7 +174,10 @@ and stop, or never touch it):
 | Dormancy batch (P13.13) | MSELF alone, `ORDER BY m.id … FOR UPDATE OF m SKIP LOCKED` (root tier, id order); the transition UPDATE, audit row and outbox INSERT happen under the held member row — **no ledger rows, no advisory, nothing below T1**. Reactivation is NOT this job: it rides E10 inside `record_deposit` | `dormancy.py:dormancy_scan_sql` L215; the worker cycle (`infrastructure/dormancy_worker.py`) takes no locks |
 | Deposit-interest batch | DSELF alone (SKIP LOCKED, id order) → E15/E16 posting | `deposit_interest.py:_accrue_batch` L231 |
 | Ledger reversal | TXN → E15 | `ledger.py:reverse_transaction` L694 |
-| Period close | ADVP **exclusive** only, then `ON CONFLICT` claim — no row locks | `accounting_periods.py:close_period` L159 |
+| Period close | ADVP **exclusive** (no row locks held when taken), then `ON CONFLICT` claim; the P13.17(a)/(b) writers run inside the same transaction: snapshot + rollup INSERT claims, whose 0028 late-insert fence probes the period row `FOR SHARE`, then the `rollup_at` marker UPDATE (implicitly `FOR NO KEY UPDATE`) — every one of these row locks is on the period row THIS transaction just inserted (invisible to every other transaction), so no cross-transaction wait can follow the advisory lock (§4 terminality note) | `accounting_periods.py:close_period` L159, `period_rollups.py:write_period_rollups` |
+| Rollup backfill (P13.17b) | accounting_periods single row `FOR UPDATE SKIP LOCKED` (oldest closed-but-unrolled), one period per short transaction via the shared batch runner; the writer's fence `FOR SHARE` + marker UPDATE then hit the row the transaction already holds (self, no wait). Re-run path (§5): a fully rolled tenant matches zero rows, locks nothing, writes nothing | `period_rollups.py:ROLLUP_BACKFILL_SCAN_SQL` L239 |
+| Snapshot writer/backfill (P13.17a) | **no row locks** — ON CONFLICT claim + MVCC reconstruction reads only; divergence 409s loudly (FM1) | `portfolio_snapshots.py:write_month_snapshot` |
+| Late-insert fence (0028 trigger, P13.17b N3) | direct-SQL INSERT into either rollup table takes accounting_periods `FOR SHARE` (the fence's locking probe) and STOPS — a single-node locker for third parties; it conflicts with the marker UPDATE's `FOR NO KEY UPDATE` (deliberately NOT `FOR KEY SHARE`, which would not conflict), serialising fabricators against completion | migration `0028_period_rollups.py:forbid_late_period_rollup_insert` |
 | RBAC permission edit | PERM alone | `rbac.py:update_permission` L227 |
 | Export claim | EXP single row SKIP LOCKED, then snapshot-consistent reads | `exports.py:CLAIM_SQL` L85 |
 | Outbox claim | OBX SKIP LOCKED + lease (ONE set-based UPDATE per batch since P13.17e), commit, dispatch **outside** any txn | `infrastructure/outbox_worker.py:dispatch_due` |
@@ -311,8 +314,16 @@ the !29/!30 prose, diagrammatic:
 advisory locks and always in the order barrier → ref (E15→E16), after
 every row lock of its caller; `close_period` takes the barrier
 exclusively while holding **no** row locks; member numbering takes the
-ref lock with no row locks. No code acquires a row lock after an
-advisory lock, so the advisory tier cannot participate in a cycle.
+ref lock with no row locks. No code acquires a **contendable** row
+lock after an advisory lock, so the advisory tier cannot participate
+in a cycle. *P13.17(a)/(b) qualifier:* inside `close_period`, the
+rollup writers run after ADVP and their fence probe/marker UPDATE do
+lock the accounting_periods row — but ONLY the row this same
+transaction just INSERTed via its ON CONFLICT claim, which no other
+transaction can see or hold; a self-owned lock on an uncommitted row
+creates no wait edge, so terminality stands (the backfill path takes
+no advisory lock at all — its period row is claimed FOR UPDATE before
+the writers run).
 Shared/exclusive on the same barrier key serialise close-vs-postings by
 design (issue #12) without ordering violations.
 
@@ -330,7 +341,8 @@ verify-vs-suspend deadlock, fixed in P13.5).
 `FOR UPDATE SKIP LOCKED` sites (E2 member scans, incl. the !36
 unclaimed-disposition scan; P13.13 dormancy
 member scan; arrears/penalty loans scan; P13.16 recovery close-pass
-case scan; deposit-interest scan;
+case scan; P13.17b rollup-backfill period claim;
+deposit-interest scan;
 exports claim; outbox claim) **do not
 wait** at their scan tier — a locked row is skipped, not queued. Two
 consequences the MRs rely on:
@@ -468,7 +480,10 @@ the !45 RF3 debt):
     UPDATE), close pass (recovery_cases `FOR UPDATE OF c SKIP
     LOCKED`). **Zero new edges.**
 
-`FOR NO KEY UPDATE` is not used anywhere.
+`FOR NO KEY UPDATE` is not written explicitly in any statement; it
+appears in two P13.17(b) docstring/comment lines naming the lock the
+`rollup_at` marker UPDATE acquires implicitly (every non-key UPDATE
+does) — the fence-vs-marker conflict analysis in the §3 rows above.
 A new grep hit that maps to none of §3's rows means this file is stale
 and the MR introducing it is rejected until it updates this file
 (v1.2 rule 11).
@@ -486,6 +501,43 @@ paragraph originally recorded — totals predating !36/!37 — was
 settled by the !47 §8 refresh above: the !36 disposition scan and
 this delta's +1 purge site are now catalogued in the derivation
 ledger and included in the printed totals.)
+
+**P13.17(a)–(b) delta (!49, authored on the post-!47 combined
+state):** the snapshot/rollup work adds exactly **one new executable
+SQL lock site** in `backend/src` — the rollup backfill's period claim
+(`period_rollups.py:ROLLUP_BACKFILL_SCAN_SQL` L239, `FOR UPDATE SKIP
+LOCKED`), catalogued as a §3 single-node locker with its §5 re-run
+path — bringing the executable-site count to **66**. Combined-state
+grep totals: 119 / 26 / 33 / 2 / 37 = **189** (`for update` /
+`for share` / `skip locked` / `for no key update` / `advisory`; was
+114/23/29/0/34 = 176 at the !47 refresh) — every line beyond the one
+new site is a docstring/comment restating the fence-vs-marker
+analysis. Two DB-LEVEL lock acquisitions live in migration DDL, not
+`src`, and are catalogued in §3 prose rows: the 0028 late-insert
+fence's `FOR SHARE` period probe (review !49 N3 — deliberately not
+`FOR KEY SHARE`, which would not conflict with the marker UPDATE's
+implicit `FOR NO KEY UPDATE`) and that marker UPDATE itself
+(`period_rollups.py:write_period_rollups`, ordered inserts → marker →
+verify per N3b). **Zero new lock-graph edges**: close-path locks are
+self-owned (§4 qualifier), the backfill claim and the fence are
+single-node lockers, and the snapshot writer takes no locks.
+
+**P13.17(c) delta (!49, same combined state):** the idempotency-expiry
+work adds exactly **one new executable SQL lock site** in
+`backend/src` — the retention purge's `FOR UPDATE SKIP LOCKED` driving
+subquery (`application/idempotency_purge.py:PURGE_BATCH_SQL`),
+catalogued as a §3 single-node locker with its §5 re-run path —
+bringing the executable-site count to **67**. Combined-state grep
+totals: 123 / 26 / 36 / 2 / 37 = **193** (`for update` / `for share` /
+`skip locked` / `for no key update` / `advisory`; union of matching
+lines, was 119/26/33/2/37 = 189 at the (a)–(b) delta) — the three
+extra lines beyond the one new site are docstrings restating the
+purge posture. The claim statement's
+change (`ON CONFLICT DO NOTHING` → `DO UPDATE` takeover) adds no grep
+hit and no site: the row lock it takes on conflict is the same-table
+idempotency_keys row, in the middleware's own transaction, before any
+handler runs — the claim stays a single-node locker. **Zero new
+lock-graph edges.**
 
 ## 9. Cross-check: MR prose vs code-derived DAG (P-DIAG.0 step 3)
 
@@ -525,10 +577,4 @@ E10 citation, updated here). The graph as built is acyclic (§4).
 5. **New advisory locks** get a §6 row; they must remain terminal
    (no row lock is ever acquired after an advisory lock).
 6. **INCOMING claims** (§7) are flipped to as-built by the executing
-   MR, never left dashed after merge.
-flipped to as-built by the executing
-   MR, never left dashed after merge.
-ipped to as-built by the executing
-   MR, never left dashed after merge.
-flipped to as-built by the executing
    MR, never left dashed after merge.

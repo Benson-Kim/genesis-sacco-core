@@ -47,7 +47,7 @@ or test/artifact present on main).
 | P13.14 | ✅ DONE | test_guarantee_release |
 | P13.15 | ✅ DONE | 0025 (!46, merged 2026-08-02); test_corrections |
 | P13.16 | 🔄 IN PROGRESS | !47 — claims 0026, down_revision '0025'; merges AFTER the P13.15 track (rule 12); the merging maintainer flips this row to ✅ DONE upon merge |
-| P13.17 | 🔄 IN PROGRESS | (e) DSA-6 in !44 (0024) with maintainer-review fixes R6/R7 + flake disposition in flight; (a)–(d) NOT found on main — verify no in-flight MR before claiming |
+| P13.17 | 🔄 IN PROGRESS | (e) DSA-6 ✅ via !44 (0024, merged); (a)–(d) in flight on !49 — claims 0027–0029 chained from 0026, on the post-!47 combined state; the merging maintainer flips this row to ✅ DONE upon merge |
 | P-DIAG.0 | ✅ DONE | docs/diagrams/lock-order.md |
 | P-DIAG.1 | ✅ DONE | c4-context/container/component + c4-spot-check.py |
 | P-DIAG.2 | ✅ DONE | erd.md + erd-spot-check.py |
@@ -74,7 +74,7 @@ or test/artifact present on main).
 | RF1 | R7: SECURITY DEFINER functions PUBLIC-executable (cross-tenant activity oracle) | !44 itself (0024 REVOKE/GRANT + proacl sweep test) — in flight |
 | RF2 | Dead-letter operator requeue/resolve path (dead rows now accumulate forever by design) | P20 — added to its scope: delivery-status lifecycle must include an audited, RBAC-gated requeue/resolve admin path for status='dead' rows |
 | RF3 | lock-order.md §8 re-derivation pass over !36/!37 grep totals (owed per its own note) | next docs-touching MR (rule 11 debt) — does not fit a feature prompt; docs-only micro-MR acceptable |
-| RF4 | CI flake eradication: issue #20 EXPLAIN planner flakes + test_run_export latency threshold (pipeline 2724154615) | !44 dispositions the export threshold; the EXPLAIN-flake class needs a micro-MR BEFORE P21 hardens perf gates (P21 FM1 forbids quietly raised thresholds) |
+| RF4 | CI flake eradication: issue #20 EXPLAIN planner flakes + test_run_export latency threshold (pipeline 2724154615) | !44 dispositions the export threshold; the EXPLAIN-flake class needs a micro-MR BEFORE P21 hardens perf gates (P21 FM1 forbids quietly raised thresholds) — 🔄 the micro-MR is !48 (tests-only: observed-alternates citations + the enable_sort=off shape pin; no threshold touched; the merging maintainer flips this to ✅ with the green-pipeline evidence) |
 
 Migration-claim registry delta (rule 14): 0001–0023 on main; **0024 is
 !44's (P13.17e)**; next free number is 0025 — P13.15 claims it; P13.16

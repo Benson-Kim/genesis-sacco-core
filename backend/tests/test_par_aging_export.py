@@ -83,8 +83,11 @@ async def _render_par(tid: uuid.UUID, as_of: datetime) -> list[tuple[object, ...
         query = await REPORTS[ReportName.PORTFOLIO_AT_RISK_AGING].build(
             session, tid, ExportFilters(), as_of
         )
-        run = await run_export(query, 100, row_cap=1000)
-    return [tuple(row) for row in run.rows]
+        # DSA-4 (P13.17d): the run carries no rows — collect the
+        # delivered batches, exactly as the real renderers do.
+        rendered: list[tuple[object, ...]] = []
+        await run_export(query, 100, row_cap=1000, on_batch=rendered.extend)
+    return rendered
 
 
 def test_fm1_boundary_days_land_in_the_documented_buckets() -> None:

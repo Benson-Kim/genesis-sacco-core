@@ -8,6 +8,10 @@ modules — these are the statements the endpoints actually run.
 Tiny CI tables make seqscan the cheaper plan; the capture disables it
 for the session to prove each query is SERVABLE by an index — i.e. the
 plans stay index-backed once the tables grow (P10-P13 precedent).
+enable_sort=off additionally pins each keyset page to its
+order-preserving index (issue #20: at rows=0 the planner otherwise
+breaks the cost tie arbitrarily — bitmap-scanning ANY tenant-led audit
+index and sorting; the test_codex_review_explain / !47 pin pattern).
 Falsifiable guard: drop the 0015 indexes and the no-sequential-scan
 gate below fails.
 """
@@ -49,6 +53,13 @@ def test_p135_user_and_audit_queries_are_index_backed() -> None:
 
         async with tenant_session(factory(), tid) as session:
             await session.execute(text("SET LOCAL enable_seqscan = off"))
+            # Issue #20 / RF4: pin the plan SHAPE, not just index-served-ness.
+            # Every capture here is a keyset page whose ORDER BY is carried by
+            # an order-preserving index; enable_sort=off removes the rows=0
+            # cost tie that let the planner bitmap-scan an arbitrary
+            # tenant-led audit index and sort (the observed issue #20 flake
+            # class — see the assertion comments below for the runs).
+            await session.execute(text("SET LOCAL enable_sort = off"))
             users_page = await _explain(
                 session,
                 users_page_sql(with_cursor=True, with_status=True, with_role=False),
@@ -152,8 +163,10 @@ def test_p135_user_and_audit_queries_are_index_backed() -> None:
         header = (
             "P13.5 users/audit-log EXPLAIN (ANALYZE, BUFFERS) — captured in CI\n"
             "against the migrated Postgres service under the RLS app role.\n"
-            "enable_seqscan=off because CI tables are tiny; the assertion is\n"
-            "that each query is servable by its index (plan shape at scale).\n"
+            "enable_seqscan=off because CI tables are tiny; enable_sort=off\n"
+            "pins each keyset page to its order-preserving index (issue #20\n"
+            "flake class); the assertion is plan shape at scale: index-served\n"
+            "in index order, no sort node.\n"
         )
         sections = [
             ("users page (keyset + status filter)", users_page),
@@ -167,18 +180,24 @@ def test_p135_user_and_audit_queries_are_index_backed() -> None:
         OUT_PATH.write_text(f"{header}\n{body}\n")
 
         assert "idx_users_created_keyset" in users_page
-        # The unfiltered/date-bounded pages are normally served by the
-        # order-preserving idx_audit_keyset scan; on near-empty CI
-        # tables the planner may instead bitmap-scan ANY tenant-led
-        # audit index and sort the zero-to-few rows (observed pipeline
-        # 2724760307: Bitmap Index Scan on idx_audit_entity — a cost
-        # tie at rows=0, the test_p13_explain disb_coll precedent).
-        # Every idx_audit_* index is tenant-led (0015), so the prefix
-        # keeps the guard honest; the falsifiable gate remains the
-        # no-sequential-scan check below (drop the indexes -> Seq Scan).
-        assert "idx_audit_" in audit_unfiltered
+        # Issue #20 / RF4 (EXPLAIN planner-flake eradication): with only
+        # enable_seqscan=off, the unfiltered/date-bounded pages sat on a
+        # planner cost tie at rows=0 — OBSERVED flipping between a
+        # Bitmap Index Scan on idx_audit_entity + Sort (pipeline
+        # 2724760307 job 15662887952, where it failed the then-exact
+        # oracle; the same serve again on green main, pipeline
+        # 2725233129 job 15665250796) and a Bitmap Index Scan on
+        # idx_audit_keyset + Sort (pipeline 2724765474 job 15662909824).
+        # Rather than keep the interim idx_audit_ prefix loosening
+        # (!46 / ef31e95a), enable_sort=off above pins the shape (the
+        # test_codex_review_explain / !47 pattern): the order-preserving
+        # idx_audit_keyset scan is the only sort-free serve, so the
+        # exact oracle is RESTORED. The falsifiable gate remains the
+        # no-sequential-scan check below (drop the indexes -> Seq Scan);
+        # the no-Sort gate below fails if the flake shape ever returns.
+        assert "idx_audit_keyset" in audit_unfiltered
         # Date bounds ride the same keyset index (leading at column).
-        assert "idx_audit_" in audit_dated
+        assert "idx_audit_keyset" in audit_dated
         # On near-empty CI tables the planner may serve a filtered page
         # either from the filter-shaped index or by scanning the keyset
         # index in order with the filter as a condition — both are
@@ -189,5 +208,8 @@ def test_p135_user_and_audit_queries_are_index_backed() -> None:
         assert "idx_audit_action_keyset" in audit_action or "idx_audit_keyset" in audit_action
         for name, plan in sections:
             assert "Seq Scan" not in plan, f"{name} plan fell back to a sequential scan"
+            # Every capture is a keyset page riding index order; under the
+            # enable_sort=off pin a Sort node IS the issue-#20 flake shape.
+            assert "Sort" not in plan, f"{name} plan sorted instead of riding index order"
 
     asyncio.run(run())

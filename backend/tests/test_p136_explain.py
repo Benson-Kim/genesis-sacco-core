@@ -49,6 +49,13 @@ def test_p136_branch_queries_are_index_backed() -> None:
 
         async with tenant_session(factory(), tid) as session:
             await session.execute(text("SET LOCAL enable_seqscan = off"))
+            # Issue #20 / RF4 fence: every plan captured here is sort-free on
+            # all observed runs (jobs 15662887952 / 15662909824 / 15665250796),
+            # so enable_sort=off cannot change today's plans; it pins the
+            # shape so a rows=0 cost tie can never swap an order-preserving
+            # index scan for the bitmap-scan + Sort flake (the
+            # test_p135_explain audit-page class).
+            await session.execute(text("SET LOCAL enable_sort = off"))
             listing = await _explain(
                 session,
                 branches_page_sql(with_cursor=True),
@@ -75,7 +82,8 @@ def test_p136_branch_queries_are_index_backed() -> None:
         header = (
             "P13.6 branches EXPLAIN (ANALYZE, BUFFERS) — captured in CI\n"
             "against the migrated Postgres service under the RLS app role.\n"
-            "enable_seqscan=off because CI tables are tiny; the assertion is\n"
+            "enable_seqscan=off because CI tables are tiny; enable_sort=off\n"
+            "pins the observed sort-free shape (issue #20); the assertion is\n"
             "that each query is servable by its index (plan shape at scale).\n"
         )
         sections = [

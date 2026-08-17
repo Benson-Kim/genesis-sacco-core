@@ -112,7 +112,14 @@ def test_p1313_dormancy_queries_are_index_backed() -> None:
         # 'active'; on tiny CI tables the equal costs tie-break
         # arbitrarily). Falsifiable: drop both and the no-seq-scan
         # gate below fails.
-        assert "idx_members_dormancy_scan" in scan_plan or "idx_members_dividend_scan" in scan_plan
+        assert (
+            "idx_members_dormancy_scan" in scan_plan
+            or "idx_members_dividend_scan" in scan_plan
+            # 0028 (N2) added uq_members_tenant_id_id - the same
+            # (tenant_id, id) shape, a third arbitrary tie-break winner
+            # on tiny CI tables (issue #20 class, RF4 disposition).
+            or "uq_members_tenant_id_id" in scan_plan
+        )
         # The activity anti-join and the last-activity subselect are
         # driven by a member-attributed transactions index; on the tiny
         # CI tables the planner may pick either (0001 or 0008 shape).

@@ -134,6 +134,44 @@ def _page_stream(lines: list[str], *, title: str, meta: str) -> bytes:
     return "\n".join(parts).encode("latin-1")
 
 
+class PdfBuilder:
+    """Incremental PDF assembly, one batch of rows at a time (DSA-4).
+
+    The page model is line-oriented, so each batch is folded into its
+    formatted LINES immediately and the raw Cell tuples are released
+    with the batch — the export engine no longer accumulates rows for
+    the PDF (P13.17d: the third in-memory copy is gone; what remains
+    is one string per rendered line, the same order of memory as the
+    CSV buffer). Page streams are assembled at finish(), because the
+    per-page meta line (row count / truncation) is only known once the
+    engine has observed the final batch.
+
+    add_rows is pure CPU and is called by the export engine off the
+    event loop (gate 1.3); state is sequential per export job.
+    Batching is invisible in the output: any split of the same rows
+    yields byte-identical PDFs (the FM4 equality gate,
+    tests/test_p1317_pdf_incremental.py).
+    """
+
+    def __init__(self, headers: tuple[str, ...]) -> None:
+        self._headers = headers
+        self._lines: list[str] = []
+        if len(headers) <= _WIDE_REPORT_COLUMNS:
+            self._lines.append(" | ".join(headers)[:_MAX_LINE_CHARS])
+        self._row_count = 0
+
+    def add_rows(self, rows: list[tuple[Cell, ...]]) -> None:
+        for row in rows:
+            self._lines.extend(_row_lines(self._headers, row))
+        self._row_count += len(rows)
+
+    def finish(self, *, title: str, meta: str) -> bytes:
+        lines = self._lines
+        if self._row_count == 0:
+            lines = [*lines, "(no rows)"]
+        return _assemble_pdf(lines, title=title, meta=meta)
+
+
 def render_pdf(
     *,
     title: str,
@@ -143,17 +181,17 @@ def render_pdf(
 ) -> bytes:
     """Render a tabular report as a paginated text PDF (pure CPU).
 
-    Called by the export engine off the event loop (gate 1.3). Row
-    volume is bounded by the server-side export row cap upstream.
+    One-shot convenience over PdfBuilder — the single source of truth
+    for the page model (gate 1.1): a one-shot render IS an incremental
+    render fed one batch.
     """
-    lines: list[str] = []
-    if len(headers) <= _WIDE_REPORT_COLUMNS:
-        lines.append(" | ".join(headers)[:_MAX_LINE_CHARS])
-    for row in rows:
-        lines.extend(_row_lines(headers, row))
-    if not rows:
-        lines.append("(no rows)")
+    builder = PdfBuilder(headers)
+    builder.add_rows(rows)
+    return builder.finish(title=title, meta=meta)
 
+
+def _assemble_pdf(lines: list[str], *, title: str, meta: str) -> bytes:
+    """Paginate formatted lines and emit the PDF 1.4 byte stream."""
     pages = [lines[i : i + _LINES_PER_PAGE] for i in range(0, len(lines), _LINES_PER_PAGE)]
 
     # Object layout: 1 catalog, 2 pages root, 3 font, then per page

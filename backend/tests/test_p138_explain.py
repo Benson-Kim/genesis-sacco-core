@@ -71,6 +71,13 @@ def test_p138_penalty_accrual_scan_is_index_backed() -> None:
 
         async with tenant_session(factory(), tid) as session:
             await session.execute(text("SET LOCAL enable_seqscan = off"))
+            # Issue #20 / RF4 fence: every plan captured here is sort-free on
+            # all observed runs (jobs 15662887952 / 15662909824 / 15665250796),
+            # so enable_sort=off cannot change today's plans; it pins the
+            # shape so a rows=0 cost tie can never swap an order-preserving
+            # index scan for the bitmap-scan + Sort flake (the
+            # test_p135_explain audit-page class).
+            await session.execute(text("SET LOCAL enable_sort = off"))
             scan_plan = await _explain(
                 session,
                 arrears_scan_sql(with_after=True, with_penalty=True),
@@ -89,7 +96,8 @@ def test_p138_penalty_accrual_scan_is_index_backed() -> None:
         header = (
             "P13.8 penalty-accrual EXPLAIN (ANALYZE, BUFFERS) — captured in CI\n"
             "against the migrated Postgres service under the RLS app role.\n"
-            "enable_seqscan=off because CI tables are tiny; the assertion is\n"
+            "enable_seqscan=off because CI tables are tiny; enable_sort=off\n"
+            "pins the observed sort-free shape (issue #20); the assertion is\n"
             "that the scan is served by idx_loans_active_scan, the schedule\n"
             "subqueries by an index, the claim anti-join by\n"
             "uq_penalty_accruals_claim (shipped in 0019 with the query), and\n"

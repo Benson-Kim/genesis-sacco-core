@@ -42,11 +42,14 @@ class RecordingQuery:
 def test_no_truncation_below_the_cap() -> None:
     async def run() -> None:
         source = RecordingQuery(total=7)
-        result = await run_export(source.query(), 3, row_cap=100)
+        seen: list[list[tuple[Cell, ...]]] = []
+        result = await run_export(source.query(), 3, row_cap=100, on_batch=seen.append)
         # Hand-computed: 7 rows, cap 100 -> everything, no truncation.
+        # Delivery is observed through on_batch - since P13.17(d) the
+        # run carries no rows (DSA-4); the oracle is unchanged.
         assert result.row_count == 7
         assert result.truncated is False
-        assert result.rows == [(i,) for i in range(7)]
+        assert [cells for batch in seen for cells in batch] == [(i,) for i in range(7)]
         assert result.row_limit == 100
 
     asyncio.run(run())
@@ -70,11 +73,13 @@ def test_exactly_cap_rows_is_not_truncated() -> None:
 def test_truncates_exactly_at_the_cap() -> None:
     async def run() -> None:
         source = RecordingQuery(total=6)
-        result = await run_export(source.query(), 2, row_cap=5)
+        seen: list[list[tuple[Cell, ...]]] = []
+        result = await run_export(source.query(), 2, row_cap=5, on_batch=seen.append)
         # Hand-computed: 6 rows, cap 5 -> exactly 5 kept, flagged.
+        # (Same DSA-4 note as above: delivery observed via on_batch.)
         assert result.row_count == 5
         assert result.truncated is True
-        assert result.rows == [(i,) for i in range(5)]
+        assert [cells for batch in seen for cells in batch] == [(i,) for i in range(5)]
 
     asyncio.run(run())
 
@@ -103,7 +108,7 @@ def test_projection_and_batch_delivery_order() -> None:
         )
         # Hand-computed batches of 2,2,1 in keyset order.
         assert seen == [[(0, "x"), (1, "x")], [(2, "x"), (3, "x")], [(4, "x")]]
-        assert result.rows == [(0, "x"), (1, "x"), (2, "x"), (3, "x"), (4, "x")]
+        assert result.row_count == 5
 
     asyncio.run(run())
 

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from genesis.api.access import router as access_router
+from genesis.api.accounting_periods import jobs_router as accounting_jobs_router
 from genesis.api.accounting_periods import router as accounting_periods_router
 from genesis.api.audit_log import router as audit_log_router
 from genesis.api.auth import router as auth_router
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(reports_router)
     app.include_router(tenant_settings_router)
     app.include_router(accounting_periods_router)
+    app.include_router(accounting_jobs_router)
     app.include_router(me_router)
     app.include_router(access_router)
     app.include_router(users_router)

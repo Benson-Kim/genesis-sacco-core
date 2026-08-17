@@ -63,7 +63,7 @@ from genesis.application.reports import (
     assert_scope_exists,
     validate_filters,
 )
-from genesis.domain.documents import Cell, CsvBuilder, render_pdf
+from genesis.domain.documents import Cell, CsvBuilder, PdfBuilder
 from genesis.domain.rbac import Action, Module
 from genesis.errors import AppError, NotFoundError
 from genesis.settings import get_settings
@@ -134,7 +134,11 @@ async def _between_batches() -> None:
 
 @dataclass(frozen=True)
 class ExportRun:
-    rows: list[tuple[Cell, ...]]
+    """Outcome metadata ONLY (P13.17d / DSA-4): the run carries no
+    rows - every batch is handed to on_batch and released, so worker
+    memory no longer scales with a third in-memory copy of the
+    export."""
+
     row_count: int
     truncated: bool
     row_limit: int
@@ -154,33 +158,35 @@ async def run_export(
     + 1), so "more rows exist" is always observed, never inferred —
     the truncation flag is exact. on_batch (CPU-bound rendering) runs
     in a worker thread via asyncio.to_thread, keeping the event loop
-    responsive while the export renders (gate 1.3).
+    responsive while the export renders (gate 1.3). Batches are NOT
+    accumulated (DSA-4): on_batch is the only consumer of the cells;
+    a batch is released as soon as it has been rendered.
     """
     if batch_size < 1:
         raise ValueError("batch_size must be positive")
     if row_cap < 1:
         raise ValueError("row_cap must be positive")
-    rows: list[tuple[Cell, ...]] = []
+    row_count = 0
     truncated = False
     cursor: ReportCursor | None = None
     while True:
-        want = min(batch_size, row_cap - len(rows))
+        want = min(batch_size, row_cap - row_count)
         raw = await query.fetch(cursor, want + 1)
         batch_raw = raw[:want]
         batch_cells = [query.to_cells(item) for item in batch_raw]
         if project is not None:
             batch_cells = [project(cells) for cells in batch_cells]
-        rows.extend(batch_cells)
+        row_count += len(batch_cells)
         if on_batch is not None and batch_cells:
             await asyncio.to_thread(on_batch, batch_cells)
         if len(raw) <= want:
             break
-        if len(rows) >= row_cap:
+        if row_count >= row_cap:
             truncated = True
             break
         cursor = query.cursor_key(batch_raw[-1])
         await _between_batches()
-    return ExportRun(rows=rows, row_count=len(rows), truncated=truncated, row_limit=row_cap)
+    return ExportRun(row_count=row_count, truncated=truncated, row_limit=row_cap)
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +416,15 @@ async def run_export_job(session: AsyncSession, tenant_id: uuid.UUID) -> ExportJ
         return tuple(cells[index] for index in indexes)
 
     csv_builder = CsvBuilder(headers)
+    pdf_builder = PdfBuilder(headers)
+
+    def render_batch(batch: list[tuple[Cell, ...]]) -> None:
+        """Both renderers fold each batch immediately (DSA-4): the
+        engine keeps no copy, so worker memory is the two document
+        buffers, never the row set."""
+        csv_builder.add_rows(batch)
+        pdf_builder.add_rows(batch)
+
     try:
         query = await definition.build(
             session, tenant_id, ExportFilters.from_json(record.filters), record.as_of
@@ -419,7 +434,7 @@ async def run_export_job(session: AsyncSession, tenant_id: uuid.UUID) -> ExportJ
             export_batch_size(),
             row_cap=export_row_cap(),
             project=project,
-            on_batch=csv_builder.add_rows,
+            on_batch=render_batch,
         )
     except AppError as exc:
         raise ExportJobError(record.id, exc) from exc
@@ -430,9 +445,7 @@ async def run_export_job(session: AsyncSession, tenant_id: uuid.UUID) -> ExportJ
         f"(limit {run.row_limit}){truncation_note}"
     )
     csv_bytes = csv_builder.finish()
-    pdf_bytes = await asyncio.to_thread(
-        render_pdf, title=definition.title, meta=meta, headers=headers, rows=run.rows
-    )
+    pdf_bytes = await asyncio.to_thread(pdf_builder.finish, title=definition.title, meta=meta)
 
     now = datetime.now(UTC)
     await session.execute(

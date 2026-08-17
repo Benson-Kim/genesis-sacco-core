@@ -35,7 +35,8 @@ pin period-end postings to the period's last day in UTC, e.g.
 datetime.combine(fy.end, time.max, UTC)). The series therefore buckets
 by UTC calendar month — date_trunc('month', occurred_at AT TIME ZONE
 'UTC') — exactly matching the NPL-trend month cutoffs
-(reports.npl_trend_month_ends works on as_of.astimezone(UTC)). A leg at
+(portfolio_reconstruction.npl_trend_month_ends works on
+as_of.astimezone(UTC)). A leg at
 23:59:59.999999 on a month's last day and one at 00:00:00 on the 1st
 land in different buckets; the FY-end pinned postings land inside the
 FY-end month.
@@ -216,8 +217,9 @@ class DashboardSummary:
 
 def dashboard_month_starts(as_of: datetime, months: int) -> list[date]:
     """First day of each of the last `months` UTC calendar months, oldest
-    first — the NPL-trend month-walk (reports.npl_trend_month_ends)
-    anchored on month STARTS because the flow series needs half-open
+    first — the NPL-trend month-walk
+    (portfolio_reconstruction.npl_trend_month_ends) anchored on month
+    STARTS because the flow series needs half-open
     [start, next-start) buckets rather than end-of-month cutoffs."""
     cursor = as_of.astimezone(UTC).date().replace(day=1)
     starts = [cursor]

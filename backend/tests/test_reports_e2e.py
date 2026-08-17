@@ -211,9 +211,13 @@ def test_trial_balance_balances_with_hand_computed_totals() -> None:
         # Per-account (sorted) and the grand total (DR == CR == 22000).
         assert rows[0] == ["Account", "Debits", "Credits"]
         assert rows[1] == ["cash.bank", "5000.00", "2000.00"]
-        assert rows[2] == ["cash.mpesa", "15000.00", "0"]
+        # Zeroes render as canonical cents since P13.17(b) quantized
+        # the builder's cells (values unchanged, formatting only —
+        # rendering is now identical whether an account was served by
+        # the rolled CTE or the live scan).
+        assert rows[2] == ["cash.mpesa", "15000.00", "0.00"]
         assert rows[3] == ["member.deposits", "2000.00", "15000.00"]
-        assert rows[4] == ["member.shares", "0", "5000.00"]
+        assert rows[4] == ["member.shares", "0.00", "5000.00"]
         assert rows[5] == ["TOTAL", "22000.00", "22000.00"]
         assert len(rows) == 6
 
@@ -524,7 +528,12 @@ def test_npl_trend_reconstructs_month_end_state() -> None:
         # gross = 10000.00.
         first = rows[1]
         assert first[1] == "10000.00"
-        assert (first[2], first[3], first[4]) == ("0", "0", "0.00")
+        # NPL balance renders canonical cents ("0.00"; value identical
+        # to the pre-P13.17 "0"): the reconstruction quantizes via
+        # domain.money.to_cents so the artifact is byte-identical
+        # whichever path (snapshot row vs reconstruction) serves the
+        # month — the disclosed formatting-only rendering delta.
+        assert (first[2], first[3], first[4]) == ("0.00", "0", "0.00")
 
         # Hand-computed, current month (as-of today): days past due =
         # 200 > 90 -> NPL; ledger-reconstructed outstanding = 10000 -

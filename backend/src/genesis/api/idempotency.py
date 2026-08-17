@@ -11,6 +11,26 @@ hash, so a DIFFERENT user presenting the same key can never read the
 first caller's stored response (that would bypass the per-handler
 authorization the original caller passed). A mismatched hash gets the
 least-disclosure 409 envelope instead.
+
+Expiry (P13.17c / DSA-3, named failure mode FM3): every claim carries
+expires_at = now() + Settings.idempotency_retention_hours (server
+config, v1.1 rule 1 — no request field exists for it). The fence
+``expires_at > now()`` is enforced in BOTH places a stored row can be
+read — the replay lookup below AND the claim statement's takeover arm —
+so expiry holds even before the retention purge
+(application/idempotency_purge.py) has ever run:
+
+  * the claim is ONE atomic statement: INSERT .. ON CONFLICT DO UPDATE
+    whose WHERE arm takes over the existing row ONLY when it has
+    expired (resetting hash/response/epoch). Two concurrent requests
+    on an expired key serialise on the row: the winner's takeover
+    commits a fresh live epoch and the loser's WHERE re-evaluates to
+    false — exactly one new effect per claim epoch (FM3);
+  * an expired key therefore executes as a NEW request with its own
+    single effect — it never replays the stale stored response;
+  * _store/_release are pinned to the caller's own epoch
+    (request_hash match + still in flight), so a stale writer that
+    outlived its retention window can never clobber a successor epoch.
 """
 
 from __future__ import annotations
@@ -31,6 +51,42 @@ from genesis.infrastructure.tenancy import tenant_session
 from genesis.settings import get_settings
 
 _MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+#: Atomic claim + expired-claim takeover (DSA-3, FM3) in ONE statement:
+#: a fresh key INSERTs; a conflicting LIVE row does nothing (no row
+#: returned → replay/409 path); a conflicting EXPIRED row is taken
+#: over — hash and response reset, a fresh retention window started —
+#: under the row lock, so concurrent takeovers serialise and exactly
+#: one wins (the loser's WHERE re-evaluates against the committed
+#: fresh epoch and fails). Module-level so tests pin the exact SQL.
+CLAIM_SQL = (
+    "INSERT INTO idempotency_keys (tenant_id, key, request_hash, expires_at) "
+    "VALUES (CAST(:tid AS uuid), :key, :rh, "
+    "now() + make_interval(hours => :hours)) "
+    "ON CONFLICT (tenant_id, key) DO UPDATE SET "
+    "request_hash = EXCLUDED.request_hash, "
+    "response_status = NULL, "
+    "response_body = NULL, "
+    "created_at = now(), "
+    "expires_at = EXCLUDED.expires_at "
+    "WHERE idempotency_keys.expires_at <= now() "
+    "RETURNING id"
+)
+
+#: Replay lookup with the expiry fence (DSA-3): an expired row is
+#: invisible here even before the purge job has ever run.
+REPLAY_LOOKUP_SQL = (
+    "SELECT request_hash, response_status, response_body "
+    "FROM idempotency_keys "
+    "WHERE tenant_id = CAST(:tid AS uuid) AND key = :key "
+    "AND expires_at > now()"
+)
+
+
+def idempotency_retention_hours() -> int:
+    """Replay retention from server config (v1.1 rule 1) — the
+    exports.py accessor pattern so tests can pin values."""
+    return get_settings().idempotency_retention_hours
 
 
 def _header(scope: Scope, name: bytes) -> str | None:
@@ -131,22 +187,24 @@ class IdempotencyMiddleware:
         async with tenant_session(factory, tenant_id) as session:
             claimed = (
                 await session.execute(
-                    text(
-                        "INSERT INTO idempotency_keys (tenant_id, key, request_hash) "
-                        "VALUES (CAST(:tid AS uuid), :key, :rh) "
-                        "ON CONFLICT (tenant_id, key) DO NOTHING RETURNING id"
-                    ),
-                    {"tid": str(tenant_id), "key": key, "rh": request_hash},
+                    text(CLAIM_SQL),
+                    {
+                        "tid": str(tenant_id),
+                        "key": key,
+                        "rh": request_hash,
+                        "hours": idempotency_retention_hours(),
+                    },
                 )
             ).first()
             if claimed is None:
+                # A LIVE claim exists (the takeover arm refused it).
+                # The lookup repeats the expiry fence: if the row
+                # expired in the meantime, neither replay nor 409 is
+                # served from it — the client simply retries into the
+                # takeover path.
                 row = (
                     await session.execute(
-                        text(
-                            "SELECT request_hash, response_status, response_body "
-                            "FROM idempotency_keys "
-                            "WHERE tenant_id = CAST(:tid AS uuid) AND key = :key"
-                        ),
+                        text(REPLAY_LOOKUP_SQL),
                         {"tid": str(tenant_id), "key": key},
                     )
                 ).first()
@@ -190,19 +248,20 @@ class IdempotencyMiddleware:
         try:
             await self.app(scope, replay_receive, capture_send)
         except Exception:
-            await _release(factory, tenant_id, key)
+            await _release(factory, tenant_id, key, request_hash)
             raise
 
         if status_code is not None and status_code < 500:
-            await _store(factory, tenant_id, key, status_code, b"".join(parts))
+            await _store(factory, tenant_id, key, request_hash, status_code, b"".join(parts))
         else:
-            await _release(factory, tenant_id, key)
+            await _release(factory, tenant_id, key, request_hash)
 
 
 async def _store(
     factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,
     key: str,
+    request_hash: str,
     status_code: int,
     raw: bytes,
 ) -> None:
@@ -211,28 +270,41 @@ async def _store(
     except ValueError:
         payload = {"raw": raw.decode("utf-8", errors="replace")}
     async with tenant_session(factory, tenant_id) as session:
+        # Epoch pin (DSA-3): only the epoch this request claimed —
+        # same hash, still in flight — may receive the response. A
+        # writer that outlived its retention window finds a successor
+        # epoch (hash reset or response stored) and writes nothing.
         await session.execute(
             text(
                 "UPDATE idempotency_keys SET response_status = :st, "
                 "response_body = CAST(:body AS jsonb) "
-                "WHERE tenant_id = CAST(:tid AS uuid) AND key = :key"
+                "WHERE tenant_id = CAST(:tid AS uuid) AND key = :key "
+                "AND request_hash = :rh AND response_status IS NULL"
             ),
             {
                 "st": status_code,
                 "body": json.dumps(payload),
                 "tid": str(tenant_id),
                 "key": key,
+                "rh": request_hash,
             },
         )
 
 
 async def _release(
-    factory: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, key: str
+    factory: async_sessionmaker[AsyncSession],
+    tenant_id: uuid.UUID,
+    key: str,
+    request_hash: str,
 ) -> None:
     async with tenant_session(factory, tenant_id) as session:
+        # Same epoch pin as _store: a 5xx releases only the claim this
+        # request owns, never a successor epoch's live claim.
         await session.execute(
             text(
-                "DELETE FROM idempotency_keys WHERE tenant_id = CAST(:tid AS uuid) AND key = :key"
+                "DELETE FROM idempotency_keys "
+                "WHERE tenant_id = CAST(:tid AS uuid) AND key = :key "
+                "AND request_hash = :rh AND response_status IS NULL"
             ),
-            {"tid": str(tenant_id), "key": key},
+            {"tid": str(tenant_id), "key": key, "rh": request_hash},
         )

@@ -61,6 +61,9 @@ ENTITY_MODULES: dict[str, Module] = {
     "transaction": Module.TRANSACTIONS,
     "transactions": Module.TRANSACTIONS,
     "accounting_periods": Module.TRANSACTIONS,
+    # P13.17(a): month-end portfolio snapshot writes carry the exact
+    # NPL/gross figures — loan-book money, disclosed per loan_book:view.
+    "portfolio_month_snapshots": Module.LOAN_BOOK,
     # P13.11: declaration/distribution payloads carry the exact money
     # figures, disclosed per transactions entitlement (their routes
     # are gated transactions:*); share transfers move member equity

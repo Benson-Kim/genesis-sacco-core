@@ -139,8 +139,11 @@ def test_h7_issue_17_probe_every_new_report_builder() -> None:
             # Session AS tenant A; the report argument is the probe.
             async with tenant_session(factory(), tid_a) as session:
                 query = await REPORTS[report].build(session, probe_tid, ExportFilters(), as_of)
-                run_result = await run_export(query, 100, row_cap=1000)
-            return [tuple(row) for row in run_result.rows]
+                # DSA-4 (P13.17d): the run carries no rows — collect
+                # the delivered batches like the real renderers do.
+                rendered: list[tuple[object, ...]] = []
+                await run_export(query, 100, row_cap=1000, on_batch=rendered.extend)
+            return rendered
 
         # Control arm: tenant A's own renders DO carry its data (so
         # the zero results below cannot be vacuous). The PAR vector

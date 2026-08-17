@@ -35,6 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application.audit import record_audit
 from genesis.application.outbox import enqueue_event
+from genesis.application.period_rollups import write_period_rollups
+from genesis.application.portfolio_snapshots import write_month_snapshot
 from genesis.errors import ConflictError, InvalidInputError
 
 #: Advisory lock namespace for the period barrier — distinct from the
@@ -182,6 +184,34 @@ async def close_period(
     )
     if claimed.rowcount != 1:
         raise ConflictError(f"accounting period {period_start.isoformat()} is already closed")
+
+    # P13.17(a): the month-end portfolio snapshot is written in the
+    # SAME transaction, while the exclusive barrier guarantees no
+    # posting into this month is in flight — so the reconstruction the
+    # snapshot stores is final the instant the close commits. The
+    # writer claims atomically (ON CONFLICT, v1.1 rule 5); if a
+    # backfill already wrote this month it verifies equality and 409s
+    # LOUDLY on divergence (FM1), aborting the close — a diverging
+    # snapshot is never trusted, never self-healed. No row locks are
+    # taken (lock-order.md: close_period stays advisory-only + claims).
+    await write_month_snapshot(session, tenant_id, actor_id, period_end, source="close_period")
+
+    # P13.17(b): the period's per-account rollups and member balances
+    # are written in the SAME transaction — the 0012 trigger freezes
+    # the month the instant the close commits, so the rollups are
+    # immutable facts. The writer claims via ON CONFLICT, verifies the
+    # stored set equals the reconstruction (409 loudly on ANY
+    # divergence — FM2, never self-healed) and sets the write-once
+    # rollup_at marker that arms the DB-level late-insert fence.
+    await write_period_rollups(
+        session,
+        tenant_id,
+        actor_id,
+        period_id=period_id,
+        period_start=period_start,
+        period_end=period_end,
+        source="close_period",
+    )
 
     await record_audit(
         session,

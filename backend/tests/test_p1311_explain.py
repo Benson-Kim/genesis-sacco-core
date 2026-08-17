@@ -167,7 +167,13 @@ def test_p1311_dividend_queries_are_index_backed() -> None:
         body = "\n\n".join(f"=== {name} ===\n{plan}" for name, plan in sections)
         OUT_PATH.write_text(f"{header}\n{body}\n")
 
-        assert "idx_members_dividend_scan" in scan_plan
+        # Either the 0022 partial index or 0028's uq_members_tenant_id_id
+        # (the N2 composite-FK backing UNIQUE - the same (tenant_id, id)
+        # shape) serves the scan; on tiny CI tables the equal costs
+        # tie-break arbitrarily (the issue #20 class, RF4 disposition).
+        # At scale the partial index wins (pre-filtered, smaller).
+        # Falsifiable: drop them and the no-seq-scan gate fails.
+        assert "idx_members_dividend_scan" in scan_plan or "uq_members_tenant_id_id" in scan_plan
         assert "uq_dividend_distributions_claim" in scan_plan
         assert "Seq Scan" not in scan_plan
         # Issue #19 P3: the disposition scan is served by the 0022

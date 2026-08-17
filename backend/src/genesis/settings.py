@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # (gate 1.3). Hard caps live in application.dashboard.
     dashboard_series_months: int = 6
     dashboard_guarantor_cap: int = 20
+    # Idempotency replay retention (P13.17c / DSA-3): how long a
+    # claimed key replays its stored response. Server config ONLY
+    # (v1.1 rule 1) — no request carries it; the middleware sets
+    # expires_at from this value on every claim, and the value must
+    # match the 0029 column default's compatibility floor (24h) unless
+    # deliberately re-tuned per environment.
+    idempotency_retention_hours: int = 24
 
 
 @lru_cache

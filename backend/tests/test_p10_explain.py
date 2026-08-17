@@ -135,6 +135,13 @@ def test_hot_path_queries_are_index_backed() -> None:
             # Tiny test tables make seqscan the cheaper plan; disabling it
             # proves the indexes can serve these queries at scale.
             await session.execute(text("SET LOCAL enable_seqscan = off"))
+            # Issue #20 / RF4 fence: every plan captured here is sort-free on
+            # all observed runs (jobs 15662887952 / 15662909824 / 15665250796),
+            # so enable_sort=off cannot change today's plans; it pins the
+            # shape so a rows=0 cost tie can never swap an order-preserving
+            # index scan for the bitmap-scan + Sort flake (the
+            # test_p135_explain audit-page class).
+            await session.execute(text("SET LOCAL enable_sort = off"))
             arrears_plan = await _explain(
                 session,
                 ARREARS_BATCH_SCAN,
@@ -171,7 +178,8 @@ def test_hot_path_queries_are_index_backed() -> None:
         header = (
             "P10 hot-path EXPLAIN (ANALYZE, BUFFERS) — captured in CI against the\n"
             "migrated Postgres service under the RLS app role.\n"
-            "enable_seqscan=off because CI tables are tiny; the assertion is that\n"
+            "enable_seqscan=off because CI tables are tiny; enable_sort=off pins\n"
+            "the observed sort-free shape (issue #20); the assertion is that\n"
             "each query is servable by its index (plan shape at scale).\n"
         )
         body = "\n\n".join(f"=== {name} ===\n{plan}" for name, plan in sections)

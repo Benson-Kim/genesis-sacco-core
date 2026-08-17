@@ -60,6 +60,13 @@ TENANT_TABLES = [
     # and collections notes — tenant-owned, RLS forced per ADR-0002.
     "recovery_cases",
     "recovery_case_notes",
+    # P13.17(a): month-end portfolio figures (NPL balances) are the
+    # regulator-facing money history, so RLS is release-blocking.
+    "portfolio_month_snapshots",
+    # P13.17(b): closed-period account totals and member balances are
+    # money history serving the trial balance and statements.
+    "account_period_balances",
+    "member_period_balances",
     "outbox_events",
     "audit_log",
     "idempotency_keys",
