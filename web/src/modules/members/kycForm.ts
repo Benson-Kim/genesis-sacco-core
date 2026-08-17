@@ -16,7 +16,7 @@
  * STRING end-to-end (the money rule posture in kycSchemas.ts).
  */
 import type { ZodError } from "zod";
-import type { FieldErrors } from "@/modules/forms/form-errors";
+import { type FieldErrors } from "@genesis/design-system";
 import {
   KYC_FORM_SECTIONS,
   PROFILE_SCHEMAS,

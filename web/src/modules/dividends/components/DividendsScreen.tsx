@@ -26,10 +26,14 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button, Card } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Button,
+  Card,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtDateTime, fmtKes } from "@/lib/format";
@@ -160,12 +164,6 @@ export function DividendsScreen() {
   return (
     <div>
       <div className={styles.toolbar}>
-        <div className={styles.toolbarNote}>
-          Rates and the financial year come exclusively from tenant
-          configuration (Settings ▸ Deposits &amp; shares); every figure below
-          is a server-computed snapshot. Dormant members remain shareholders
-          and are included in every declaration.
-        </div>
         <div className={styles.toolbarActions}>
           {mayDeclare && (
             <Button type="button" variant="primary" onClick={() => setDrawer({ mode: "declare" })}>
@@ -176,6 +174,9 @@ export function DividendsScreen() {
       </div>
 
       <Card padded={false}>
+        {/* States that the payout figure is the DATABASE's invariant, not
+            something this screen adds up (blocker (a): no client money
+            math anywhere). */}
         <div className={styles.registerHead}>
           <span>Dividend declarations</span>
           <span className={styles.registerNote}>

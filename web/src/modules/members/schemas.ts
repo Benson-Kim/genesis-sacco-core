@@ -44,6 +44,15 @@ export const memberSchema = z.object({
      * pins no duplicate enum. Stored preference ONLY: the
      * distribution engine does not consume it (fence). */
     dividend_payout: z.string().nullable(),
+    /** Identity-document number, MASKED server-side (last four
+     * characters only — application/members.py does the masking in SQL,
+     * so the full credential never leaves the database). Exists so a
+     * member picker can confirm a resolution by the identifier the
+     * operator did NOT search on. NULL for members with no KYC profile
+     * and for company/group/vehicle profiles, which carry no
+     * bio.id_number. Nullable, never optional: the key is always
+     * serialized, so a missing one is a contract violation. */
+    id_number_masked: z.string().nullable(),
 });
 
 export type Member = z.infer<typeof memberSchema>;

@@ -14,9 +14,17 @@
  * enter by construction.
  */
 import { useState, type FormEvent } from "react";
-import { Button, Card } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
+import {
+  Button,
+  Card,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  grid,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import type { UpdateSettingsInput } from "../api";
@@ -34,7 +42,6 @@ import {
   type Settings,
 } from "../schemas";
 import { SettingsSaveControls, useSettingsSaveFlow } from "./SettingsSaveFlow";
-import grid from "@/modules/layout/grid.module.css";
 import styles from "./Settings.module.css";
 
 interface BandRow {
@@ -163,9 +170,8 @@ export function InterestPanel({
               hint="Stored config — the P6 engine applies it server-side."
             >
               {(control) => (
-                <select
+                <Select
                   {...control}
-                  className={styles.select}
                   value={method}
                   disabled={!mayEdit}
                   onChange={(event) => setMethod(event.target.value)}
@@ -176,7 +182,7 @@ export function InterestPanel({
                       {METHOD_LABELS[value]}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </FormField>
             <FormField
@@ -185,9 +191,8 @@ export function InterestPanel({
               error={fieldErrors["loan_interest_basis"]}
             >
               {(control) => (
-                <select
+                <Select
                   {...control}
-                  className={styles.select}
                   value={basis}
                   disabled={!mayEdit}
                   onChange={(event) => setBasis(event.target.value)}
@@ -198,7 +203,7 @@ export function InterestPanel({
                       {BASIS_LABELS[value]}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </FormField>
           </div>
@@ -212,9 +217,8 @@ export function InterestPanel({
               hint="Blank = not configured."
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={6}
                   value={penaltyRate}
@@ -229,9 +233,8 @@ export function InterestPanel({
               error={fieldErrors["penalty_grace_days"]}
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="numeric"
                   maxLength={3}
                   value={penaltyGrace}
@@ -247,9 +250,8 @@ export function InterestPanel({
             error={fieldErrors["penalty_charged_on"]}
           >
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={chargedOn}
                 disabled={!mayEdit}
                 onChange={(event) => setChargedOn(event.target.value)}
@@ -260,7 +262,7 @@ export function InterestPanel({
                     {CHARGED_ON_LABELS[value]}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
 
@@ -272,9 +274,8 @@ export function InterestPanel({
               error={fieldErrors["deposit_interest_annual_rate_pct"]}
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={6}
                   value={depositRate}
@@ -289,9 +290,8 @@ export function InterestPanel({
               error={fieldErrors["dividend_rate_pct"]}
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={6}
                   value={dividendRate}
@@ -306,9 +306,8 @@ export function InterestPanel({
               error={fieldErrors["deposit_rebate_rate_pct"]}
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={6}
                   value={rebateRate}
@@ -348,9 +347,8 @@ export function InterestPanel({
                   }
                 >
                   {(control) => (
-                    <input
+                    <Input
                       {...control}
-                      className={styles.input}
                       inputMode="decimal"
                       maxLength={19}
                       value={row.upper}
@@ -365,9 +363,8 @@ export function InterestPanel({
                   error={fieldErrors[`loan_rate_bands.${index}.rate`]}
                 >
                   {(control) => (
-                    <input
+                    <Input
                       {...control}
-                      className={styles.input}
                       inputMode="decimal"
                       maxLength={6}
                       value={row.rate}

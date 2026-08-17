@@ -28,12 +28,19 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
@@ -215,9 +222,8 @@ export function GuaranteeActDialog({
               hint="Consent is the member's own act on the member surface; this staff override MUST cite the evidence it rests on (e.g. the signed consent form) — written as an audited fact."
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   maxLength={200}
                   value={consentReference}
                   onChange={(event) => setConsentReference(event.target.value)}

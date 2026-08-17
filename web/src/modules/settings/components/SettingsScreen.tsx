@@ -15,11 +15,10 @@
  * - Tab panels are next/dynamic chunks (Phase B speed): the products
  *   editor never loads unless its tab is opened.
  */
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { Banner, Card } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
+import { Banner, Card, ErrorBanner, TabList, TabPanel } from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { STALE_TIME } from "@/lib/query";
@@ -69,55 +68,18 @@ export function SettingsScreen() {
   // and the optimistic version regardless (least disclosure).
   const permissions = usePermissions();
   const mayEdit = can(permissions.data, "settings", "edit");
-  const tabRefs = useRef<Map<TabId, HTMLButtonElement>>(new Map());
-
-  // Conforming ARIA tabs pattern: roving tabindex —
-  // one tab stop for the whole tablist; Left/Right (wrapping) and
-  // Home/End move BOTH selection and focus (automatic activation).
-  function onTablistKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const order = TABS.map((entry) => entry.id);
-    const index = order.indexOf(tab);
-    let next: TabId | undefined;
-    if (event.key === "ArrowRight") next = order[(index + 1) % order.length];
-    else if (event.key === "ArrowLeft") next = order[(index - 1 + order.length) % order.length];
-    else if (event.key === "Home") next = order[0];
-    else if (event.key === "End") next = order[order.length - 1];
-    if (next !== undefined) {
-      event.preventDefault();
-      setTab(next);
-      tabRefs.current.get(next)?.focus();
-    }
-  }
 
   return (
     <div className={styles.page}>
-      <div className={styles.tabs} role="tablist" aria-label="Settings sections" onKeyDown={onTablistKeyDown}>
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            ref={(node) => {
-              if (node !== null) tabRefs.current.set(entry.id, node);
-              else tabRefs.current.delete(entry.id);
-            }}
-            type="button"
-            role="tab"
-            id={`settings-tab-${entry.id}`}
-            aria-selected={tab === entry.id}
-            aria-controls="settings-tabpanel"
-            tabIndex={tab === entry.id ? 0 : -1}
-            className={`${styles.tab}${tab === entry.id ? ` ${styles.tabActive}` : ""}`}
-            onClick={() => setTab(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
+      <TabList
+        idPrefix="settings"
+        tabs={TABS}
+        activeId={tab}
+        onChange={(next) => setTab(next as TabId)}
+        ariaLabel="Settings sections"
+      />
 
-      <div
-        role="tabpanel"
-        id="settings-tabpanel"
-        aria-labelledby={`settings-tab-${tab}`}
-      >
+      <TabPanel idPrefix="settings" activeTabId={tab}>
       {tab === "products" ? (
         <ProductsScreen />
       ) : settings.isPending ? (
@@ -176,7 +138,7 @@ export function SettingsScreen() {
           )}
         </>
       )}
-      </div>
+      </TabPanel>
     </div>
   );
 }

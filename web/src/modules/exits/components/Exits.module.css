@@ -37,45 +37,39 @@
     color: var(--sub);
 }
 
+.dateTime {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.date {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 450;
+}
+
+.time {
+    color: var(--sub);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Settlement figures — tabular numerals; each figure sits in its own
  * labelled column/row (color never carries meaning alone). */
 .amountCell {
-    font-weight: 700;
+    font-weight: 500;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
 }
 
 /* The net-payable snapshot line — the server's figure, verbatim. */
 .netCell {
-    font-weight: 800;
+    font-weight: 650;
     color: var(--navy);
     font-variant-numeric: tabular-nums;
-}
-
-.input,
-.select,
-.textarea {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.textarea {
-    padding: 10px 12px;
-    min-height: 72px;
-    resize: vertical;
-}
-
-.input:focus-visible,
-.select:focus-visible,
-.textarea:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
 }
 
 .actions {

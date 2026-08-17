@@ -218,13 +218,16 @@ test("happy path: OTP login → Corrections workbench → by-id checker review r
   await expect(page.getByText("Repayment adjustments")).toBeVisible();
   await expect(page.getByText("Loan write-offs & recoveries")).toBeVisible();
 
-  // The batch-6 registers render on load (issue #31 ledger (a).1/(a).2):
-  // the pending adjustment sits in the checker register (server order,
-  // pending-first) and the empty write-off register states itself
-  // honestly — no hand-carried id is needed.
+  // The batch-6 registers (issue #31 ledger (a).1/(a).2) are separate
+  // tabs: the pending adjustment sits in the checker register (server
+  // order, pending-first, the default tab) and the empty write-off
+  // register (its own tab) states itself honestly — no hand-carried id
+  // is needed.
   await expect(page.getByText("Pending-adjustments checker register")).toBeVisible();
+  await page.getByRole("tab", { name: "Write-offs" }).click();
   await expect(page.getByText("Write-off committee register")).toBeVisible();
   await expect(page.getByText("No write-offs yet — nothing awaits the committee.")).toBeVisible();
+  await page.getByRole("tab", { name: "Adjustments" }).click();
 
   await openAdjustment(page);
   expect(state.adjustmentReads).toBeGreaterThan(0);

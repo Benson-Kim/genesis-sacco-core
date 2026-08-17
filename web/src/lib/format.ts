@@ -50,6 +50,36 @@ export function fmtDateTime(iso: string | null | undefined): string {
     }).format(d);
 }
 
+export function fmtDateTimeParts(
+    iso: string | null | undefined,
+): { date: string; time: string } {
+    if (iso === null || iso === undefined || iso === "") {
+        return { date: "—", time: "" };
+    }
+
+    const d = new Date(iso);
+
+    if (Number.isNaN(d.getTime())) {
+        return { date: String(iso), time: "" };
+    }
+
+    const parts = new Intl.DateTimeFormat("en-KE", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).formatToParts(d);
+
+    const get = (type: Intl.DateTimeFormatPartTypes): string =>
+        parts.find((part) => part.type === type)?.value ?? "";
+
+    return {
+        date: `${get("day")} ${get("month")} ${get("year")}`,
+        time: `${get("hour")}:${get("minute")} ${get("dayPeriod")}`,
+    };
+}
+
 /** Uppercase initials for the prototype avatar chip (pure text). */
 export function initials(name: string): string {
     const parts = name.split(" ").filter((part) => part !== "");

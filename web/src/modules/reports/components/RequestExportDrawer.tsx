@@ -27,18 +27,27 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ErrorBanner,
+  useKeysetList,
+  ErrorMessage,
+  announce,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
-import { useKeysetList } from "@/modules/table/useKeysetList";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { fetchMembersPage } from "@/modules/members/api";
-import type { Member } from "@/modules/members/schemas";
+import { MemberLookupField } from "@/modules/members/components/MemberLookupField";
 import { CHANNELS, SIDES, TXN_TYPES } from "@/modules/transactions/schemas";
 import { fetchDeclarationsPage, fetchExitsPage, requestExport } from "../api";
 import { recordWitnessedExport } from "../exportRegistry";
@@ -58,54 +67,31 @@ import {
 import styles from "./Reports.module.css";
 
 /**
- * Member picker — a separate component so its keyset hook mounts ONLY
- * for operators holding members:view (a stripped role fetches NOTHING; the useKeysetList primitive is consumed unmodified, reuse-first).
+ * Member picker — a separate component so its lookup mounts ONLY for
+ * operators holding members:view (a stripped role probes NOTHING). The
+ * shared MemberLookupField owns the input; this wrapper only threads the
+ * resolved id into the export draft.
  */
 function MemberPickerField({
-  value,
   error,
   disabled,
   onChange,
 }: Readonly<{
-  value: string;
   error?: string;
   disabled: boolean;
   onChange: (memberId: string) => void;
 }>) {
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "", type: "" }, cursor),
-  });
-  const options = members.data?.pages.flatMap((page) => page.items) ?? [];
+  // Scoping an export to ONE member resolves that member by identifier
+  // — never a paged dump of the whole membership into a <select>.
   return (
     <>
-      <FormField id="exp-member" label="Member" error={error}>
-        {(control) => (
-          <select
-            {...control}
-            className={styles.select}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            disabled={disabled}
-          >
-            <option value="">Select a member…</option>
-            {options.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name} · {member.member_no}
-              </option>
-            ))}
-          </select>
-        )}
-      </FormField>
-      {members.hasNextPage && (
-        <Button
-          type="button"
-          onClick={() => void members.fetchNextPage()}
-          disabled={members.isFetchingNextPage}
-        >
-          {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-        </Button>
-      )}
+      <MemberLookupField
+        idPrefix="exp-member"
+        hint="Search by member number or national ID"
+        disabled={disabled}
+        onResolved={(member) => onChange(member?.id ?? "")}
+      />
+      {error !== undefined && <ErrorMessage id="exp-member-error">{error}</ErrorMessage>}
     </>
   );
 }
@@ -132,9 +118,8 @@ function ExitPickerField({
     <>
       <FormField id="exp-exit" label="Exit request" error={error}>
         {(control) => (
-          <select
+          <Select
             {...control}
-            className={styles.select}
             value={value}
             onChange={(event) => onChange(event.target.value)}
             disabled={disabled}
@@ -148,7 +133,7 @@ function ExitPickerField({
                 · {exit.status} · {exit.id.slice(0, 8)}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </FormField>
       {exits.hasNextPage && (
@@ -186,9 +171,8 @@ function DeclarationPickerField({
     <>
       <FormField id="exp-declaration" label="Dividend declaration" error={error}>
         {(control) => (
-          <select
+          <Select
             {...control}
-            className={styles.select}
             value={value}
             onChange={(event) => onChange(event.target.value)}
             disabled={disabled}
@@ -199,7 +183,7 @@ function DeclarationPickerField({
                 FY {declaration.fy_start} → {declaration.fy_end} · {declaration.status}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </FormField>
       {declarations.hasNextPage && (
@@ -240,9 +224,8 @@ function UuidField({
       hint="Your role cannot list these records — paste the record's UUID."
     >
       {(control) => (
-        <input
+        <Input
           {...control}
-          className={styles.input}
           maxLength={36}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -276,9 +259,8 @@ function VocabSelectField({
   return (
     <FormField id={id} label={label} error={error}>
       {(control) => (
-        <select
+        <Select
           {...control}
-          className={styles.input}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
@@ -289,7 +271,7 @@ function VocabSelectField({
               {option}
             </option>
           ))}
-        </select>
+        </Select>
       )}
     </FormField>
   );
@@ -316,9 +298,8 @@ function BoundedTextField({
   return (
     <FormField id={id} label={label} error={error}>
       {(control) => (
-        <input
+        <Input
           {...control}
-          className={styles.input}
           maxLength={maxLength}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -507,7 +488,6 @@ export function RequestExportDrawer({
           {offers("member_id") &&
             (mayPickMembers ? (
               <MemberPickerField
-                value={draft.member_id}
                 error={fieldErrors["member_id"]}
                 disabled={request.isPending}
                 onChange={(value) => setFilter("member_id", value)}
@@ -619,10 +599,9 @@ export function RequestExportDrawer({
           {offers("date_from") && (
             <FormField id="exp-from" label="From date" error={fieldErrors["date_from"]}>
               {(control) => (
-                <input
+                <Input
                   {...control}
                   type="date"
-                  className={styles.input}
                   value={draft.date_from}
                   onChange={(event) => setFilter("date_from", event.target.value)}
                   disabled={request.isPending}
@@ -633,10 +612,9 @@ export function RequestExportDrawer({
           {offers("date_to") && (
             <FormField id="exp-to" label="To date" error={fieldErrors["date_to"]}>
               {(control) => (
-                <input
+                <Input
                   {...control}
                   type="date"
-                  className={styles.input}
                   value={draft.date_to}
                   onChange={(event) => setFilter("date_to", event.target.value)}
                   disabled={request.isPending}

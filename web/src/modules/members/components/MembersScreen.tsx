@@ -19,10 +19,17 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Banner, Button, Card, FilterControl, Pill } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Banner,
+  Button,
+  Card,
+  FilterControl,
+  Pill,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { initials } from "@/lib/format";
@@ -132,6 +139,17 @@ const COLUMNS: Column<MemberDetail>[] = [
         header: "Loan",
         align: "right",
         render: (member) => member.aggregates.loans_outstanding,
+    },
+    {
+        // The fourth contract aggregate: live guarantee pledges reduce a
+        // member's withdrawable capacity, so the register shows it beside
+        // the other three. Rendered VERBATIM like its siblings — the
+        // server's decimal string, never re-formatted or netted against
+        // deposits (memberAggregatesSchema's "all four figures" contract).
+        key: "guarantees",
+        header: "Guarantees",
+        align: "right",
+        render: (member) => member.aggregates.guarantees_pledged,
     },
     {
         key: "status",

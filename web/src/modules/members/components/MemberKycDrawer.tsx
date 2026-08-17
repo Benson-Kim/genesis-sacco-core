@@ -22,16 +22,23 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Modal, Pill } from "@genesis/design-system";
+import {
+  Button,
+  Modal,
+  Pill,
+  ErrorBanner,
+  ConflictBanner,
+  announce,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  Input,
+} from "@genesis/design-system";
 import { STALE_TIME } from "@/lib/query";
 import { isConflict } from "@/lib/errors";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
 import { fetchBranch } from "@/modules/branches/api";
 import { fetchMemberDetail } from "../api";
 import { fetchKycProfile, updateKycProfile } from "../kycApi";
@@ -353,9 +360,8 @@ export function MemberKycDrawer({
         >
           <FormField id="kyc-edit-category" label="Member category" error={errors["category"]}>
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={60}
                 value={category}
                 disabled={update.isPending}

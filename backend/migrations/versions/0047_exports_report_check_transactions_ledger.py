@@ -1,7 +1,7 @@
 """report vocabulary CHECK widening: transactions_ledger
 
 Revision ID: 0047
-Revises: 0044
+Revises: 0046
 Create Date: 2026-08-09
 
 Claimed as 0047 with down_revision 0044 per the migration-declaration
@@ -34,7 +34,7 @@ invalid rows.
 from alembic import op
 
 revision = "0047"
-down_revision = "0044"
+down_revision = "0046"
 branch_labels = None
 depends_on = None
 

@@ -44,26 +44,6 @@
     margin: 10px 0;
 }
 
-.select {
-    width: 100%;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    font-size: 13px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.input {
-    width: 100%;
-    padding: 9px 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    font-size: 13px;
-    background: var(--card);
-    color: var(--ink);
-}
-
 /* Register header card (the exits register-head convention). */
 .registerHead {
     padding: 14px;

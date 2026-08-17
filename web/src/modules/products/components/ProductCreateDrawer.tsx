@@ -18,16 +18,18 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Button,
+  Modal,
+  ErrorBanner,
+  announce,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
+  Input,
+} from "@genesis/design-system";
 import { createProduct, type CreateProductInput } from "../api";
 import { productCreateFormSchema, type Product } from "../schemas";
 import { PRODUCTS_QUERY_KEY } from "./ProductsScreen";
@@ -101,9 +103,8 @@ export function ProductCreateDrawer({
         {create.isError && <ErrorBanner error={create.error} />}
         <FormField id="new-product-name" label="Product name" error={fieldErrors["name"]}>
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               maxLength={100}
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -114,12 +115,11 @@ export function ProductCreateDrawer({
           id="new-product-rate"
           label="Rate (% p.a.)"
           error={fieldErrors["rate_pct"]}
-          hint="Decimal string, max 2dp — applied by the server."
+          hint="Decimal string, max 2dp"
         >
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               inputMode="decimal"
               maxLength={6}
               value={ratePct}
@@ -133,9 +133,8 @@ export function ProductCreateDrawer({
           error={fieldErrors["deposit_multiplier"]}
         >
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               inputMode="decimal"
               maxLength={6}
               value={multiplier}
@@ -149,9 +148,8 @@ export function ProductCreateDrawer({
           error={fieldErrors["max_term_months"]}
         >
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               inputMode="numeric"
               maxLength={3}
               value={maxTerm}
@@ -165,9 +163,8 @@ export function ProductCreateDrawer({
           error={fieldErrors["guarantors_required"]}
         >
           {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               inputMode="numeric"
               maxLength={2}
               value={guarantors}
@@ -175,10 +172,6 @@ export function ProductCreateDrawer({
             />
           )}
         </FormField>
-        <div className={styles.formNote}>
-          The product becomes available to NEW applications once created.
-          Nothing monetary is computed here — pricing runs server-side.
-        </div>
         <div className={styles.actions}>
           <Button type="button" onClick={onClose} disabled={create.isPending}>
             Cancel

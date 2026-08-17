@@ -13,6 +13,7 @@
  * textarea gets the wiring without prop-forwarding guesswork.
  */
 import type { ReactNode } from "react";
+import { ErrorMessage, Hint } from "../components/FormElements.module";
 import styles from "./FormField.module.css";
 
 export interface FieldControlProps {
@@ -50,16 +51,8 @@ export function FormField({
         {label}
       </label>
       {children(control)}
-      {hint !== undefined && (
-        <div id={hintId} className={styles.hint}>
-          {hint}
-        </div>
-      )}
-      {hasError && (
-        <div id={errorId} className={styles.error} role="alert">
-          {error}
-        </div>
-      )}
+      {hint !== undefined && <Hint id={hintId}>{hint}</Hint>}
+      {hasError && <ErrorMessage id={errorId}>{error}</ErrorMessage>}
     </div>
   );
 }

@@ -20,7 +20,7 @@
 }
 
 .cellStrong {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
 }
 
@@ -38,32 +38,6 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 12px;
     color: var(--sub);
-}
-
-.input,
-.select,
-.textarea {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.textarea {
-    padding: 10px 12px;
-    min-height: 72px;
-    resize: vertical;
-}
-
-.input:focus-visible,
-.select:focus-visible,
-.textarea:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
 }
 
 .actions {

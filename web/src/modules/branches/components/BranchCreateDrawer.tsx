@@ -24,12 +24,20 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { createBranch } from "../api";
@@ -175,9 +183,8 @@ export function BranchCreateDrawer({ onClose }: Readonly<{ onClose: () => void }
             hint="Up to 120 characters. The server strips surrounding whitespace and refuses a duplicate."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={120}
                 value={name}
                 onChange={(event) => setName(event.target.value)}

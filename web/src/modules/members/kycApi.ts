@@ -20,7 +20,7 @@
  *   payload, constrained by the boundary grammar in kycSchemas.ts.
  */
 import { toApiError } from "@genesis/api-client";
-import { keysetPageSchema, type KeysetPage } from "@/modules/table/schemas";
+import { keysetPageSchema, type KeysetPage } from "@genesis/design-system";
 import { api } from "@/lib/api";
 import {
   kycDocumentSchema,

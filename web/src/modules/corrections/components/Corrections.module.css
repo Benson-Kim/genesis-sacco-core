@@ -4,6 +4,16 @@
  * modules/layout/grid.module.css — no private page grid lives here.
  */
 
+.cellStrong {
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.cellSub {
+    font-size: 12px;
+    color: var(--sub);
+}
+
 .muted {
     color: var(--sub);
 }
@@ -15,10 +25,31 @@
     color: var(--sub);
 }
 
+.dateTime {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
+.date {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 450;
+}
+
+.time {
+    color: var(--sub);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+
 /* Correction figures — tabular numerals; each figure sits in its own
  * labelled row (color never carries meaning alone). */
 .amountCell {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
 }
@@ -29,32 +60,6 @@
     font-weight: 800;
     color: var(--navy);
     font-variant-numeric: tabular-nums;
-}
-
-.input,
-.select,
-.textarea {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.textarea {
-    padding: 10px 12px;
-    min-height: 72px;
-    resize: vertical;
-}
-
-.input:focus-visible,
-.select:focus-visible,
-.textarea:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
 }
 
 .actions {
@@ -113,6 +118,11 @@
 
 .lookupField {
     flex: 1 1 260px;
+}
+
+/* Spacing between the catalogue/lookup cards and the register tabs. */
+.registerTabs {
+    margin: 20px 0 16px;
 }
 
 /* Register header card (the checker/committee registers). */

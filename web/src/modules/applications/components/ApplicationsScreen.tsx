@@ -18,10 +18,16 @@
  */
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Banner, Button, Card, FilterControl } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Banner,
+  Button,
+  Card,
+  FilterControl,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { fmtAmount } from "@/lib/format";
@@ -109,9 +115,10 @@ export function ApplicationsScreen() {
           {/* Identifier doctrine: number — name, resolved server-side
               on the row; the uuid stays machine identity (title). */}
           {app.member_no !== null ? (
-            <span title={app.member_id}>
-              {app.member_no} — {app.member_name}
-            </span>
+            <div title={app.member_id}>
+              <div className={styles.cellStrong}>{app.member_name}</div>
+              <div className={styles.cellSub}>{app.member_no}</div>
+            </div>
           ) : (
             <span className={styles.mono} title={app.member_id}>
               {app.member_id.slice(0, 8)}

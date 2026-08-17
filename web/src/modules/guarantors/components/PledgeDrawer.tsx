@@ -36,22 +36,27 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { fetchMember, fetchMembersPage } from "@/modules/members/api";
+import { fetchMember } from "@/modules/members/api";
+import { MemberLookupField } from "@/modules/members/components/MemberLookupField";
 import type { Member } from "@/modules/members/schemas";
 import { fetchApplication } from "@/modules/applications/api";
 import type { Product } from "@/modules/products/schemas";
@@ -77,7 +82,6 @@ export function PledgeDrawer({
   onClose: () => void;
 }>) {
   const queryClient = useQueryClient();
-  const [guarantorId, setGuarantorId] = useState("");
   const [amount, setAmount] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -114,18 +118,10 @@ export function PledgeDrawer({
     refetchOnMount: "always",
   });
 
-  // Guarantor picker: ACTIVE members via the keyset contract (scalability)
-  // — pages of 20 with an explicit "load more". The P8 list has no
-  // search parameter; recorded honestly as a UX limitation in the MR.
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "active", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "active", type: "" }, cursor),
-  });
-  // SELF-GUARANTEE prevention (structural): the borrower is never an
-  // option — there is no way to select them from this client.
-  const guarantorOptions = (members.data?.pages.flatMap((page) => page.items) ?? []).filter(
-    (member) => member.id !== borrowerId,
-  );
+  // Guarantor picker: ONE exact-match lookup by the identifier the
+  // operator types — never a paged dump of the whole membership.
+  const [guarantor, setGuarantor] = useState<Member | null>(null);
+  const guarantorId = guarantor?.id ?? "";
 
   const pledge = useMutation({
     mutationFn: (input: PledgeCreateInput) =>
@@ -234,7 +230,7 @@ export function PledgeDrawer({
     pledge.error.status === 422 &&
     Object.keys(serverErrors).length > 0;
 
-  const chosenGuarantor = guarantorOptions.find((member) => member.id === guarantorId);
+  const chosenGuarantor = guarantor ?? undefined;
 
   return (
     <Modal
@@ -301,32 +297,24 @@ export function PledgeDrawer({
             error={fieldErrors["guarantor_member_id"]}
             hint="Active members only; the borrower cannot guarantee their own loan and is not offered."
           >
-            {(control) => (
-              <select
-                {...control}
-                className={styles.select}
-                value={guarantorId}
-                onChange={(event) => setGuarantorId(event.target.value)}
+            {() => (
+              <MemberLookupField
+                idPrefix="pledge-guarantor"
+                hint="Search by member number or national ID."
                 disabled={pledge.isPending}
-              >
-                <option value="">Select a guarantor…</option>
-                {guarantorOptions.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} · {member.member_no}
-                  </option>
-                ))}
-              </select>
+                onResolved={setGuarantor}
+                // SELF-GUARANTEE prevention: the option list used to
+                // exclude the borrower structurally; a lookup CAN
+                // resolve them, so the refusal is explicit. The server
+                // refuses it too — this is the operator-facing half.
+                reject={(member) =>
+                  member.id === borrowerId
+                    ? "A member cannot guarantee their own loan — look up a different member."
+                    : null
+                }
+              />
             )}
           </FormField>
-          {members.hasNextPage && (
-            <Button
-              type="button"
-              onClick={() => void members.fetchNextPage()}
-              disabled={members.isFetchingNextPage}
-            >
-              {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-            </Button>
-          )}
           {guarantorId !== "" && (
             <div className={styles.formNote}>
               {chosenCapacity !== null ? (
@@ -350,9 +338,8 @@ export function PledgeDrawer({
             hint="Decimal amount, e.g. 50000 or 50000.00 — capacity is checked by the server under the guarantor's account lock."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={18}
                 value={amount}

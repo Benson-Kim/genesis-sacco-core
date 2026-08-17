@@ -117,6 +117,13 @@ class MemberOut(BaseModel):
     #: optional: the key is always serialized; null is the honest
     #: "not chosen" state clients render with an explicit affordance.
     dividend_payout: str | None
+    #: Identity-document number MASKED to its last four characters by
+    #: the read statement itself (application/members.py) — the full
+    #: credential never leaves the database, let alone this response.
+    #: Exists so a member picker can confirm a resolution by the
+    #: identifier the operator did NOT search on. NULL for members with
+    #: no KYC profile and for non-person profiles (no bio.id_number).
+    id_number_masked: str | None = None
 
 
 class MemberAggregatesOut(BaseModel):
@@ -190,6 +197,7 @@ def _out(record: members_service.MemberRecord) -> MemberOut:
         dividend_payout=(
             record.dividend_payout.value if record.dividend_payout is not None else None
         ),
+        id_number_masked=record.id_number_masked,
     )
 
 

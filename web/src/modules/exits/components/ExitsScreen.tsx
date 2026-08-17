@@ -26,13 +26,18 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Card, FilterControl } from "@genesis/design-system";
-import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
+import {
+  Button,
+  Card,
+  FilterControl,
+  KeysetTable,
+  type Column,
+  useKeysetList,
+  useKeysetPagination,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { fmtDateTime, fmtKes } from "@/lib/format";
+import { fmtAmount, fmtDateTimeParts } from "@/lib/format";
 import { EMPTY_EXIT_FILTERS, fetchExitsPage, fetchExitStatusCounts, type ExitListFilters } from "../api";
 import { EXIT_STATUSES, EXIT_STATUS_LABELS, type ExitRecord } from "../schemas";
 import { exitStatusPill } from "./pills";
@@ -105,7 +110,15 @@ export function ExitsScreen() {
     {
       key: "requested",
       header: "Requested",
-      render: (exit) => <span className={styles.muted}>{fmtDateTime(exit.created_at)}</span>,
+      render: (exit) => {
+        const { date, time } = fmtDateTimeParts(exit.created_at);
+        return (
+          <div className={styles.dateTime}>
+            <span className={styles.date}>{date}</span>
+            {time && <span className={styles.time}>{time}</span>}
+          </div>
+        );
+      },
     },
     {
       key: "member",
@@ -114,9 +127,10 @@ export function ExitsScreen() {
         // Identifier doctrine: number — name, resolved server-side on
         // the row; the uuid stays machine identity (title).
         exit.member_no !== null ? (
-          <span title={exit.member_id}>
-            {exit.member_no} — {exit.member_name}
-          </span>
+          <div title={exit.member_id}>
+            <div className={styles.cellStrong}>{exit.member_name}</div>
+            <div className={styles.cellSub}>{exit.member_no}</div>
+          </div>
         ) : (
           <span className={styles.mono} title={exit.member_id}>
             {exit.member_id.slice(0, 8)}
@@ -130,33 +144,33 @@ export function ExitsScreen() {
     },
     {
       key: "shares",
-      header: "Shares",
+      header: "Shares (KES)",
       align: "right",
-      render: (exit) => <span className={styles.amountCell}>{fmtKes(exit.shares_amount)}</span>,
+      render: (exit) => <span className={styles.amountCell}>{fmtAmount(exit.shares_amount)}</span>,
     },
     {
       key: "deposits",
-      header: "Deposits",
+      header: "Deposits (KES)",
       align: "right",
-      render: (exit) => <span className={styles.amountCell}>{fmtKes(exit.deposits_amount)}</span>,
+      render: (exit) => <span className={styles.amountCell}>{fmtAmount(exit.deposits_amount)}</span>,
     },
     {
       key: "loan_balance",
-      header: "Loan balance",
+      header: "Loan bal (KES)",
       align: "right",
-      render: (exit) => <span className={styles.amountCell}>{fmtKes(exit.loan_balance)}</span>,
+      render: (exit) => <span className={styles.amountCell}>{fmtAmount(exit.loan_balance)}</span>,
     },
     {
       key: "fees",
-      header: "Fees",
+      header: "Fees (KES)",
       align: "right",
-      render: (exit) => <span className={styles.amountCell}>{fmtKes(exit.fees)}</span>,
+      render: (exit) => <span className={styles.amountCell}>{fmtAmount(exit.fees)}</span>,
     },
     {
       key: "net_payable",
-      header: "Net payable",
+      header: "Net payable (KES)",
       align: "right",
-      render: (exit) => <span className={styles.netCell}>{fmtKes(exit.net_payable)}</span>,
+      render: (exit) => <span className={styles.netCell}>{fmtAmount(exit.net_payable)}</span>,
     },
   ];
 
@@ -197,6 +211,9 @@ export function ExitsScreen() {
       </div>
 
       <Card padded={false}>
+        {/* States the no-client-math posture outright: every settlement
+            figure is the server's, and this screen deliberately renders
+            no totals row (blocker (a)). */}
         <div className={styles.registerHead}>
           <span>Member exit register</span>
           <span className={styles.registerNote}>

@@ -5,6 +5,21 @@
  */
 
 /* Vertical rhythm between the aggregate strip, queue and session panel. */
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: var(--space-md);
+}
+
+.filters {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
 .section {
     margin-bottom: 16px;
 }
@@ -45,8 +60,13 @@
 }
 
 .cellStrong {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
+}
+
+.cellSub {
+    font-size: 12px;
+    color: var(--sub);
 }
 
 .muted {
@@ -58,24 +78,6 @@
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 12px;
     color: var(--sub);
-}
-
-.input,
-.select {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 0 12px;
-    min-height: 44px;
-    font-size: 13.5px;
-    background: var(--card);
-    color: var(--ink);
-}
-
-.input:focus-visible,
-.select:focus-visible {
-    outline: 2px solid var(--navy);
-    outline-offset: 1px;
 }
 
 /* Consent attestation checkbox row — a 44px target with a persistent,
@@ -172,19 +174,6 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--panel);
     color: var(--ink);
-}
-
-/* Pledge queue rows (applications in the pledgeable stages). */
-.queueHead {
-    padding: 14px;
-    border-bottom: 1px solid var(--line);
-    font-size: 13px;
-    font-weight: 800;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
 }
 
 .queueNote {

@@ -36,12 +36,22 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime } from "@/lib/format";
 import { closePeriod } from "../api";
@@ -236,9 +246,8 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
             hint="Four-digit calendar year (2000–2100)."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="numeric"
                 maxLength={4}
                 value={year}
@@ -249,9 +258,8 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
           </FormField>
           <FormField id="period-month" label="Month" error={fieldErrors["month"]}>
             {(control) => (
-              <select
+              <Select
                 {...control}
-                className={styles.select}
                 value={month}
                 onChange={(event) => setMonth(event.target.value)}
                 disabled={close.isPending}
@@ -262,7 +270,7 @@ export function ClosePeriodDialog({ onClose }: Readonly<{ onClose: () => void }>
                     {name}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </FormField>
           <div className={styles.formNote}>

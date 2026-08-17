@@ -31,7 +31,7 @@
  * governance — out of this batch's recorded scope (noted on the MR).
  */
 import { toApiError } from "@genesis/api-client";
-import { keysetPageSchema, type KeysetPage } from "@/modules/table/schemas";
+import { keysetPageSchema, type KeysetPage } from "@genesis/design-system";
 import { api } from "@/lib/api";
 import { periodSchema, type PeriodRecord } from "./schemas";
 

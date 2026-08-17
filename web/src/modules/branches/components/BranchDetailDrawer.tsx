@@ -23,12 +23,20 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { isConflict } from "@/lib/errors";
@@ -265,9 +273,8 @@ function RenameForm({ branch }: Readonly<{ branch: BranchRecord }>) {
         hint={`Pinned to record version ${branch.version} — a concurrent change is refused, never overwritten.`}
       >
         {(control) => (
-          <input
+          <Input
             {...control}
-            className={styles.input}
             maxLength={120}
             value={name}
             onChange={(event) => setName(event.target.value)}

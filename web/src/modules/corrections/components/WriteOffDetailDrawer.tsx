@@ -39,18 +39,25 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal, Pill } from "@genesis/design-system";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  Pill,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  useKeysetList,
+} from "@genesis/design-system";
 import { MakerCheckerPanel } from "@/modules/authz/components/MakerCheckerPanel";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
 import { loanClassPill } from "@/modules/loans/components/pills";
 import {
   fetchRecoveryReceiptsPage,
@@ -70,15 +77,6 @@ import {
 } from "../schemas";
 import { writeOffStatusPill } from "./pills";
 import styles from "./Corrections.module.css";
-
-/** Bare staff UUID under least disclosure (the short-id convention). */
-function ShortId({ id }: Readonly<{ id: string }>) {
-  return (
-    <span className={styles.mono} title={id}>
-      {id.slice(0, 8)}
-    </span>
-  );
-}
 
 export function WriteOffDetailDrawer({
   writeOffId,
@@ -304,14 +302,16 @@ export function WriteOffDetailDrawer({
 
       <div className={styles.detailGrid}>
         <Kv label="Status">{writeOffStatusPill(record.status)}</Kv>
-        <Kv label="Write-off id">
-          <span className={styles.mono}>{record.id}</span>
-        </Kv>
-        <Kv label="Loan">
-          <ShortId id={record.loan_id} />
-        </Kv>
         <Kv label="Member">
-          <ShortId id={record.member_id} />
+          {/* Identifier doctrine: number — name, resolved server-side
+              on the record. NEVER a uuid fallback. */}
+          {record.member_no !== null ? (
+            <span>
+              {record.member_no} — {record.member_name}
+            </span>
+          ) : (
+            <span className={styles.muted}>Unresolved member</span>
+          )}
         </Kv>
         <Kv label="Classification">{loanClassPill(record.classification)}</Kv>
         <Kv label="Provision">{record.provision_pct}%</Kv>
@@ -319,11 +319,6 @@ export function WriteOffDetailDrawer({
         <Kv label="Requested">{fmtDateTime(record.created_at)}</Kv>
         <Kv label="Decided">{fmtDateTime(record.decided_at)}</Kv>
         <Kv label="Posted">{fmtDateTime(record.posted_at)}</Kv>
-        {record.transaction_id !== null && (
-          <Kv label="WO- ledger row">
-            <span className={styles.mono}>{record.transaction_id}</span>
-          </Kv>
-        )}
         <Kv label="Record version">{record.version}</Kv>
       </div>
 
@@ -386,11 +381,6 @@ export function WriteOffDetailDrawer({
           <Kv label="Total written off">
             <span className={styles.netCell}>{fmtKes(postResult.total_written_off)}</span>
           </Kv>
-          {postResult.txn_id !== null && (
-            <Kv label="WO- ledger row">
-              <span className={styles.mono}>{postResult.txn_id}</span>
-            </Kv>
-          )}
           <div className={styles.formNote}>
             The receivable is derecognised; the legal claim survives on the
             write-once snapshot. Recovery receipts are the ONLY money-in path
@@ -526,7 +516,7 @@ export function WriteOffDetailDrawer({
       {confirmVote !== null && (
         <ConfirmDangerModal
           title={confirmVote === "approve" ? "Cast approve vote" : "Cast reject vote"}
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.member_no ?? "WRITE-OFF"}
           confirmLabel={
             confirmVote === "approve" ? "Confirm approve vote" : "Confirm reject vote"
           }
@@ -548,7 +538,7 @@ export function WriteOffDetailDrawer({
       {confirmVoid && (
         <ConfirmDangerModal
           title="Void write-off"
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.member_no ?? "WRITE-OFF"}
           confirmLabel="Void write-off"
           pending={voidMutation.isPending}
           onConfirm={() => {
@@ -569,7 +559,7 @@ export function WriteOffDetailDrawer({
       {confirmPost && (
         <ConfirmDangerModal
           title="Post write-off"
-          confirmPhrase={record.id.slice(0, 8)}
+          confirmPhrase={record.member_no ?? "WRITE-OFF"}
           confirmLabel="Post write-off"
           pending={post.isPending}
           onConfirm={() => {
@@ -618,6 +608,7 @@ function ReceiptsTrail({ writeOffId }: Readonly<{ writeOffId: string }>) {
     },
   });
   const receiptRows = receipts.data?.pages.flatMap((page) => page.items) ?? [];
+  const ownId = getOwnUserId();
 
   return (
     <>
@@ -642,7 +633,6 @@ function ReceiptsTrail({ writeOffId }: Readonly<{ writeOffId: string }>) {
             <tr>
               <th scope="col">Recorded</th>
               <th scope="col">Recorded by</th>
-              <th scope="col">Ledger row</th>
               <th scope="col" className="num">
                 Amount
               </th>
@@ -653,12 +643,9 @@ function ReceiptsTrail({ writeOffId }: Readonly<{ writeOffId: string }>) {
               <tr key={row.id}>
                 <td>{fmtDateTime(row.created_at)}</td>
                 <td>
-                  {/* Contract attribution: bare staff UUID, short-id
-                      convention (least disclosure). */}
-                  <ShortId id={row.recorded_by} />
-                </td>
-                <td>
-                  <ShortId id={row.txn_id} />
+                  {/* Least disclosure WITHOUT a raw staff uuid anywhere:
+                      only the viewer's OWN receipt is distinguished. */}
+                  {row.recorded_by === ownId ? "You" : "Different officer"}
                 </td>
                 <td className="num">
                   <span className={styles.amountCell}>{fmtKes(row.amount)}</span>

@@ -26,9 +26,15 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  ErrorBanner,
+  announce,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { runDepositInterest } from "../api";

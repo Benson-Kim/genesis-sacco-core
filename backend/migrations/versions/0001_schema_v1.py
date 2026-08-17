@@ -13,7 +13,23 @@ branch_labels = None
 depends_on = None
 
 _UP = """
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- gen_random_uuid() is CORE PostgreSQL from 13 onward, which is below
+-- this project's floor, so pgcrypto is a legacy fallback and nothing in
+-- this schema calls a pgcrypto-only function (crypt/gen_salt/digest/
+-- pgp_*). Guarded on availability because managed hosts routinely ship
+-- PostgreSQL without the contrib package: an unguarded CREATE EXTENSION
+-- aborts the very first migration with
+--   could not open extension control file ".../pgcrypto.control"
+-- (observed on a real cPanel host running 13.23, where pgcrypto is not
+-- even listed in pg_available_extensions). Hosts that DO have it still
+-- install it, so behaviour there is unchanged.
+DO $pgcrypto$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'pgcrypto') THEN
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
+    END IF;
+END
+$pgcrypto$;
 
 CREATE TABLE tenants (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

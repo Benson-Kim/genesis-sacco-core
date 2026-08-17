@@ -18,10 +18,9 @@
  *   data; it renders exclusively through React text interpolation.
  */
 import { useQuery } from "@tanstack/react-query";
-import { Banner, Kv, Modal } from "@genesis/design-system";
+import { Banner, Kv, Modal, ErrorBanner } from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
 import { fmtDateTime, fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
 import { fetchTransactionLegs } from "../api";
@@ -79,15 +78,15 @@ export function TransactionDetailDrawer({
         <Kv label="Occurred">{fmtDateTime(txn.occurred_at)}</Kv>
         <Kv label="Member">
           {/* Identifier doctrine: number — name from the row itself
-              (server-resolved); the uuid is machine identity only. */}
+              (server-resolved). NEVER a uuid fallback. */}
           {memberId === null ? (
             "— (tenant-level posting)"
           ) : txn.member_no !== null ? (
-            <span title={memberId}>
+            <span>
               {txn.member_no} — {txn.member_name}
             </span>
           ) : (
-            <span className={styles.mono}>{memberId}</span>
+            <span className={styles.muted}>Unresolved member</span>
           )}
         </Kv>
         <Kv label="Reversal">{txn.is_reversal ? reversalPill() : "No"}</Kv>
@@ -105,9 +104,6 @@ export function TransactionDetailDrawer({
           ) : (
             "— (system posting or unattributed)"
           )}
-        </Kv>
-        <Kv label="Ledger row id">
-          <span className={styles.mono}>{txn.id}</span>
         </Kv>
       </div>
 

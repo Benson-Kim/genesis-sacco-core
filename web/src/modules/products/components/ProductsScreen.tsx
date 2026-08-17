@@ -22,19 +22,28 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Button, Card, ConfirmDangerModal, Pill } from "@genesis/design-system";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, fromZodError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
+import {
+  Button,
+  Card,
+  ConfirmDangerModal,
+  Pill,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  FormField,
+  fromApiError,
+  fromZodError,
+  mergeFieldErrors,
+  type FieldErrors,
+  grid,
+  Input,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { isConflict } from "@/lib/errors";
 import { STALE_TIME } from "@/lib/query";
 import { fetchProducts, updateProduct, type UpdateProductInput } from "../api";
 import { productRulesFormSchema, type Product } from "../schemas";
-import grid from "@/modules/layout/grid.module.css";
 import styles from "./Products.module.css";
 
 // Drawer-level code splitting (speed): the create drawer loads
@@ -248,12 +257,11 @@ function ProductEditPanel({ product }: Readonly<{ product: Product }>) {
               id="product-rate"
               label="Rate (% p.a.)"
               error={fieldErrors["rate_pct"]}
-              hint="Decimal string, max 2dp — applied by the server."
+              hint="Decimal string, max 2dp"
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={6}
                   value={ratePct}
@@ -269,9 +277,8 @@ function ProductEditPanel({ product }: Readonly<{ product: Product }>) {
               hint="Borrowing power = deposits × multiplier (server-computed)."
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={6}
                   value={multiplier}
@@ -286,9 +293,8 @@ function ProductEditPanel({ product }: Readonly<{ product: Product }>) {
               error={fieldErrors["max_term_months"]}
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="numeric"
                   maxLength={3}
                   value={maxTerm}
@@ -303,9 +309,8 @@ function ProductEditPanel({ product }: Readonly<{ product: Product }>) {
               error={fieldErrors["guarantors_required"]}
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="numeric"
                   maxLength={2}
                   value={guarantors}
@@ -314,10 +319,6 @@ function ProductEditPanel({ product }: Readonly<{ product: Product }>) {
                 />
               )}
             </FormField>
-          </div>
-          <div className={styles.formNote}>
-            Product name is immutable in the API contract. Optimistic lock:
-            saving against record version {product.version}.
           </div>
           {mayEdit && (
             <div className={styles.actions}>
@@ -350,11 +351,6 @@ function ProductEditPanel({ product }: Readonly<{ product: Product }>) {
             if (!update.isPending) update.mutate({ input: pendingInput, slot: rulesSlot.current });
           }}
         >
-          <div className={styles.formNote}>
-            Rate, multiplier, term and guarantor rules price NEW loan
-            applications from the moment they are saved. Existing loans are
-            not recomputed.
-          </div>
         </ConfirmDangerModal>
       )}
 

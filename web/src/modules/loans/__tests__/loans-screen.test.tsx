@@ -13,7 +13,7 @@ import { ApiError } from "@genesis/api-client";
 import { Providers } from "@/app/providers";
 import { clearSession, hasSession, setSession } from "@/modules/auth/session";
 import { usePermissions } from "@/modules/authz/usePermissions";
-import { announce } from "@/modules/layout/announcer";
+import { announce } from "@genesis/design-system";
 import { LoansScreen } from "../components/LoansScreen";
 import {
   disbursementSchema,
@@ -68,9 +68,9 @@ jest.mock("@/modules/authz/usePermissions", () => ({
 // The live-region announcer is a spy so the suites can prove every
 // async outcome — including the post-conflict reload (W59-4) — is
 // announced.
-jest.mock("@/modules/layout/announcer", () => {
-  const actual = jest.requireActual<typeof import("@/modules/layout/announcer")>(
-    "@/modules/layout/announcer",
+jest.mock("@genesis/design-system", () => {
+  const actual = jest.requireActual<typeof import("@genesis/design-system")>(
+    "@genesis/design-system",
   );
   return { ...actual, announce: jest.fn() };
 });
@@ -194,6 +194,7 @@ const MEMBER = {
   version: 1,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const FULL_PERMS = {
@@ -232,9 +233,16 @@ function mountScreen() {
   );
 }
 
+/** Switch to the named tab (All loans / Disbursement queue) — each tab
+ * mounts its own table/query. */
+async function openTab(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(await screen.findByRole("tab", { name: label }));
+}
+
 /** Open the disbursement dialog and drive it through the typed
  * confirmation (shared by the double-submit / 409 / key-custody tests). */
 async function openDisburseDialog(user: ReturnType<typeof userEvent.setup>) {
+  await openTab(user, "Disbursement queue");
   await user.click(await screen.findByText("Disburse ›"));
   const dialog = await screen.findByRole("dialog", { name: "Disburse loan" });
   await within(dialog).findByText("KES 250,000.10");

@@ -104,6 +104,7 @@ const MEMBER = {
   version: 1,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 // DELIBERATELY NON-ADDITIVE aggregate fixture (#31 batch 3): no figure
@@ -681,6 +682,7 @@ test("dividend payout: a SET preference renders the server's vocabulary token VE
   mockedMembers.fetchMemberDetail.mockResolvedValue({
     ...MEMBER_DETAIL,
     dividend_payout: "share_capital",
+    id_number_masked: null,
   });
   const user = userEvent.setup();
   mountScreen();

@@ -148,8 +148,13 @@ textarea.formControl {
 
 .selectWrap select {
     appearance: none;
+    -webkit-appearance: none;
     padding-inline-end: 3rem;
     cursor: pointer;
+    /* Re-assert background so the UA stylesheet cannot override it after
+     * appearance is reset — some browsers re-apply system colours on
+     * <select> elements even when background-color is already set. */
+    background-color: var(--card);
 }
 
 /* Chevron drawn with two CSS borders — no SVG dependency. */

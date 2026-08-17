@@ -254,10 +254,12 @@ test("happy path: OTP login → guarantors renders SERVER aggregates verbatim �
   // Guarantor aggregates are SERVER figures rendered verbatim (the
   // trailing cents survive — blocker (a))…
   await expect(page.getByText("KES 1,234,567.10")).toBeVisible();
-  // …including the per-guarantor capacity slice.
+  // …including the per-guarantor capacity slice (the default "Guarantor
+  // capacity" tab, alongside the persistent aggregate strip above).
   await expect(page.getByText("KES 500,000.10")).toBeVisible();
 
-  // Open the pledge drawer from the pledgeable-stage queue.
+  // Open the pledge drawer from the pledgeable-stage queue (its own tab).
+  await page.getByRole("tab", { name: "Open for pledging" }).click();
   await page.getByText("Pledge ›").click();
   const drawer = page.getByRole("dialog", { name: "Pledge guarantee" });
   await expect(drawer.getByText("Jane Wanjiku · M-0001")).toBeVisible();
@@ -293,8 +295,9 @@ test("happy path: OTP login → guarantors renders SERVER aggregates verbatim �
   expect(state.pledgeHeaders[0]?.["idempotency-key"]).toBeTruthy();
   expect(state.pledgeHeaders[0]?.["authorization"]).toMatch(/^Bearer /);
 
-  // The witnessed record now sits in the session panel.
+  // The witnessed record now sits in the session panel (its own tab).
   await drawer.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("tab", { name: "This session's guarantees" }).click();
   await expect(page.getByText("Pledged (unconsented)")).toBeVisible();
   await expect(page.getByRole("button", { name: "Consent…" })).toBeVisible();
 });
@@ -313,6 +316,7 @@ test("adversarial (money write): stale pledge → 409 conflict banner, EXACTLY O
   await login(page);
 
   await page.getByRole("link", { name: "Guarantors" }).click();
+  await page.getByRole("tab", { name: "Open for pledging" }).click();
   await page.getByText("Pledge ›").click();
   const drawer = page.getByRole("dialog", { name: "Pledge guarantee" });
   await drawer.getByLabel("Guarantor").selectOption(GUARANTOR_ID);

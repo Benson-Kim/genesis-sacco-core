@@ -9,10 +9,12 @@
  * not granted arrive omitted and render as "—" (deny-by-default, 1.6).
  */
 import { useQuery } from "@tanstack/react-query";
-import { Card, Stat } from "@genesis/design-system";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { fmtAmount, fmtDateTime, fmtKes } from "@/lib/format";
+import { Card, Stat, ErrorBanner, grid } from "@genesis/design-system";
+import { fmtDateTime, fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
+import { usePermissions } from "@/modules/authz/usePermissions";
+import { can } from "@/modules/authz/schemas";
+import { RecentActivityCard } from "./RecentActivityCard";
 import { fetchDashboardSummary } from "../api";
 import type { DashboardSummary } from "../schemas";
 import {
@@ -21,7 +23,6 @@ import {
     PerformingDonut,
     Sparkline,
 } from "./DashboardCharts";
-import grid from "@/modules/layout/grid.module.css";
 import styles from "./DashboardScreen.module.css";
 import charts from "./DashboardCharts.module.css";
 
@@ -154,13 +155,17 @@ function FlowsCard({
 
 function PortfolioQualityCard({
     chart,
-}: Readonly<{ chart: DashboardSummary["charts"] }>) {
+    loanBook,
+}: Readonly<{
+    chart: DashboardSummary["charts"];
+    loanBook: DashboardSummary["loan_book"];
+}>) {
     const portfolio = chart?.portfolio ?? null;
-    if (portfolio === null) return null;
+    if (portfolio === null || loanBook === null || loanBook === undefined) return null;
     return (
         <Card className={grid.third}>
             <h2 className={styles.title}>Portfolio quality</h2>
-            <PerformingDonut portfolio={portfolio} />
+            <PerformingDonut portfolio={portfolio} loanBook={loanBook} />
         </Card>
     );
 }
@@ -173,7 +178,9 @@ function PipelineCard({ pipeline }: Readonly<{ pipeline: DashboardSummary["pipel
             <ul className={styles.pipeline}>
                 {pipeline.map((stage) => (
                     <li key={stage.stage} className={styles.pipelineRow}>
-                        <span className={styles.stageName}>{stage.stage}</span>
+                        <span className={styles.stageName}>
+                            {stage.stage.charAt(0).toUpperCase() + stage.stage.slice(1)}
+                        </span>
                         <span className={styles.stageCount}>{stage.count}</span>
                     </li>
                 ))}
@@ -195,81 +202,59 @@ function ClassificationCard({
     return (
         <Card className={grid.third}>
             <h2 className={styles.title}>Portfolio classification</h2>
-            {/* Progress-bar supplement: server-computed
-                shares; the table below is the figures of record. */}
             {portfolio !== null && <ClassificationBars portfolio={portfolio} />}
-            <table className={styles.flows}>
-                <thead>
-                    <tr>
-                        <th scope="col" className={styles.th}>
-                            Classification
-                        </th>
-                        <th scope="col" className={styles.thRight}>
-                            Loans
-                        </th>
-                        <th scope="col" className={styles.thRight}>
-                            Balance
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {loanBook.by_classification.map((slice) => (
-                        <tr key={slice.classification}>
-                            <td className={styles.td}>{slice.classification}</td>
-                            <td className={styles.tdRight}>{slice.count}</td>
-                            <td className={styles.tdRight}>{fmtAmount(slice.balance)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
         </Card>
     );
 }
 
 function MembersByTypeCard({
-  members,
-  deposits,
+    members,
+    deposits,
 }: Readonly<{
-  members: DashboardSummary["members"];
-  deposits: DashboardSummary["deposits"];
+    members: DashboardSummary["members"];
+    deposits: DashboardSummary["deposits"];
 }>) {
-  if (members === null || members === undefined) return null;
+    if (members === null || members === undefined) return null;
 
-  // Descending by count, not API order — makes the scale gap (165 vs 1)
-  // read immediately instead of requiring the eye to hunt for the max.
-  const sorted = [...members.by_type].sort((a, b) => b.active - a.active);
-  const maxActive = Math.max(1, ...sorted.map((t) => t.active)); // avoid /0
+    // Descending by count, not API order — makes the scale gap (165 vs 1)
+    // read immediately instead of requiring the eye to hunt for the max.
+    const sorted = [...members.by_type].sort((a, b) => b.active - a.active);
+    const maxActive = Math.max(1, ...sorted.map((t) => t.active)); // avoid /0
 
-  return (
-    <Card className={grid.third}>
-      <h2 className={styles.title}>Members by type</h2>
+    return (
+        <Card className={grid.third}>
+            <h2 className={styles.title}>Members by type</h2>
 
-      <div className={styles.heroKpi}>
-        <span className={styles.heroKpiLabel}>Total share capital</span>
-        <span className={styles.heroKpiValue}>{kes(deposits?.total_share_capital)}</span>
-      </div>
-
-      <ul className={styles.memberBarList}>
-        {sorted.map((memberType) => (
-          <li key={memberType.type} className={styles.memberBarRow}>
-            <span className={styles.memberBarLabel}>{memberType.type}</span>
-            <div className={styles.memberBarTrack}>
-              <div
-                className={styles.memberBarFill}
-                style={{ width: `${(memberType.active / maxActive) * 100}%` }}
-              />
+            <div className={styles.heroKpi}>
+                <span className={styles.heroKpiLabel}>Total share capital</span>
+                <span className={styles.heroKpiValue}>{kes(deposits?.total_share_capital)}</span>
             </div>
-            <span className={styles.memberBarValue}>{memberType.active}</span>
-          </li>
-        ))}
-        {sorted.length === 0 && <li className={styles.muted}>No members recorded yet.</li>}
-      </ul>
-    </Card>
-  );
+
+            <ul className={styles.memberBarList}>
+                {sorted.map((memberType) => (
+                    <li key={memberType.type} className={styles.memberBarRow}>
+                        <span className={styles.memberBarLabel}>{memberType.type.charAt(0).toUpperCase() + memberType.type.slice(1)}</span>
+                        <div className={styles.memberBarTrack}>
+                            <div
+                                className={styles.memberBarFill}
+                                style={{ width: `${(memberType.active / maxActive) * 100}%` }}
+                            />
+                        </div>
+                        <span className={styles.memberBarValue}>{memberType.active}</span>
+                    </li>
+                ))}
+                {sorted.length === 0 && <li className={styles.muted}>No members recorded yet.</li>}
+            </ul>
+        </Card>
+    );
 }
 
 export function DashboardScreen() {
     const summary = useDashboardSummary();
+    const permissions = usePermissions();
+    // Pure UX gate mirroring the register's own grant; the server
+    // enforces every call regardless (deny by default).
+    const mayViewTransactions = can(permissions.data, "transactions", "view");
 
     if (summary.isPending) {
         return <div className={styles.muted}>Loading dashboard…</div>;
@@ -286,7 +271,7 @@ export function DashboardScreen() {
 
             <div className={`${grid.cards3} ${grid.wide}`}>
                 <FlowsCard flows={summary.data.monthly_flows} chart={summary.data.charts} />
-                <PortfolioQualityCard chart={summary.data.charts} />
+                <PortfolioQualityCard chart={summary.data.charts} loanBook={summary.data.loan_book} />
             </div>
             <div className={`${grid.cards3} ${grid.wide}`}>
                 <PipelineCard pipeline={summary.data.pipeline} />
@@ -299,6 +284,10 @@ export function DashboardScreen() {
                     deposits={summary.data.deposits}
                 />
             </div>
+            {/* The ledger strip sits BELOW the cards and behind the same
+                grant the register itself requires — the dashboard is
+                never a side door to money rows (least disclosure). */}
+            {mayViewTransactions && <RecentActivityCard />}
             <div className={styles.asOf}>As of {fmtDateTime(summary.data.as_of)}</div>
         </div>
     );

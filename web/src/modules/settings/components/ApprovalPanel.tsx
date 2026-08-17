@@ -12,9 +12,17 @@
  * WYSIWYG per-tab write with the loaded `version`; blank clears a key.
  */
 import { useState, type FormEvent } from "react";
-import { Button, Card } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
+import {
+  Button,
+  Card,
+  ErrorMessage,
+  type FieldErrors,
+  fromApiError,
+  grid,
+  Input,
+  mergeFieldErrors,
+  Select,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import type { UpdateSettingsInput } from "../api";
@@ -113,150 +121,205 @@ export function ApprovalPanel({
     flow.requestSave(input);
   }
 
+  const isLast = (index: number) => index === bands.length - 1;
+
   return (
     <form onSubmit={submit} noValidate>
-      <Card>
-        <h2 className={styles.sectionTitle}>Approval authority &amp; committee</h2>
-        {fieldErrors["approval_bands"] !== undefined && (
-          <div className={styles.fieldError} role="alert">
-            {fieldErrors["approval_bands"]}
-          </div>
-        )}
-        {bands.length === 0 && (
-          <div className={styles.formNote}>
-            No approval bands configured — authority-band enforcement runs on
-            documented fallbacks.
-          </div>
-        )}
-        {bands.map((row, index) => (
-          <div key={index}>
-            <div className={styles.subhead}>
-              Band {index + 1}
-              {index > 0 ? " — covers amounts above the previous ceiling" : ""}
-            </div>
-            <div className={styles.fieldsGrid}>
-              <FormField
-                id={`approval-band-${index}-authority`}
-                label={`Band ${index + 1} authority`}
-                error={fieldErrors[`approval_bands.${index}.authority`]}
-              >
-                {(control) => (
-                  <select
-                    {...control}
-                    className={styles.select}
-                    value={
-                      (AUTHORITY_ROLE_NAMES as readonly string[]).includes(row.authority)
-                        ? row.authority
-                        : ""
-                    }
-                    disabled={!mayEdit}
-                    onChange={(event) => setBand(index, { authority: event.target.value })}
-                  >
-                    <option value="">Pick an authority</option>
-                    {AUTHORITY_ROLE_NAMES.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </FormField>
-              <FormField
-                id={`approval-band-${index}-ceiling`}
-                label={`Band ${index + 1} approves up to (KES)`}
-                error={fieldErrors[`approval_bands.${index}.ceiling`]}
-                hint={index === bands.length - 1 ? "Blank = no limit (last band only)." : undefined}
-              >
-                {(control) => (
-                  <input
-                    {...control}
-                    className={styles.input}
-                    inputMode="decimal"
-                    maxLength={19}
-                    value={row.ceiling}
-                    disabled={!mayEdit}
-                    onChange={(event) => setBand(index, { ceiling: event.target.value })}
-                  />
-                )}
-              </FormField>
-            </div>
-            {mayEdit && (
-              <div className={styles.bandActions}>
-                <Button
-                  type="button"
-                  onClick={() => setBands((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  Remove band {index + 1}
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-        {mayEdit && (
-          <div className={styles.bandActions}>
-            <Button
-              type="button"
-              onClick={() => setBands((prev) => [...prev, { authority: "", ceiling: "" }])}
-            >
-              + Add band
-            </Button>
-          </div>
-        )}
+      {/* Two-card layout matching the prototype Roles & permissions pattern */}
+      <div className={grid.sideMain}>
 
-        <div className={styles.subhead}>Committee</div>
-        <div className={styles.fieldsGrid}>
-          <FormField
-            id="approval-committee-size"
-            label="Committee size"
-            error={fieldErrors["committee_size"]}
-            hint="Blank = not configured."
-          >
-            {(control) => (
-              <input
-                {...control}
-                className={styles.input}
+        {/* ── Left card: committee size + quorum (flush rows, no padding) ── */}
+        <Card padded={false} style={{ alignSelf: "flex-start", overflow: "hidden" }}>
+          <ul className={styles.approvalSideList} aria-label="Committee settings">
+            <li className={styles.approvalSideRow}>
+              <label className={styles.approvalSideLabel} htmlFor="approval-committee-size">
+                Committee size
+              </label>
+              <Input
+                id="approval-committee-size"
                 inputMode="numeric"
                 maxLength={2}
                 value={committeeSize}
                 disabled={!mayEdit}
+                aria-describedby={fieldErrors["committee_size"] !== undefined ? "committee-size-error" : undefined}
+                aria-invalid={fieldErrors["committee_size"] !== undefined ? true : undefined}
                 onChange={(event) => setCommitteeSize(event.target.value)}
               />
-            )}
-          </FormField>
-          <FormField
-            id="approval-committee-quorum"
-            label="Quorum (approvals)"
-            error={fieldErrors["committee_quorum"]}
-            hint="Read at vote time — never rewrites past votes."
-          >
-            {(control) => (
-              <input
-                {...control}
-                className={styles.input}
+              {fieldErrors["committee_size"] !== undefined && (
+                <ErrorMessage id="committee-size-error">{fieldErrors["committee_size"]}</ErrorMessage>
+              )}
+            </li>
+            <li className={styles.approvalSideRow}>
+              <label className={styles.approvalSideLabel} htmlFor="approval-committee-quorum">
+                Quorum (approvals)
+              </label>
+              <Input
+                id="approval-committee-quorum"
                 inputMode="numeric"
                 maxLength={2}
                 value={committeeQuorum}
                 disabled={!mayEdit}
+                aria-describedby={fieldErrors["committee_quorum"] !== undefined ? "committee-quorum-error" : undefined}
+                aria-invalid={fieldErrors["committee_quorum"] !== undefined ? true : undefined}
                 onChange={(event) => setCommitteeQuorum(event.target.value)}
               />
-            )}
-          </FormField>
-        </div>
-        <SettingsSaveControls
-          flow={flow}
-          mayEdit={mayEdit && editing}
-          buttonLabel="Save matrix"
-          confirmTitle="Apply approval matrix"
-          confirmPhrase="approval"
-          settings={settings}
-        >
-          <div className={styles.formNote}>
-            Authority ceilings and quorum gate money-moving approvals from
-            the moment they are saved (quorum is read at vote time). Blank
-            fields CLEAR their stored value.
+              {fieldErrors["committee_quorum"] !== undefined && (
+                <ErrorMessage id="committee-quorum-error">{fieldErrors["committee_quorum"]}</ErrorMessage>
+              )}
+            </li>
+          </ul>
+          {/* Save button flush at the bottom of the left card */}
+          <div className={styles.approvalSideSave}>
+            <SettingsSaveControls
+              flow={flow}
+              mayEdit={mayEdit && editing}
+              buttonLabel="Save matrix"
+              confirmTitle="Apply approval matrix"
+              confirmPhrase="approval"
+              settings={settings}
+            >
+              <div className={styles.formNote}>
+                Authority ceilings and quorum gate money-moving approvals from
+                the moment they are saved (quorum is read at vote time). Blank
+                fields CLEAR their stored value.
+              </div>
+            </SettingsSaveControls>
           </div>
-        </SettingsSaveControls>
-      </Card>
+        </Card>
+
+        {/* ── Right card: approval authority table ── */}
+        <Card>
+          <h2 className={styles.approvalTitle}>Approval authority &amp; committee</h2>
+
+          {fieldErrors["approval_bands"] !== undefined && (
+            <ErrorMessage>{fieldErrors["approval_bands"]}</ErrorMessage>
+          )}
+
+          <table className={styles.approvalTable}>
+            <thead className={styles.approvalThead}>
+              <tr>
+                <th className={styles.approvalTh} scope="col">Authority</th>
+                <th className={`${styles.approvalTh} ${styles.approvalThCeiling}`} scope="col">
+                  Approves up to (KES)
+                </th>
+                {mayEdit && editing && <th className={styles.approvalTh} scope="col" />}
+              </tr>
+            </thead>
+            <tbody className={styles.approvalTbody}>
+              {bands.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={mayEdit && editing ? 3 : 2}
+                    className={styles.approvalTdAuthority}
+                    style={{ color: "var(--sub)", fontWeight: "normal" }}
+                  >
+                    No approval bands configured.
+                  </td>
+                </tr>
+              )}
+              {bands.map((row, index) => (
+                <tr key={index}>
+                  <td className={styles.approvalTdAuthority}>
+                    {editing ? (
+                      <>
+                        <Select
+                          id={`approval-band-${index}-authority`}
+                          aria-label={`Band ${index + 1} authority`}
+                          aria-describedby={
+                            fieldErrors[`approval_bands.${index}.authority`] !== undefined
+                              ? `approval-band-${index}-authority-error`
+                              : undefined
+                          }
+                          aria-invalid={
+                            fieldErrors[`approval_bands.${index}.authority`] !== undefined
+                              ? true
+                              : undefined
+                          }
+                          value={
+                            (AUTHORITY_ROLE_NAMES as readonly string[]).includes(row.authority)
+                              ? row.authority
+                              : ""
+                          }
+                          disabled={!mayEdit}
+                          onChange={(event) => setBand(index, { authority: event.target.value })}
+                        >
+                          <option value="">Pick an authority</option>
+                          {AUTHORITY_ROLE_NAMES.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </Select>
+                        {fieldErrors[`approval_bands.${index}.authority`] !== undefined && (
+                          <ErrorMessage id={`approval-band-${index}-authority-error`}>
+                            {fieldErrors[`approval_bands.${index}.authority`]}
+                          </ErrorMessage>
+                        )}
+                      </>
+                    ) : (
+                      row.authority || <span style={{ color: "var(--sub)" }}>—</span>
+                    )}
+                  </td>
+
+                  <td className={styles.approvalTdCeiling}>
+                    <Input
+                      id={`approval-band-${index}-ceiling`}
+                      aria-label={`Band ${index + 1} approves up to (KES)`}
+                      aria-describedby={
+                        fieldErrors[`approval_bands.${index}.ceiling`] !== undefined
+                          ? `approval-band-${index}-ceiling-error`
+                          : undefined
+                      }
+                      aria-invalid={
+                        fieldErrors[`approval_bands.${index}.ceiling`] !== undefined
+                          ? true
+                          : undefined
+                      }
+                      className={styles.ceilingInput}
+                      inputMode="decimal"
+                      maxLength={19}
+                      placeholder={isLast(index) ? "No limit" : undefined}
+                      value={row.ceiling}
+                      disabled={!mayEdit}
+                      onChange={(event) => setBand(index, { ceiling: event.target.value })}
+                    />
+                    {fieldErrors[`approval_bands.${index}.ceiling`] !== undefined && (
+                      <ErrorMessage id={`approval-band-${index}-ceiling-error`}>
+                        {fieldErrors[`approval_bands.${index}.ceiling`]}
+                      </ErrorMessage>
+                    )}
+                  </td>
+
+                  {mayEdit && editing && (
+                    <td className={styles.approvalTdActions}>
+                      <button
+                        type="button"
+                        className={styles.removeBandBtn}
+                        aria-label={`Remove band ${index + 1}`}
+                        onClick={() => setBands((prev) => prev.filter((_, i) => i !== index))}
+                      >
+                        ×
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {mayEdit && editing && (
+            <div className={styles.addBandRow}>
+              <Button
+                type="button"
+                onClick={() => setBands((prev) => [...prev, { authority: "", ceiling: "" }])}
+              >
+                + Add band
+              </Button>
+            </div>
+          )}
+        </Card>
+
+      </div>
     </form>
   );
 }

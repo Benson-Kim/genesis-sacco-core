@@ -111,7 +111,7 @@ an admin can act on it immediately:
 |---|---|---|
 | `docker-compose.yml` postgres service | cPanel PostgreSQL database (phpPgAdmin) | Real Postgres, not a swap to MySQL. |
 | Redis (`REDIS_URL`) | *(not provisioned)* | Not in your cPanel toolset, and not required — `rate_limit.py` falls back to an in-process window when `REDIS_URL` is unset, which is correct for a single-process deployment. Leave it unset. |
-| `uvicorn` (backend dev server) | cPanel "Setup Python App" (Passenger) | Passenger wants a WSGI callable; `backend/passenger_wsgi.py` (new) adapts the ASGI app with `a2wsgi`. |
+| `uvicorn` (backend dev server) | cPanel "Setup Python App" (Passenger) | Passenger wants a WSGI callable; `backend/wsgi.py` (new) adapts the ASGI app with `a2wsgi`. It must NOT be called passenger_wsgi.py — cPanel generates a file of that name which loads the startup file, so naming them alike makes it load itself (RecursionError at boot). |
 | `next dev` / `next start` (frontend) | cPanel "Setup Node.js App" (Passenger) | Passenger's Node integration runs a startup file that listens on `process.env.PORT`; `web/server.js` (new) does that. |
 | `outbox_worker.run_worker()` / `export_worker.run_worker()` / `idempotency_worker.run_worker()` / `dormancy_worker.run_worker()` (persistent loops) | cPanel Cron Jobs calling one-shot scripts | Shared/Passenger hosting cannot keep a `while True` daemon alive. Each worker already exposes a single-pass function under its loop (`run_dispatch_cycle`, `run_purge_cycle`, `run_export_cycle`, `run_dormancy_cycle`) — `backend/scripts/cron_*.py` (new) call those once per invocation; nothing about the workers' own logic changed. |
 | `alembic upgrade head` (CI / local) | Same command, run once via SSH | See §3. |
@@ -144,7 +144,7 @@ an admin can act on it immediately:
 
 1. cPanel → Setup Python App → Create Application: Python **3.12.13**,
    application root e.g. `api`, application URL `api.<domain>`,
-   startup file `passenger_wsgi.py`, entry point `application`.
+   startup file `wsgi.py`, entry point `application`.
 2. Set environment variables in that same screen (values, not
    placeholders — generate real secrets with the commands below; none of
    these are ever committed to the repo):
@@ -173,8 +173,30 @@ an admin can act on it immediately:
    ```
 5. Run migrations once, same venv:
    ```
+   export PGOPTIONS='-c app.tenant_id=00000000-0000-0000-0000-000000000000'
    alembic upgrade head
    ```
+
+   **Why PGOPTIONS is required here.** Every tenant table carries FORCE
+   ROW LEVEL SECURITY, and the policies read
+   `current_setting('app.tenant_id')`. FORCE applies to the table OWNER
+   too, so on managed hosting — where the app role is the owner and
+   there is no superuser — the data-backfill migrations (0011, 0042,
+   0046 …) abort with:
+
+       psycopg.errors.UndefinedObject: unrecognized configuration
+       parameter "app.tenant_id"
+
+   This never appears locally because docker-compose's `genesis` user is
+   a SUPERUSER and bypasses RLS entirely. Setting the GUC to the nil
+   UUID satisfies `current_setting` without granting visibility: every
+   policy evaluates false, so each backfill matches zero rows — exactly
+   right on a FRESH database, which has nothing to backfill.
+
+   **On a POPULATED database this is wrong**: the backfills would
+   silently skip real rows. Migrating a database that already holds
+   tenant data needs a role with BYPASSRLS (or a per-table
+   `NO FORCE ROW LEVEL SECURITY` window), not this flag.
    Confirm the extension privilege issue from §2.3 doesn't fire here; if
    it does, stop and resolve that with MochaHost support before
    continuing — don't work around it by hand-editing the migration.
@@ -189,6 +211,30 @@ an admin can act on it immediately:
 7. Restart the app from the Setup Python App screen so it picks up the
    uploaded code and env vars.
 8. Smoke test: `curl https://api.<domain>/healthz` and `/readyz`.
+
+### 3a-pre. Worker discovery needs migration 0049
+
+The worker registries (`active_tenant_ids`, `outbox_due_tenant_ids`,
+`outbox_purgeable_tenant_ids`) are SECURITY DEFINER, which bypasses RLS
+only when the DEFINING role holds BYPASSRLS. On managed hosting the app
+role owns the tables and FORCE ROW LEVEL SECURITY applies to owners, so
+before 0049 every registry returned zero rows and the workers **silently
+processed nothing** — `tenants=0`, exit code 0, no error, while the
+outbox went undispatched and dormancy never ran.
+
+Migration 0049 fixes this properly: a SELECT-only `registry_scan` policy
+keyed on `app.registry_scan`, set only by
+`infrastructure.tenancy.registry_session`. Confirm after migrating:
+
+```
+psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM active_tenant_ids()'
+# 0  -- correct: no GUC, nothing granted
+PGOPTIONS='-c app.registry_scan=on'   psql "$DATABASE_URL" -tAc 'SELECT count(*) FROM active_tenant_ids()'
+# 1  -- correct: the scan sees your active tenant
+```
+
+If the second returns 0, the workers will no-op silently — do not put
+the deployment into service until it returns your tenant count.
 
 ### 3a. Background jobs (cron, not a daemon)
 
@@ -224,9 +270,15 @@ don't redirect stderr to `/dev/null`.
    this virtual environment" command on the Setup Node.js App page — run
    that first so `npm`/`node` resolve to the versions you picked):
    ```
-   cd ~/web
-   npm ci
-   npm run build
+   cd ~/genesis-sacco/web
+   # cPanel sets NODE_ENV=production, which makes `npm ci` SKIP
+   # devDependencies — but `next build` needs typescript and the
+   # @types packages to type-check, so install them explicitly.
+   NODE_ENV=development npm ci --include=dev
+   # Cap build parallelism: `nproc` reports the HOST's cores (32 here),
+   # so Next spawns 32 workers and trips the per-account CloudLinux LVE
+   # process limit, dying with `spawn ... node EAGAIN`.
+   NEXT_BUILD_CPUS=1 NODE_ENV=production npm run build
    ```
 5. Restart the app from the Setup Node.js App screen.
 6. Smoke test: load `https://<bare-domain>` — expect the sign-in screen

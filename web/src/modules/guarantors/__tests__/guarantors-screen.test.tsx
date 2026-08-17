@@ -14,7 +14,7 @@ import { Providers } from "@/app/providers";
 import { logout } from "@/modules/auth/api";
 import { clearSession, hasSession, setSession } from "@/modules/auth/session";
 import { usePermissions } from "@/modules/authz/usePermissions";
-import { announce } from "@/modules/layout/announcer";
+import { announce } from "@genesis/design-system";
 import { GuarantorsScreen } from "../components/GuarantorsScreen";
 import {
   guaranteeSchema,
@@ -64,6 +64,8 @@ jest.mock("@/modules/applications/api", () => {
 
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
   fetchMember: jest.fn(),
 }));
 
@@ -73,9 +75,9 @@ jest.mock("@/modules/authz/usePermissions", () => ({
 
 // The live-region announcer is a spy so the suites can prove every
 // async outcome — including the 409 withdrawal (!60 F5) — is announced.
-jest.mock("@/modules/layout/announcer", () => {
-  const actual = jest.requireActual<typeof import("@/modules/layout/announcer")>(
-    "@/modules/layout/announcer",
+jest.mock("@genesis/design-system", () => {
+  const actual = jest.requireActual<typeof import("@genesis/design-system")>(
+    "@genesis/design-system",
   );
   return { ...actual, announce: jest.fn() };
 });
@@ -189,6 +191,7 @@ const BORROWER = {
   version: 1,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const GUARANTOR = {
@@ -202,6 +205,7 @@ const GUARANTOR = {
   version: 1,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const FULL_PERMS = {
@@ -239,9 +243,16 @@ function mountScreen() {
   );
 }
 
+/** Switch to the named tab (Guarantor capacity / Open for pledging /
+ * This session's guarantees) — each tab mounts its own table/query. */
+async function openTab(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(await screen.findByRole("tab", { name: label }));
+}
+
 /** Open the pledge drawer from the queue and fill the form (shared by
  * the double-pledge / 409 / key-custody tests). */
 async function openPledgeDrawer(user: ReturnType<typeof userEvent.setup>) {
+  await openTab(user, "Open for pledging");
   await user.click(await screen.findByText("Pledge ›"));
   const drawer = await screen.findByRole("dialog", { name: "Pledge guarantee" });
   await within(drawer).findByText("Applied amount");
@@ -253,7 +264,9 @@ async function confirmPledge(
   drawer: HTMLElement,
   amount = "50000.10",
 ) {
-  await user.selectOptions(within(drawer).getByLabelText("Guarantor"), GUARANTOR_ID);
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0002");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Peter Otieno/);
   const amountInput = within(drawer).getByLabelText("Pledge amount (KES)");
   await user.clear(amountInput);
   await user.type(amountInput, amount);
@@ -275,6 +288,10 @@ beforeEach(() => {
   mockedApps.fetchApplication.mockResolvedValue(application());
   mockedApps.fetchProducts.mockResolvedValue([PRODUCT]);
   mockedMembers.fetchMembersPage.mockResolvedValue(page([BORROWER, GUARANTOR]));
+  // The picker resolves ONE member by identifier; M-0002 is the
+  // guarantor fixture (M-0001 is the borrower, refused on resolution).
+  mockedMembers.lookupMemberByNo.mockResolvedValue(GUARANTOR);
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(GUARANTOR);
   mockedMembers.fetchMember.mockResolvedValue(BORROWER);
 });
 
@@ -320,6 +337,7 @@ test("pledge queue: the stage filter drives the SERVER query over the PLEDGEABLE
     .mockResolvedValueOnce(page(fullPage, "opaque-cursor-§1"))
     .mockResolvedValueOnce(page([application({ id: "dddddddd-1111-2222-3333-444444444444" })]));
   mountScreen();
+  await openTab(user, "Open for pledging");
 
   await user.click(await screen.findByRole("button", { name: "Next page" }));
   await waitFor(() => expect(mockedApps.fetchApplicationsPage).toHaveBeenCalledTimes(2));
@@ -356,15 +374,23 @@ test("SELF-GUARANTEE structurally impossible: the borrower never appears among t
   mountScreen();
 
   const drawer = await openPledgeDrawer(user);
-  const picker = within(drawer).getByLabelText("Guarantor");
-  const options = within(picker).getAllByRole("option");
-  const values = options.map((option) => (option as HTMLOptionElement).value);
-  // The guarantor is offered; the borrower is NOT (no way to select them).
-  expect(values).toContain(GUARANTOR_ID);
-  expect(values).not.toContain(BORROWER_ID);
-  // The server-reported free capacity for the chosen guarantor renders
-  // verbatim from the fresh aggregate read.
-  await user.selectOptions(picker, GUARANTOR_ID);
+  // SELF-GUARANTEE: the picker resolves by identifier, so the borrower
+  // CAN be looked up — and is REFUSED explicitly rather than silently
+  // omitted. Falsifiable: drop the refusal and the borrower resolves.
+  mockedMembers.lookupMemberByNo.mockResolvedValueOnce(BORROWER);
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0001");
+  await user.tab();
+  expect(
+    await within(drawer).findByText(/look up a different member/),
+  ).toBeInTheDocument();
+  expect(within(drawer).queryByText(/Member found: Jane Wanjiku/)).toBeNull();
+
+  // A DIFFERENT member resolves normally, and the server-reported free
+  // capacity renders verbatim from the fresh aggregate read.
+  await user.clear(within(drawer).getByLabelText("Member number"));
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0002");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Peter Otieno/);
   expect(await within(drawer).findByText("KES 250,000.20")).toBeInTheDocument();
 });
 
@@ -422,6 +448,7 @@ test("DOUBLE-PLEDGE impossible from this client: triple-clicked confirmation pro
 
   // The witnessed registry now carries the record in the session panel.
   await user.click(within(drawer).getByRole("button", { name: "Close" }));
+  await openTab(user, "This session's guarantees");
   expect(await screen.findByText("Pledged (unconsented)")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Consent…" })).toBeInTheDocument();
 });
@@ -555,6 +582,7 @@ test("CONSENT: no write until the byte-identical phrase; double-clicked confirm 
     Promise.resolve(id === BORROWER_ID ? BORROWER : GUARANTOR),
   );
   mountScreen();
+  await openTab(user, "This session's guarantees");
 
   await user.click(await screen.findByRole("button", { name: "Consent…" }));
   const dialog = await screen.findByRole("dialog", { name: "Record guarantor consent" });
@@ -614,6 +642,7 @@ test("RELEASE 409 (record moved outside this tab): EXACTLY ONE attempt; reload s
     Promise.resolve(id === BORROWER_ID ? BORROWER : GUARANTOR),
   );
   mountScreen();
+  await openTab(user, "This session's guarantees");
 
   await user.click(await screen.findByRole("button", { name: "Release…" }));
   const dialog = await screen.findByRole("dialog", { name: "Release guarantee" });
@@ -665,6 +694,7 @@ test("SUBSTITUTION (disbursed collateral): release is NOT offered; the swap requ
     Promise.resolve(id === BORROWER_ID ? BORROWER : GUARANTOR),
   );
   mountScreen();
+  await openTab(user, "This session's guarantees");
 
   // An active guarantee behind a DISBURSED loan can only be substituted.
   expect(await screen.findByRole("button", { name: "Substitute…" })).toBeInTheDocument();
@@ -675,10 +705,9 @@ test("SUBSTITUTION (disbursed collateral): release is NOT offered; the swap requ
 
   // Unreferenced submissions never reach the wire (P14.5: the evidence
   // citation IS the attestation — no consented checkbox exists to tick).
-  await user.selectOptions(
-    within(drawer).getByLabelText("Substitute guarantor"),
-    GUARANTOR_ID,
-  );
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0002");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Peter Otieno/);
   await user.click(within(drawer).getByRole("button", { name: "Substitute…" }));
   expect(
     await within(drawer).findByText(
@@ -726,13 +755,13 @@ test("SUBSTITUTE 409: reload withdraws the record with an INFORMATIONAL (never s
     Promise.resolve(id === BORROWER_ID ? BORROWER : GUARANTOR),
   );
   mountScreen();
+  await openTab(user, "This session's guarantees");
 
   await user.click(await screen.findByRole("button", { name: "Substitute…" }));
   const drawer = await screen.findByRole("dialog", { name: "Substitute guarantee" });
-  await user.selectOptions(
-    within(drawer).getByLabelText("Substitute guarantor"),
-    GUARANTOR_ID,
-  );
+  await user.type(within(drawer).getByLabelText("Member number"), "M-0002");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Peter Otieno/);
   await user.type(
     within(drawer).getByLabelText("Consent evidence reference"),
     "Signed guarantorship form GF-778",
@@ -775,12 +804,14 @@ test("least-disclosure: a 403 on the pledge renders the sanitized banner only, s
 });
 
 test("query-path 401 tears the session down immediately (dual-cache teardown) AND empties the witnessed registry — the session panel renders nothing", async () => {
+  const user = userEvent.setup();
   // A previous operator's witnessed record is armed in this tab…
   recordWitnessedGuarantee(guarantee());
   mockedDashboard.fetchDashboardSummary.mockRejectedValue(
     new ApiError(401, "unauthenticated", "corr-q"),
   );
   mountScreen();
+  await openTab(user, "This session's guarantees");
 
   await waitFor(() => expect(hasSession()).toBe(false), { timeout: 4000 });
 
@@ -798,8 +829,10 @@ test("query-path 401 tears the session down immediately (dual-cache teardown) AN
 });
 
 test("explicit sign-out empties the witnessed registry — the session panel renders nothing for the next operator", async () => {
+  const user = userEvent.setup();
   recordWitnessedGuarantee(guarantee());
   mountScreen();
+  await openTab(user, "This session's guarantees");
 
   // The record and its armed affordance are on screen pre-sign-out.
   expect(await screen.findByText("Pledged (unconsented)")).toBeInTheDocument();

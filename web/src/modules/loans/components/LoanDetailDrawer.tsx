@@ -25,12 +25,23 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
-import { fromApiError, fromZodError, mergeFieldErrors, type FieldErrors } from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
+  fromApiError,
+  fromZodError,
+  mergeFieldErrors,
+  type FieldErrors,
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { isConflict } from "@/lib/errors";
@@ -322,9 +333,8 @@ export function LoanDetailDrawer({
               hint="Decimal amount, e.g. 5000 or 5000.50 — the server allocates it to penalties, then interest, then principal."
             >
               {(control) => (
-                <input
+                <Input
                   {...control}
-                  className={styles.input}
                   inputMode="decimal"
                   maxLength={18}
                   value={amount}
@@ -334,9 +344,8 @@ export function LoanDetailDrawer({
             </FormField>
             <FormField id="repay-channel" label="Channel" error={fieldErrors["channel"]}>
               {(control) => (
-                <select
+                <Select
                   {...control}
-                  className={styles.select}
                   value={channel}
                   onChange={(event) => setChannel(event.target.value)}
                 >
@@ -346,7 +355,7 @@ export function LoanDetailDrawer({
                       {CHANNEL_LABELS[option]}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </FormField>
             <div className={styles.actions}>

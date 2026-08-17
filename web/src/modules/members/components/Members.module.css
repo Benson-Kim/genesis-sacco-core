@@ -34,7 +34,7 @@
 }
 
 .cellStrong {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
 }
 
@@ -199,4 +199,34 @@
     align-items: flex-end;
     gap: 8px;
     flex-wrap: wrap;
+}
+/* Member lookup field (MemberLookupField): the input and its search
+   button share one row, so the trigger sits where the operator is
+   already looking rather than below the control. */
+.lookupRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.lookupRow > *:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.lookupRow > button {
+    margin-top: 26px; /* offset to clear the label row above the input */
+}
+
+.subhead {
+    font-size: var(--fs-meta);
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 6px;
+}
+
+.formNote {
+    font-size: var(--fs-meta);
+    color: var(--sub);
+    margin-top: 6px;
 }

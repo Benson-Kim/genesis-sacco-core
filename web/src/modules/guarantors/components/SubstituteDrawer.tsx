@@ -29,22 +29,27 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Input,
+} from "@genesis/design-system";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { useKeysetList } from "@/modules/table/useKeysetList";
-import { fetchMember, fetchMembersPage } from "@/modules/members/api";
+import { fetchMember } from "@/modules/members/api";
+import { MemberLookupField } from "@/modules/members/components/MemberLookupField";
 import type { Member } from "@/modules/members/schemas";
 import { substituteGuarantee } from "../api";
 import { markWitnessedConflict, recordWitnessedGuarantee } from "../sessionRegistry";
@@ -65,7 +70,6 @@ export function SubstituteDrawer({
   onClose: () => void;
 }>) {
   const queryClient = useQueryClient();
-  const [guarantorId, setGuarantorId] = useState("");
   const [consentReference, setConsentReference] = useState("");
   const [amount, setAmount] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
@@ -81,16 +85,10 @@ export function SubstituteDrawer({
     staleTime: STALE_TIME.record,
   });
 
-  // Substitute picker: ACTIVE members via the keyset contract (scalability).
-  const members = useKeysetList<Member>({
-    queryKey: ["members", "list", { status: "active", type: "" }],
-    fetchPage: (cursor) => fetchMembersPage({ status: "active", type: "" }, cursor),
-  });
-  // SELF-GUARANTEE prevention (structural): the borrower is never an
-  // option for their own loan's replacement collateral.
-  const substituteOptions = (members.data?.pages.flatMap((page) => page.items) ?? []).filter(
-    (member) => member.id !== guarantee.borrower_member_id,
-  );
+  // Substitute picker: ONE exact-match lookup by the identifier the
+  // operator types — never a paged dump of the whole membership.
+  const [substituteMember, setSubstituteMember] = useState<Member | null>(null);
+  const guarantorId = substituteMember?.id ?? "";
 
   const substitute = useMutation({
     mutationFn: (input: SubstituteCreateInput) =>
@@ -170,7 +168,7 @@ export function SubstituteDrawer({
     substitute.error.status === 422 &&
     Object.keys(serverErrors).length > 0;
 
-  const chosenSubstitute = substituteOptions.find((member) => member.id === guarantorId);
+  const chosenSubstitute = substituteMember ?? undefined;
 
   return (
     <Modal
@@ -237,32 +235,22 @@ export function SubstituteDrawer({
             error={fieldErrors["guarantor_member_id"]}
             hint="Active members only; the borrower cannot guarantee their own loan and is not offered."
           >
-            {(control) => (
-              <select
-                {...control}
-                className={styles.select}
-                value={guarantorId}
-                onChange={(event) => setGuarantorId(event.target.value)}
+            {() => (
+              <MemberLookupField
+                idPrefix="substitute-guarantor"
+                hint="Search by member number or national ID."
                 disabled={substitute.isPending}
-              >
-                <option value="">Select a member…</option>
-                {substituteOptions.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} · {member.member_no}
-                  </option>
-                ))}
-              </select>
+                onResolved={setSubstituteMember}
+                // SELF-GUARANTEE prevention (see PledgeDrawer): a
+                // resolved borrower is refused, never selected.
+                reject={(member) =>
+                  member.id === guarantee.borrower_member_id
+                    ? "A member cannot guarantee their own loan — look up a different member."
+                    : null
+                }
+              />
             )}
           </FormField>
-          {members.hasNextPage && (
-            <Button
-              type="button"
-              onClick={() => void members.fetchNextPage()}
-              disabled={members.isFetchingNextPage}
-            >
-              {members.isFetchingNextPage ? "Loading…" : "Load more members"}
-            </Button>
-          )}
           <FormField
             id="substitute-consent-reference"
             label="Consent evidence reference"
@@ -270,9 +258,8 @@ export function SubstituteDrawer({
             hint="Cite the evidence the substitute guarantor's consent rests on (e.g. the signed guarantorship form) — submitting IS the staff attestation and it is written as an audited fact."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 maxLength={200}
                 value={consentReference}
                 onChange={(event) => setConsentReference(event.target.value)}
@@ -287,9 +274,8 @@ export function SubstituteDrawer({
             hint="Leave blank to match the released amount (the server derives it); a typed amount may only meet or exceed it — enforced server-side."
           >
             {(control) => (
-              <input
+              <Input
                 {...control}
-                className={styles.input}
                 inputMode="decimal"
                 maxLength={18}
                 value={amount}

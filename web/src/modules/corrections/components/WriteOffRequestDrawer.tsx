@@ -26,20 +26,29 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, ConfirmDangerModal, Kv, Modal } from "@genesis/design-system";
-import { FormField } from "@/modules/forms/FormField";
 import {
+  Banner,
+  Button,
+  ConfirmDangerModal,
+  Kv,
+  Modal,
+  FormField,
   fromApiError,
   fromZodError,
   mergeFieldErrors,
   type FieldErrors,
-} from "@/modules/forms/form-errors";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { announce } from "@/modules/layout/announcer";
+  ConflictBanner,
+  ErrorBanner,
+  announce,
+  Select,
+  Textarea,
+  useKeysetList,
+} from "@genesis/design-system";
 import { getOwnUserId } from "@/modules/auth/session";
 import { isConflict } from "@/lib/errors";
 import { fmtDateTime, fmtKes } from "@/lib/format";
+import { fetchLoansPage } from "@/modules/loans/api";
+import type { Loan } from "@/modules/loans/schemas";
 import { loanClassPill } from "@/modules/loans/components/pills";
 import { requestWriteOff } from "../api";
 import { recordWriteOffMaker } from "../makerRegistry";
@@ -51,6 +60,22 @@ import {
 import { writeOffStatusPill } from "./pills";
 import styles from "./Corrections.module.css";
 
+/** Loan picker (reuse-first, the FeeDrawer member-picker pattern): the
+ * loans contract has no search-by-member param, so this is a keyset
+ * Select with "Load more" — filtered to ACTIVE loans only (a write-off
+ * snapshot of a performing loan is unrepresentable at the database;
+ * the classification pill next to each option lets the operator spot
+ * the non-performing ones). The operator picks a loan, never types or
+ * sees its raw uuid. */
+function useLoanPicker() {
+  const loans = useKeysetList<Loan>({
+    queryKey: ["loans", "list", { status: "active", classification: "" }],
+    fetchPage: (cursor) => fetchLoansPage({ status: "active", classification: "" }, cursor),
+  });
+  const options = loans.data?.pages.flatMap((page) => page.items) ?? [];
+  return { loans, options };
+}
+
 export function WriteOffRequestDrawer({
   onReview,
   onClose,
@@ -59,7 +84,9 @@ export function WriteOffRequestDrawer({
   onReview: (writeOffId: string) => void;
   onClose: () => void;
 }>) {
+  const { loans, options: loanOptions } = useLoanPicker();
   const [loanId, setLoanId] = useState("");
+  const selectedLoan = loanOptions.find((loan) => loan.id === loanId);
   const [reason, setReason] = useState("");
   const [clientErrors, setClientErrors] = useState<FieldErrors>({});
   const [confirmEntry, setConfirmEntry] = useState<WriteOffRequestEntry | null>(null);
@@ -71,7 +98,7 @@ export function WriteOffRequestDrawer({
   const queryClient = useQueryClient();
 
   const request = useMutation({
-      mutationFn: (entry: WriteOffRequestEntry) =>
+    mutationFn: (entry: WriteOffRequestEntry) =>
       requestWriteOff(
         entry.loan_id,
         entry.reason,
@@ -166,8 +193,14 @@ export function WriteOffRequestDrawer({
             Write-off requested · awaiting committee votes
           </div>
           <Kv label="Status">{writeOffStatusPill(result.status)}</Kv>
-          <Kv label="Write-off id">
-            <span className={styles.mono}>{result.id}</span>
+          <Kv label="Member">
+            {result.member_no !== null ? (
+              <span>
+                {result.member_no} — {result.member_name}
+              </span>
+            ) : (
+              <span className={styles.muted}>Unresolved member</span>
+            )}
           </Kv>
           <Kv label="Classification">{loanClassPill(result.classification)}</Kv>
           <Kv label="Balance (receivable)">
@@ -201,40 +234,53 @@ export function WriteOffRequestDrawer({
 
       {!spent && (
         <form onSubmit={submitEntry} noValidate>
-          <div className={styles.formNote}>
-            Write-off is the LAST stage of credit deterioration and is NOT
-            forgiveness: the receivable is derecognised but the legal claim on
-            the member survives for recovery. Only a non-performing loan
-            (substandard / doubtful / loss) can be snapshotted — the database
-            refuses anything else.
-          </div>
+
           <FormField
             id="woff-loan-id"
-            label="Loan id"
+            label="Loan"
             error={fieldErrors["loan_id"]}
-            hint="From the Loan book register (the loan detail drawer shows the id)."
+            hint="Active loans (substandard/doubtful/loss)."
           >
             {(control) => (
-              <input
+              <Select
                 {...control}
-                className={styles.input}
                 value={loanId}
                 onChange={(event) => setLoanId(event.target.value)}
                 disabled={request.isPending}
-                spellCheck={false}
-              />
+              >
+                <option value="">Select a loan…</option>
+                {loanOptions.map((loan) => (
+                  <option key={loan.id} value={loan.id}>
+                    {loan.member_no ?? "Unresolved member"} · {loan.member_name ?? "—"} ·{" "}
+                    {loan.classification} · {fmtKes(loan.balance)}
+                  </option>
+                ))}
+              </Select>
             )}
           </FormField>
+          {loans.hasNextPage && (
+            <Button
+              type="button"
+              onClick={() => void loans.fetchNextPage()}
+              disabled={loans.isFetchingNextPage}
+            >
+              {loans.isFetchingNextPage ? "Loading…" : "Load more loans"}
+            </Button>
+          )}
+          {selectedLoan !== undefined && (
+            <div className={styles.formNote}>
+              Selected: {selectedLoan.member_name ?? "—"} · {selectedLoan.member_no ?? "—"} —{" "}
+              {loanClassPill(selectedLoan.classification)}
+            </div>
+          )}
           <FormField
             id="woff-reason"
             label="Reason"
             error={fieldErrors["reason"]}
-            hint="Recorded immutably on the write-once snapshot and the audit trail."
           >
             {(control) => (
-              <textarea
+              <Textarea
                 {...control}
-                className={styles.textarea}
                 maxLength={500}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
@@ -256,7 +302,7 @@ export function WriteOffRequestDrawer({
       {confirmEntry !== null && (
         <ConfirmDangerModal
           title="Request loan write-off"
-          confirmPhrase={confirmEntry.loan_id.slice(0, 8)}
+          confirmPhrase={selectedLoan?.member_no ?? "WRITE-OFF"}
           confirmLabel="Request write-off"
           pending={request.isPending}
           onConfirm={() => {
@@ -265,9 +311,9 @@ export function WriteOffRequestDrawer({
           onClose={() => setConfirmEntry(null)}
         >
           <Banner>
-            This snapshots loan {confirmEntry.loan_id.slice(0, 8)} for a
-            committee write-off decision. The snapshot is write-once at the
-            database; you will not be able to vote on or post your own request
+            This snapshots the loan for {selectedLoan?.member_name ?? "the selected member"} ·{" "}
+            {selectedLoan?.member_no ?? "—"} for a committee write-off decision. The snapshot is
+            write-once at the database; you will not be able to vote on or post your own request
             (separation of duties, server-enforced).
           </Banner>
         </ConfirmDangerModal>

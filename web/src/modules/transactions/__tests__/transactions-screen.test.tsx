@@ -132,6 +132,7 @@ const MEMBER = {
   version: 3,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 const ACCOUNT_TXN: AccountTxn = {
@@ -265,8 +266,8 @@ test("hostile txn ref renders as inert TEXT; DR/CR amounts render VERBATIM in th
   // Each amount renders byte-identically in EXACTLY one column —
   // falsifiable: a numeric round-trip drops the trailing ".10"; a
   // client-side reduction would materialise a netted/summed figure.
-  expect(screen.getByText("KES 8,000.10")).toBeInTheDocument();
-  expect(screen.getByText("KES 5,000.10")).toBeInTheDocument();
+  expect(screen.getByText("8,000.10")).toBeInTheDocument();
+  expect(screen.getByText("5,000.10")).toBeInTheDocument();
   expect(screen.queryByText("KES 3,000.00")).toBeNull(); // no local netting
   expect(screen.queryByText("KES 13,000.20")).toBeNull(); // no local totals row
   expect(screen.queryByText(/Totals/)).toBeNull();
@@ -295,7 +296,7 @@ test("type/channel/direction filters drive the SERVER query — the client never
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 8,000.10");
+  await screen.findByText("8,000.10");
   await user.selectOptions(screen.getByLabelText("Type"), "withdrawal");
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
@@ -305,8 +306,9 @@ test("type/channel/direction filters drive the SERVER query — the client never
     ),
   );
 
-  // Four declared channels → the shared filter renders its segment variant.
-  await user.click(screen.getByRole("button", { name: "Accrual" }));
+  // Channel renders the SELECT variant on this screen (the register's
+  // deliberate toolbar shape — type, channel, date, search only).
+  await user.selectOptions(screen.getByLabelText("Channel"), "accrual");
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "withdrawal", channel: "accrual" }),
@@ -314,42 +316,39 @@ test("type/channel/direction filters drive the SERVER query — the client never
       10,
     ),
   );
-
-  await user.click(screen.getByRole("button", { name: "Debit" }));
-  await waitFor(() =>
-    expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
-      expect.objectContaining({ direction: "debit" }),
-      null,
-      10,
-    ),
-  );
 });
 
-test("exact-ref + date-range drafts apply on submit as SERVER query params; the member filter drives member_id", async () => {
+test("search + custom date-range drafts apply on submit as SERVER query params (never filtered locally)", async () => {
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 8,000.10");
-  await user.type(screen.getByLabelText("Reference (exact)"), "WD-0221");
-  await user.type(screen.getByLabelText("From date"), "2026-07-01");
-  await user.type(screen.getByLabelText("To date"), "2026-07-31");
+  await screen.findByText("8,000.10");
+  // ONE search probe covers the ref and the member — a non-exact
+  // server-side match; no separate exact-ref field exists.
+  await user.type(screen.getByLabelText("Search by ref, member number or name"), "WD-0221");
   await user.click(screen.getByRole("button", { name: "Apply" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ref: "WD-0221",
-        date_from: "2026-07-01",
-        date_to: "2026-07-31",
-      }),
+      expect.objectContaining({ search: "WD-0221" }),
       null,
       10,
     ),
   );
 
-  await user.selectOptions(screen.getByLabelText("Member"), MEMBER_ID);
+  // "Custom range" opens the anchored panel; the typed dates become
+  // server params ONLY on the panel's explicit apply.
+  await user.selectOptions(screen.getByLabelText("Date"), "custom");
+  await user.clear(screen.getByLabelText("Date from"));
+  await user.type(screen.getByLabelText("Date from"), "2026-07-01");
+  await user.clear(screen.getByLabelText("Date to"));
+  await user.type(screen.getByLabelText("Date to"), "2026-07-31");
+  await user.click(screen.getByRole("button", { name: "Apply range" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
-      expect.objectContaining({ member_id: MEMBER_ID }),
+      expect.objectContaining({
+        date_from: "2026-07-01",
+        date_to: "2026-07-31",
+      }),
       null,
       10,
     ),
@@ -361,7 +360,7 @@ test("UI affordances follow the matrix: a view-only role gets NO posting, NO int
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 8,000.10");
+  await screen.findByText("8,000.10");
   expect(screen.queryByRole("button", { name: "+ Post transaction" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Run deposit interest" })).toBeNull();
   expect(screen.queryByLabelText("Member")).toBeNull();
@@ -370,7 +369,7 @@ test("UI affordances follow the matrix: a view-only role gets NO posting, NO int
 
   // Drill into the detail drawer: the member label rides the ROW
   // (server-resolved) — no directory fetch happens for any role.
-  await user.click(screen.getByText("KES 8,000.10"));
+  await user.click(screen.getByText("8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
   expect(within(drawer).getByText("M-0001 — Jane Wanjiku")).toBeInTheDocument();
   expect(mockedMembers.fetchMember).not.toHaveBeenCalled();
@@ -383,7 +382,7 @@ test("detail drawer renders the row's member label (number — name), every fiel
   );
   const { container } = mountScreen();
 
-  await user.click(await screen.findByText("KES 8,000.10"));
+  await user.click(await screen.findByText("8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
 
   // The label rides the row (server-resolved) — hostile name inert,
@@ -408,7 +407,7 @@ test("attribution (issue #30 / !66 follow-up): the detail drawer renders created
   );
   mountScreen();
 
-  await user.click(await screen.findByText("KES 8,000.10"));
+  await user.click(await screen.findByText("8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
   // Short-id convention: the 8-char prefix renders; the full UUID rides
   // the title attribute (same treatment as every other opaque id).
@@ -427,7 +426,7 @@ test("attribution NULL leg (FM-B): a system/unattributed posting renders the hon
 
   // Base fixtures carry created_by: null (system/job postings and
   // pre-0036 rows are the documented NULL branch).
-  await user.click(await screen.findByText("KES 8,000.10"));
+  await user.click(await screen.findByText("8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
   expect(
     within(drawer).getByText("— (system posting or unattributed)"),
@@ -442,7 +441,7 @@ test("attribution XSS inertness: a hostile created_by string renders as inert TE
   );
   const { container } = mountScreen();
 
-  await user.click(await screen.findByText("KES 8,000.10"));
+  await user.click(await screen.findByText("8,000.10"));
   const drawer = await screen.findByRole("dialog", { name: "Transaction detail" });
   // The sliced 8-char prefix ("<img src") renders as literal text…
   expect(within(drawer).getByTitle(HOSTILE_CREATOR)).toHaveTextContent("<img src");
@@ -795,20 +794,29 @@ test("malformed manual date drafts never become server query params (review T4)"
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 8,000.10");
+  await screen.findByText("8,000.10");
   const callsBefore = mocked.fetchTransactionsPage.mock.calls.length;
+  // The manual date fields live in the Custom-range panel.
+  await user.selectOptions(screen.getByLabelText("Date"), "custom");
   // type="date" can be bypassed by manual entry in some browsers — the
   // ISO shape is validated before it reaches the query.
-  const fromField = screen.getByLabelText("From date");
+  const fromField = screen.getByLabelText("Date from");
+  // Clear FIRST (the field carries the default "today" window), then drop
+  // the type attribute — a re-render would restore it and the date input
+  // would silently swallow the malformed text this leg depends on.
+  await user.clear(fromField);
   fromField.removeAttribute("type"); // simulate a browser without date support
   await user.type(fromField, "18/07/2026");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await user.click(screen.getByRole("button", { name: "Apply range" }));
 
   expect(await screen.findByText("Enter dates as YYYY-MM-DD.")).toBeInTheDocument();
   // No new list fetch with the malformed value.
   expect(mocked.fetchTransactionsPage.mock.calls.length).toBe(callsBefore);
   for (const call of mocked.fetchTransactionsPage.mock.calls) {
-    expect((call[0] as { date_from: string }).date_from).toBe("");
+    // Every call carries either the default "today" window or an empty
+    // one — the malformed draft reaches the wire in NO call.
+    const value = (call[0] as { date_from: string }).date_from;
+    expect(value === "" || /^\d{4}-\d{2}-\d{2}$/.test(value)).toBe(true);
   }
 });
 
@@ -869,7 +877,7 @@ test("W56-3 inheritance (post-!62 merge): a stray overlay click never discards a
   // The read-only detail drawer is NOT form-bearing — the default light
   // overlay dismissal is the convention there (falsifiable: a blanket
   // opt-out would fail this branch).
-  await user.click(screen.getByText("KES 8,000.10"));
+  await user.click(screen.getByText("8,000.10"));
   await screen.findByRole("dialog", { name: "Transaction detail" });
   await user.click(container.querySelector('[role="presentation"]') as HTMLElement);
   expect(screen.queryByRole("dialog", { name: "Transaction detail" })).toBeNull();
@@ -951,7 +959,7 @@ test("#35 item 13 date presets compute EXPLICIT from/to params client-side — t
   try {
     const user = userEvent.setup();
     mountScreen();
-    await screen.findByText("KES 8,000.10");
+    await screen.findByText("8,000.10");
 
     function lastFilters(): { date_from: string; date_to: string } {
       const call = mocked.fetchTransactionsPage.mock.calls.at(-1);
@@ -962,38 +970,48 @@ test("#35 item 13 date presets compute EXPLICIT from/to params client-side — t
     //   Today        => [2026-08-08, 2026-08-08]
     //   Last 7 days  => [2026-08-02, 2026-08-08]  (8 - 6 = 2)
     //   Last 30 days => [2026-07-10, 2026-08-08]  (Aug 8 - 29d = Jul 10)
-    await user.click(screen.getByRole("button", { name: "Today" }));
+    await user.selectOptions(screen.getByLabelText("Date"), "today");
     await waitFor(() =>
       expect(lastFilters()).toMatchObject({ date_from: "2026-08-08", date_to: "2026-08-08" }),
     );
 
-    await user.click(screen.getByRole("button", { name: "Last 7 days" }));
+    await user.selectOptions(screen.getByLabelText("Date"), "7d");
     await waitFor(() =>
       expect(lastFilters()).toMatchObject({ date_from: "2026-08-02", date_to: "2026-08-08" }),
     );
 
-    await user.click(screen.getByRole("button", { name: "Last 30 days" }));
+    await user.selectOptions(screen.getByLabelText("Date"), "30d");
     await waitFor(() =>
       expect(lastFilters()).toMatchObject({ date_from: "2026-07-10", date_to: "2026-08-08" }),
     );
 
-    // The computed window is VISIBLE in the manual inputs (the operator
-    // can read exactly what was sent — no hidden state).
-    expect(screen.getByLabelText("From date")).toHaveValue("2026-07-10");
-    expect(screen.getByLabelText("To date")).toHaveValue("2026-08-08");
+    // The computed window is READABLE by the operator: opening Custom
+    // range shows exactly what the preset sent — no hidden state.
+    // (Selecting Custom keeps the staged drafts; it only hands control
+    // of them to the panel.)
+    await user.selectOptions(screen.getByLabelText("Date"), "custom");
+    expect(screen.getByLabelText("Date from")).toHaveValue("2026-07-10");
+    expect(screen.getByLabelText("Date to")).toHaveValue("2026-08-08");
 
     // All clears the date keys — the default view sends no date filter.
     // (Switching back to the default re-uses the CACHED mount query, so
     // the wire contract is pinned by the mount call below, and the
-    // cleared state by the visible inputs + pressed state.)
-    await user.click(screen.getByRole("button", { name: "All", pressed: false }));
-    await waitFor(() => expect(screen.getByLabelText("From date")).toHaveValue(""));
-    expect(screen.getByLabelText("To date")).toHaveValue("");
+    // cleared drafts by re-opening the panel.)
+    await user.selectOptions(screen.getByLabelText("Date"), "");
+    await user.selectOptions(screen.getByLabelText("Date"), "custom");
+    // All cleared the staged window; re-opening Custom pre-sets only the
+    // END of the range to today (the common "since X" case), leaving the
+    // start for the operator. Neither is a server param until applied.
+    await waitFor(() => expect(screen.getByLabelText("Date from")).toHaveValue(""));
+    expect(screen.getByLabelText("Date to")).toHaveValue("2026-08-08");
+    // The register OPENS on the default "today" preset, so the very
+    // first fetch already carries that window — the selected preset and
+    // the wire never disagree (hand-computed for the 2026-08-08 clock).
     const mountFilters = mocked.fetchTransactionsPage.mock.calls[0]?.[0] as {
       date_from: string;
       date_to: string;
     };
-    expect(mountFilters).toMatchObject({ date_from: "", date_to: "" });
+    expect(mountFilters).toMatchObject({ date_from: "2026-08-08", date_to: "2026-08-08" });
 
     // NOTHING preset-shaped ever reached the wire: every call's date
     // params are either empty or ISO dates (falsifiable: send the
@@ -1007,9 +1025,9 @@ test("#35 item 13 date presets compute EXPLICIT from/to params client-side — t
 
     // Custom range keeps the manual flow: editing + Apply moves the
     // pressed state to Custom and applies the typed dates verbatim.
-    await user.click(screen.getByRole("button", { name: "Custom range" }));
-    const fromField = screen.getByLabelText("From date");
-    const toField = screen.getByLabelText("To date");
+    await user.selectOptions(screen.getByLabelText("Date"), "custom");
+    const fromField = screen.getByLabelText("Date from");
+    const toField = screen.getByLabelText("Date to");
     await user.clear(fromField);
     await user.type(fromField, "2026-06-01");
     await user.clear(toField);
@@ -1018,10 +1036,7 @@ test("#35 item 13 date presets compute EXPLICIT from/to params client-side — t
     await waitFor(() =>
       expect(lastFilters()).toMatchObject({ date_from: "2026-06-01", date_to: "2026-06-30" }),
     );
-    expect(screen.getByRole("button", { name: "Custom range" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(screen.getByLabelText("Date")).toHaveValue("custom");
   } finally {
     jest.useRealTimers();
   }
@@ -1042,12 +1057,15 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
     Promise.resolve(cursor === null ? page(w1FullPage, "w1-cursor-p2") : page([creditTxn()])),
   );
   mountScreen();
-  await screen.findAllByText("KES 8,000.10");
+  await screen.findAllByText("8,000.10");
 
   // Apply a Custom range through the manual drafts (the W1 scenario).
-  await user.type(screen.getByLabelText("From date"), "2026-06-01");
-  await user.type(screen.getByLabelText("To date"), "2026-06-30");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await user.selectOptions(screen.getByLabelText("Date"), "custom");
+  await user.clear(screen.getByLabelText("Date from"));
+  await user.type(screen.getByLabelText("Date from"), "2026-06-01");
+  await user.clear(screen.getByLabelText("Date to"));
+  await user.type(screen.getByLabelText("Date to"), "2026-06-30");
+  await user.click(screen.getByRole("button", { name: "Apply range" }));
   await waitFor(() =>
     expect(mocked.fetchTransactionsPage).toHaveBeenCalledWith(
       expect.objectContaining({ date_from: "2026-06-01", date_to: "2026-06-30" }),
@@ -1055,15 +1073,14 @@ test("#35 W1: stale Custom dates never leak into a LATER real fetch — after Al
       10,
     ),
   );
-  expect(screen.getByRole("button", { name: "Custom range" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  expect(screen.getByLabelText("Date")).toHaveValue("custom");
 
   // Back to All: react-query re-serves the CACHED default page — the
   // cleared state is visible but no new wire fetch fires yet.
-  await user.click(screen.getByRole("button", { name: "All", pressed: false }));
-  await waitFor(() => expect(screen.getByLabelText("From date")).toHaveValue(""));
+  await user.selectOptions(screen.getByLabelText("Date"), "");
+  await user.selectOptions(screen.getByLabelText("Date"), "custom");
+  await waitFor(() => expect(screen.getByLabelText("Date from")).toHaveValue(""));
+  await user.selectOptions(screen.getByLabelText("Date"), "");
   const callsBeforeRefetch = mocked.fetchTransactionsPage.mock.calls.length;
 
   // Force a REAL wire fetch on the restored default key: paginate.
@@ -1127,7 +1144,11 @@ test("the export request carries the register's ACTIVE filters (hand-computed pa
   mountScreen();
   await screen.findByText("MP-1042");
 
-  // The register's ACTIVE filters: Type=deposit, Channel=mpesa.
+  // The register's ACTIVE filters: Type=deposit, Channel=mpesa. Date is
+  // set to All first so the oracle stays HAND-COMPUTED — the default
+  // "today" preset is itself an active filter and would otherwise put a
+  // clock-dependent window in the payload.
+  await user.selectOptions(screen.getByLabelText("Date"), "");
   await user.selectOptions(screen.getByLabelText("Type"), "deposit");
   await user.selectOptions(screen.getByLabelText("Channel"), "mpesa");
 

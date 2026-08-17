@@ -59,6 +59,10 @@ export const portfolioSummarySchema = z.object({
      * percentages are rendered as "%" text, never fmtKes-fed —
      * deliberately left unasserted (sweep note). */
     outstanding_balance: aggregateMoneySchema,
+    /** outstanding_balance minus npl_balance, computed server-side
+     * (application/loans.py portfolio_summary) — never re-derived
+     * here (the money rule stays absolute in web/). */
+    performing_balance: aggregateMoneySchema,
     npl_balance: aggregateMoneySchema,
     npl_ratio_pct: z.string(),
     par30_balance: aggregateMoneySchema,
@@ -216,5 +220,6 @@ export type ClassificationSlice = z.infer<typeof classificationSliceSchema>;
 export type DashboardCharts = z.infer<typeof dashboardChartsSchema>;
 export type FlowsChart = z.infer<typeof flowsChartSchema>;
 export type PortfolioChart = z.infer<typeof portfolioChartSchema>;
+export type PortfolioSummary = z.infer<typeof portfolioSummarySchema>;
 export type KpiTrends = z.infer<typeof kpiTrendsSchema>;
 

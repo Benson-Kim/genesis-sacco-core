@@ -123,6 +123,7 @@ const memberRow = {
   version: 6,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 /** Every grant this console can use (register + rename + both panels). */

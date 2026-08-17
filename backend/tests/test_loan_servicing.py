@@ -724,6 +724,7 @@ def test_portfolio_summary_matches_seeded_fixtures_to_the_cent() -> None:
 
         outstanding = sum(p for p, _, _ in fixtures)
         npl = sum(p for p, d, _ in fixtures if d > 90)
+        performing = outstanding - npl
         par30 = sum(p for p, d, _ in fixtures if d > 30)
         provisions = sum(to_cents(p * prov / Decimal("100")) for p, _, prov in fixtures)
         npl_ratio = to_cents(npl * Decimal("100") / outstanding)
@@ -734,6 +735,7 @@ def test_portfolio_summary_matches_seeded_fixtures_to_the_cent() -> None:
             summary = await loans_service.portfolio_summary(session, tid)
         assert summary.active_loans == 4
         assert summary.outstanding_balance == outstanding
+        assert summary.performing_balance == performing
         assert summary.npl_balance == npl
         assert summary.par30_balance == par30
         assert summary.provisions == provisions
@@ -753,6 +755,7 @@ def test_portfolio_summary_matches_seeded_fixtures_to_the_cent() -> None:
         body = res.json()
         assert body["active_loans"] == 4
         assert body["outstanding_balance"] == str(outstanding)
+        assert body["performing_balance"] == str(performing)
         assert body["npl_balance"] == str(npl)
         assert body["npl_ratio_pct"] == str(npl_ratio)
         assert body["par30_balance"] == str(par30)

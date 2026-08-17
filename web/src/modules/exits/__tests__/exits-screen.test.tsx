@@ -60,6 +60,8 @@ jest.mock("../api", () => {
 
 jest.mock("@/modules/members/api", () => ({
   fetchMembersPage: jest.fn(),
+  lookupMemberByNo: jest.fn(),
+  lookupMemberByIdNumber: jest.fn(),
   fetchMember: jest.fn(),
 }));
 
@@ -136,6 +138,7 @@ const MEMBER = {
   version: 3,
   branch_id: null,
   dividend_payout: null,
+  id_number_masked: null,
 };
 
 /** The canonical statement document. equity is DELIBERATELY not the
@@ -216,7 +219,7 @@ function mountScreen() {
 
 /** Open the detail drawer by clicking the (only) register row. */
 async function openDetail(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByText("KES 134,500.20"));
+  await user.click(await screen.findByText("134,500.20"));
   return await screen.findByRole("dialog", { name: "Exit request" });
 }
 
@@ -268,6 +271,8 @@ beforeEach(() => {
   mocked.postExitSettlement.mockResolvedValue(SETTLEMENT_RESULT);
   mocked.fetchExitStatement.mockResolvedValue(STATEMENT);
   mockedMembers.fetchMembersPage.mockResolvedValue(page([MEMBER]));
+  mockedMembers.lookupMemberByNo.mockResolvedValue(MEMBER);
+  mockedMembers.lookupMemberByIdNumber.mockResolvedValue(MEMBER);
   mockedMembers.fetchMember.mockResolvedValue(MEMBER);
   // U6 advisory checklist default: ELIGIBLE — the dedicated legs
   // (exit-eligibility-screen.test.tsx) cover render/gating/XSS; here it
@@ -301,16 +306,16 @@ test("register renders every settlement figure VERBATIM in its own labelled colu
   mountScreen();
 
   // Trailing cents survive — a numeric round-trip would drop them.
-  expect(await screen.findByText("KES 134,500.20")).toBeInTheDocument();
-  expect(screen.getAllByText("KES 25,000.10").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("KES 150,000.10").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("KES 40,000.00").length).toBeGreaterThan(0);
-  expect(screen.getAllByText("KES 500.00").length).toBeGreaterThan(0);
+  expect(await screen.findByText("134,500.20")).toBeInTheDocument();
+  expect(screen.getAllByText("25,000.10").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("150,000.10").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("40,000.00").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("500.00").length).toBeGreaterThan(0);
   // The documented negative branch renders verbatim WITH its sign.
-  expect(screen.getByText("KES -4,000.00")).toBeInTheDocument();
+  expect(screen.getByText("-4,000.00")).toBeInTheDocument();
   // No client-side arithmetic anywhere: no shares+deposits sum, no
   // equity minus loan figure, no totals row.
-  expect(screen.queryByText("KES 175,000.20")).toBeNull();
+  expect(screen.queryByText("175,000.20")).toBeNull();
   expect(screen.queryByText(/Totals/)).toBeNull();
   expect(screen.getByText(/totals are not computed in this screen/)).toBeInTheDocument();
 });
@@ -346,7 +351,7 @@ test("deny-by-default: a view-only role gets NO request affordance and ZERO memb
   const user = userEvent.setup();
   mountScreen();
 
-  await screen.findByText("KES 134,500.20");
+  await screen.findByText("134,500.20");
   expect(screen.queryByRole("button", { name: "+ Request exit" })).toBeNull();
   // Structural: the stripped role never even FETCHES the member picker.
   expect(mockedMembers.fetchMembersPage).not.toHaveBeenCalled();
@@ -458,7 +463,9 @@ test("REQUEST EXIT: fresh member read gates arming; triple-clicked confirmation 
 
   await user.click(await screen.findByRole("button", { name: "+ Request exit" }));
   const drawer = await screen.findByRole("dialog", { name: "Request member exit" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
 
   // The confirmation CANNOT arm before the fresh member read lands.
   await user.click(within(drawer).getByRole("button", { name: "Request exit…" }));
@@ -502,7 +509,9 @@ test("REQUEST EXIT 409 (open exit / loan / guarantees): EXACTLY ONE attempt, exp
 
   await user.click(await screen.findByRole("button", { name: "+ Request exit" }));
   const drawer = await screen.findByRole("dialog", { name: "Request member exit" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
   await within(drawer).findByText(/Member verified:/);
   await user.click(within(drawer).getByRole("button", { name: "Request exit…" }));
   await user.click(await armDanger(user, "Request exit", "M-0001"));
@@ -991,10 +1000,12 @@ test("W56-3: a stray overlay click never discards the exit-request form or the a
   // Form drawer: the half-completed entry SURVIVES the stray click…
   await user.click(await screen.findByRole("button", { name: "+ Request exit" }));
   const drawer = await screen.findByRole("dialog", { name: "Request member exit" });
-  await user.selectOptions(await within(drawer).findByLabelText("Member"), MEMBER_ID);
+  await user.type(await within(drawer).findByLabelText("Member number"), "M-0001");
+  await user.tab();
+  await within(drawer).findByText(/Member found: Jane Wanjiku/);
   await user.click(container.querySelector('[role="presentation"]') as HTMLElement);
   expect(screen.getByRole("dialog", { name: "Request member exit" })).toBeInTheDocument();
-  expect(within(drawer).getByLabelText("Member")).toHaveValue(MEMBER_ID);
+  expect(within(drawer).getByText(/Member found: Jane Wanjiku/)).toBeInTheDocument();
   // …and the explicit ✕ still closes.
   await user.click(within(drawer).getByRole("button", { name: "Close" }));
   expect(screen.queryByRole("dialog", { name: "Request member exit" })).toBeNull();

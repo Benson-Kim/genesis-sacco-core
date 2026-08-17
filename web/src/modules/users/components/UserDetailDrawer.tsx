@@ -11,10 +11,17 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { idempotencyKeyFor, type IdempotencyKeySlot } from "@genesis/api-client";
-import { Banner, Button, Kv, Modal } from "@genesis/design-system";
-import { ConflictBanner } from "@/modules/layout/ConflictBanner";
-import { ErrorBanner } from "@/modules/layout/ErrorBanner";
-import { FormField } from "@/modules/forms/FormField";
+import {
+  Banner,
+  Button,
+  Kv,
+  Modal,
+  ConflictBanner,
+  ErrorBanner,
+  FormField,
+  Input,
+  Select,
+} from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import { getOwnUserId } from "@/modules/auth/session";
@@ -272,9 +279,8 @@ function EditForm({
       {update.isError && !conflict && <ErrorBanner error={update.error} />}
       <FormField id="edit-name" label="Full name">
         {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               maxLength={200}
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
@@ -283,9 +289,8 @@ function EditForm({
       </FormField>
       <FormField id="edit-email" label="Email">
         {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               type="email"
               inputMode="email"
               maxLength={254}
@@ -296,9 +301,8 @@ function EditForm({
       </FormField>
       <FormField id="edit-phone" label="Phone" error={phoneBlurError ?? undefined}>
         {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               type="tel"
               inputMode="tel"
               maxLength={32}
@@ -313,9 +317,8 @@ function EditForm({
       </FormField>
       <FormField id="edit-branch" label="Branch">
         {(control) => (
-            <input
+            <Input
               {...control}
-              className={styles.input}
               maxLength={120}
               value={branch}
               onChange={(event) => setBranch(event.target.value)}
@@ -474,9 +477,8 @@ function ConfirmActionDialog({
               </div>
               <FormField id="confirm-role" label="New role">
                 {(control) => (
-                    <select
+                    <Select
                       {...control}
-                      className={styles.select}
                       value={roleId}
                       onChange={(event) => setRoleId(event.target.value)}
                     >
@@ -485,7 +487,7 @@ function ConfirmActionDialog({
                           {role.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                 )}
               </FormField>
             </>

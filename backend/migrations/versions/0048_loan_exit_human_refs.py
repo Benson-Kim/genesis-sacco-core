@@ -1,7 +1,7 @@
 """per-tenant human reference numbers for loans and member exits (#35)
 
 Revision ID: 0048
-Revises: 0044
+Revises: 0047
 Create Date: 2026-08-09
 
 The loan-book and exit-statement exports printed raw row UUIDs because
@@ -45,7 +45,7 @@ sharing it would interleave two unrelated sequences.
 from alembic import op
 
 revision = "0048"
-down_revision = "0044"
+down_revision = "0047"
 branch_labels = None
 depends_on = None
 

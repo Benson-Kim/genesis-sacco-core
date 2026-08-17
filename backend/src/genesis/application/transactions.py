@@ -389,7 +389,7 @@ def _row_to_txn(row: object) -> TransactionRecord:
 
 #: Free-text ledger search predicate — module-level so
 #: the EXPLAIN gate (tests/test_txn_search.py) asserts the exact
-#: production fragment (the EXPLAIN-capture convention). ONE OR of two branches:
+#: production fragment (the EXPLAIN-capture convention). ONE OR of three branches:
 #: (a) txn_ref PREFIX probe — system refs are uppercase by
 #: construction, so the operator text probes uppercased; served
 #: portably by the 0043 text_pattern_ops index idx_txns_ref_prefix
@@ -401,12 +401,28 @@ def _row_to_txn(row: object) -> TransactionRecord:
 #: metacharacters in the operator text are escaped code-side
 #: (_search_params), so '%' searches match literally nothing instead
 #: of everything. Keyset order and the page cap are UNTOUCHED.
+#: (c) identity-document match via EXISTS on member_profiles, probing
+#: the 0045 partial expression index idx_member_profiles_id_number
+#: (tenant_id, (profile -> 'bio' ->> 'id_number')) — the
+#: MEMBER_ID_NUMBER_LOOKUP_SQL precedent, reused rather than
+#: re-derived. The redundant IS NOT NULL restates 0045's partial
+#: predicate so the probe is served qual-free. This branch is EXACT
+#: equality, deliberately unlike the ref/name prefix probes: an ID
+#: number is an identity credential, so a prefix probe would both
+#: enumerate documents by fragment (a disclosure the least-disclosure
+#: gate forbids) and defeat the equality index. Only PERSON profiles
+#: carry bio.id_number; other member types yield NULL and never match.
 TXN_SEARCH_CLAUSE = (
     "(txn_ref LIKE :q_ref ESCAPE '\\' "
     "OR EXISTS (SELECT 1 FROM members m "
     "WHERE m.tenant_id = CAST(:tid AS uuid) "
     "AND m.id = transactions.member_id "
-    "AND (m.member_no = :q_no OR lower(m.name) LIKE :q_name ESCAPE '\\')))"
+    "AND (m.member_no = :q_no OR lower(m.name) LIKE :q_name ESCAPE '\\')) "
+    "OR EXISTS (SELECT 1 FROM member_profiles p "
+    "WHERE p.tenant_id = CAST(:tid AS uuid) "
+    "AND p.member_id = transactions.member_id "
+    "AND (p.profile -> 'bio' ->> 'id_number') IS NOT NULL "
+    "AND (p.profile -> 'bio' ->> 'id_number') = :q_id))"
 )
 
 
@@ -422,6 +438,10 @@ def _search_params(search: str) -> dict[str, object]:
         "q_ref": escaped.upper() + "%",
         "q_no": search.upper(),
         "q_name": escaped.lower() + "%",
+        # EQUALITY, not LIKE — so the raw text binds unescaped (LIKE
+        # metacharacters carry no special meaning to `=`, and escaping
+        # them here would make a literal ID containing '%' unfindable).
+        "q_id": search,
     }
 
 
