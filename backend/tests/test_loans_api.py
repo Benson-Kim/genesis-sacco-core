@@ -731,6 +731,71 @@ def test_zero_amount_application_rejected() -> None:
     asyncio.run(run())
 
 
+def test_products_discovery_for_application_creators() -> None:
+    """External Codex review, re-derived: the prototype's new-
+    application form needs the product list, so applications:create
+    (Loan Officer, who holds no settings permissions in the P4 matrix)
+    grants GET /products alongside settings:view. Deny-by-default is
+    preserved: Teller (neither grant) stays 403 — asserted in
+    test_loans_rbac_enforced — and product WRITES remain settings-only
+    (Loan Officer POST /products -> 403 here). Falsifiable: revert the
+    route to SettingsViewCtx and the Loan Officer GET returns 403,
+    failing this test."""
+
+    async def run() -> None:
+        _, _, officer_token = await _seed_actor("Loan Officer")
+        officer = _headers(officer_token)
+        async with api_client() as client:
+            listed = await client.get("/products", headers=officer)
+            assert listed.status_code == 200, listed.text
+            created = await client.post(
+                "/products",
+                json={
+                    "name": "Officer Product",
+                    "rate_pct": "12.00",
+                    "deposit_multiplier": "3.00",
+                    "max_term_months": 12,
+                },
+                headers=officer,
+            )
+        assert created.status_code == 403
+
+    asyncio.run(run())
+
+
+def test_product_body_rejects_over_precise_decimals() -> None:
+    """numeric(5,2) alignment (external Codex review, re-derived): a
+    three-decimal rate or multiplier is a clean 422 at the boundary,
+    never a DB precision error surfacing as a 500."""
+
+    async def run() -> None:
+        _, _, token = await _seed_actor()
+        headers = _headers(token)
+        async with api_client() as client:
+            bad_rate = await client.post(
+                "/products",
+                json={
+                    "name": "Precise Rate",
+                    "rate_pct": "12.005",
+                    "deposit_multiplier": "3.00",
+                    "max_term_months": 12,
+                },
+                headers=headers,
+            )
+            bad_mult = await client.put(
+                f"/products/{uuid.uuid4()}",
+                json={
+                    "version": 1,
+                    "deposit_multiplier": "3.005",
+                },
+                headers=headers,
+            )
+        assert bad_rate.status_code == 422
+        assert bad_mult.status_code == 422
+
+    asyncio.run(run())
+
+
 def test_product_update_all_fields() -> None:
     """Covers update_product when updating deposit_multiplier, max_term_months, etc."""
 

@@ -13,9 +13,9 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from genesis.api.authz import RequirePermission
+from genesis.api.authz import RequireAnyPermission, RequirePermission
 from genesis.application import guarantees as guarantees_service
 from genesis.application import loan_applications as applications_service
 from genesis.application import loan_products as products_service
@@ -36,6 +36,16 @@ _apps_view = RequirePermission(Module.APPLICATIONS, Action.VIEW)
 _apps_create = RequirePermission(Module.APPLICATIONS, Action.CREATE)
 _apps_edit = RequirePermission(Module.APPLICATIONS, Action.EDIT)
 _apps_approve = RequirePermission(Module.APPLICATIONS, Action.APPROVE)
+#: Product discovery (external Codex review, re-derived): the
+#: prototype's new-application form needs the product list, so
+#: application creators (e.g. Loan Officer, who holds no settings
+#: permissions in the P4 matrix) may read it alongside settings
+#: viewers. Deny-by-default is preserved: the grant list is code-owned
+#: and checked server-side; product WRITES stay settings-only.
+_products_list = RequireAnyPermission(
+    (Module.SETTINGS, Action.VIEW),
+    (Module.APPLICATIONS, Action.CREATE),
+)
 
 SettingsViewCtx = Annotated[AuthContext, Depends(_settings_view)]
 SettingsCreateCtx = Annotated[AuthContext, Depends(_settings_create)]
@@ -44,19 +54,36 @@ AppsViewCtx = Annotated[AuthContext, Depends(_apps_view)]
 AppsCreateCtx = Annotated[AuthContext, Depends(_apps_create)]
 AppsEditCtx = Annotated[AuthContext, Depends(_apps_edit)]
 AppsApproveCtx = Annotated[AuthContext, Depends(_apps_approve)]
+ProductListCtx = Annotated[AuthContext, Depends(_products_list)]
 
 
 class ProductCreateBody(BaseModel):
+    """extra="forbid" (gate 1.6 v1.1, retroactive on touched code).
+
+    max_digits/decimal_places on the money-rule fields mirror the
+    backing numeric(5,2) columns (0001), so an over-precise value is a
+    clean 422 instead of a DB error surfacing as a 500 (external Codex
+    review, re-derived).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=100)
-    rate_pct: Decimal = Field(gt=0, le=100)
-    deposit_multiplier: Decimal = Field(gt=0)
+    rate_pct: Decimal = Field(gt=0, le=100, max_digits=5, decimal_places=2)
+    deposit_multiplier: Decimal = Field(gt=0, max_digits=5, decimal_places=2)
     max_term_months: int = Field(ge=1, le=120)
 
 
 class ProductUpdateBody(BaseModel):
+    """Partial update: absent fields stay unchanged (the Codex version
+    made rate_pct/deposit_multiplier mandatory, silently breaking
+    partial updates — rejected; the numeric(5,2) alignment is kept)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     version: int = Field(ge=1)
-    rate_pct: Decimal | None = Field(default=None, gt=0, le=100)
-    deposit_multiplier: Decimal | None = Field(default=None, gt=0)
+    rate_pct: Decimal | None = Field(default=None, gt=0, le=100, max_digits=5, decimal_places=2)
+    deposit_multiplier: Decimal | None = Field(default=None, gt=0, max_digits=5, decimal_places=2)
     max_term_months: int | None = Field(default=None, ge=1, le=120)
     active: bool | None = None
 
@@ -72,6 +99,12 @@ class ProductOut(BaseModel):
 
 
 class ApplicationCreateBody(BaseModel):
+    """extra="forbid": rate/pricing come from the product server-side;
+    a caller-sent rate_pct (or any unknown field) is a 422 (gate 1.6
+    v1.1, retroactive on touched code)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     member_id: uuid.UUID
     product_id: uuid.UUID
     amount: Decimal = Field(gt=0, le=1_000_000_000)
@@ -103,11 +136,15 @@ class ApplicationListResponse(BaseModel):
 
 
 class TransitionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version: int = Field(ge=1)
     target: ApplicationStage
 
 
 class VoteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     vote: Vote
 
 
@@ -119,11 +156,15 @@ class VoteResultOut(BaseModel):
 
 
 class GuaranteePledgeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     guarantor_member_id: uuid.UUID
     amount: Decimal = Field(gt=0, le=1_000_000_000)
 
 
 class ConsentBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version: int = Field(ge=1)
 
 
@@ -193,7 +234,7 @@ async def create_product(body: ProductCreateBody, ctx: SettingsCreateCtx) -> Pro
 
 
 @router.get("/products")
-async def list_products(ctx: SettingsViewCtx) -> list[ProductOut]:
+async def list_products(ctx: ProductListCtx) -> list[ProductOut]:
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:
         products = await products_service.list_products(session, ctx.tenant_id)

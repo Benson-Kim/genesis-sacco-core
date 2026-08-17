@@ -103,6 +103,8 @@ backend:test:
   after_script:
     - cat backend/perf/explain_p10.txt || true
     - cat backend/perf/explain_p13.txt || true
+    - cat backend/perf/explain_p135.txt || true
+    - cat backend/perf/explain_codex_review.txt || true
   coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
@@ -146,7 +148,12 @@ backend:build:
       --destination "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA"
 
 # -----------------------------------------------------------------------------
-# Web — Next.js / TypeScript
+# Web — static admin console (vanilla ES modules, zero dependencies).
+# The original placeholders assumed the P14 Next.js scaffold; the web
+# codebase that actually landed (P13.5 slice) follows the repository's
+# prototype conventions: no framework, no runtime deps. `npm run lint`
+# is the security lint (XSS-sink / token-storage gates), `npm test`
+# runs the node:test suites, `npm run build` assembles web/dist.
 # -----------------------------------------------------------------------------
 .web:
   image: node:22-alpine
@@ -167,7 +174,6 @@ web:lint:
     - exists: ["web/package.json"]
   script:
     - npm run lint
-    - npx tsc --noEmit
 
 web:test:
   extends: .web
@@ -188,7 +194,7 @@ web:build:
     - npm run build
   artifacts:
     paths:
-      - web/.next
+      - web/dist
     expire_in: 1 week
 
 # -----------------------------------------------------------------------------

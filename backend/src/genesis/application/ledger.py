@@ -264,7 +264,7 @@ async def post_deposit(
             "txn_id": str(result.txn_id),
             "txn_ref": result.txn_ref,
             "member_id": str(member_id),
-            "amount": str(amount),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
             "channel": channel.value,
         },
     )
@@ -291,7 +291,7 @@ async def post_withdrawal(
             "txn_id": str(result.txn_id),
             "txn_ref": result.txn_ref,
             "member_id": str(member_id),
-            "amount": str(amount),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
             "channel": channel.value,
         },
     )
@@ -318,7 +318,7 @@ async def post_share_topup(
             "txn_id": str(result.txn_id),
             "txn_ref": result.txn_ref,
             "member_id": str(member_id),
-            "amount": str(amount),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
             "channel": channel.value,
         },
     )
@@ -344,9 +344,11 @@ async def post_repayment(
     which will call this primitive with the split legs.  Do not add
     allocation logic here.
     """
+    await _assert_loan_owned_by_member(session, tenant_id, loan_id, member_id)
     spec = build_repayment_posting(amount, channel)
     result = await _post(session, tenant_id, member_id, spec, actor_id, occurred_at=occurred_at)
-    # Record in repayments table.
+    # Record in repayments table (rounded spec.amount so the auxiliary
+    # row can never disagree with the ledger legs — gate 1.5).
     await session.execute(
         text(
             "INSERT INTO repayments (id, tenant_id, loan_id, transaction_id, amount) "
@@ -358,7 +360,7 @@ async def post_repayment(
             "tid": str(tenant_id),
             "lid": str(loan_id),
             "txn": str(result.txn_id),
-            "amount": str(amount),
+            "amount": str(spec.amount),
         },
     )
     await enqueue_event(
@@ -370,11 +372,43 @@ async def post_repayment(
             "txn_ref": result.txn_ref,
             "member_id": str(member_id),
             "loan_id": str(loan_id),
-            "amount": str(amount),
+            "amount": str(spec.amount),
             "channel": channel.value,
         },
     )
     return result
+
+
+async def _assert_loan_owned_by_member(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    loan_id: uuid.UUID,
+    member_id: uuid.UUID,
+) -> None:
+    """Refuse a repayment against a loan the member does not own.
+
+    External Codex review finding, re-derived: the posting primitives
+    trusted the caller's (member_id, loan_id) pair, so a coding error
+    upstream could credit member A's cash against member B's loan. The
+    P10 servicing path derives member_id FROM the loan so it cannot
+    mismatch; this guard makes the primitive itself safe (gate 1.5).
+    Explicit tenant predicate on top of RLS (gate 1.6 v1.1). Least
+    disclosure: the error names ids the caller already supplied,
+    never balances.
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT member_id FROM loans "
+                "WHERE id = CAST(:lid AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+            ),
+            {"lid": str(loan_id), "tid": str(tenant_id)},
+        )
+    ).first()
+    if row is None:
+        raise NotFoundError(f"loan {loan_id} not found")
+    if uuid.UUID(str(row[0])) != member_id:
+        raise ConflictError(f"loan {loan_id} does not belong to member {member_id}")
 
 
 async def post_allocated_repayment(
@@ -395,6 +429,7 @@ async def post_allocated_repayment(
     balance/schedule updates are owned by the caller in the same
     transaction.
     """
+    await _assert_loan_owned_by_member(session, tenant_id, loan_id, member_id)
     spec = build_allocated_repayment_posting(
         allocation.penalties, allocation.interest, allocation.principal, channel
     )
@@ -454,7 +489,7 @@ async def post_loan_interest_accrual(
             "txn_id": str(result.txn_id),
             "txn_ref": result.txn_ref,
             "member_id": str(member_id) if member_id else None,
-            "amount": str(amount),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
         },
     )
     return result
@@ -482,7 +517,7 @@ async def post_deposit_interest(
             "txn_id": str(result.txn_id),
             "txn_ref": result.txn_ref,
             "member_id": str(member_id) if member_id else None,
-            "amount": str(amount),
+            "amount": str(spec.amount),  # rounded, matches the ledger (1.5)
         },
     )
     return result
@@ -553,6 +588,15 @@ async def post_reversal(
         (ConflictError; the partial UNIQUE index is the final safety net)
       * a reversal itself cannot be reversed — correct by re-posting the
         original instead (ConflictError)
+      * a transaction with repayment auxiliary records cannot be
+        generically reversed (ConflictError; external Codex review,
+        re-derived): this primitive only mirrors ledger legs — it knows
+        nothing of loans.balance, penalty_due, schedule state, or the
+        repayments history row, so a generic reversal would leave the
+        repayment standing as a paid amount against a restored ledger
+        balance. Repayment corrections need the dedicated adjustment
+        service (BUILD_PROMPTS P13.15) that undoes the allocation
+        component-by-component in one transaction.
     """
     # Load and lock the original transaction (FOR UPDATE serialises
     # concurrent reversal attempts; rows are append-only so no trigger fires).
@@ -590,6 +634,23 @@ async def post_reversal(
     ).first()
     if existing_reversal is not None:
         raise ConflictError(f"transaction {original_txn_id} has already been reversed")
+
+    repayment_row = (
+        await session.execute(
+            text(
+                # Explicit tenant predicate on top of RLS (gate 1.6 v1.1).
+                "SELECT 1 FROM repayments "
+                "WHERE transaction_id = CAST(:id AS uuid) "
+                "AND tenant_id = CAST(:tid AS uuid) LIMIT 1"
+            ),
+            {"id": str(original_txn_id), "tid": str(tenant_id)},
+        )
+    ).first()
+    if repayment_row is not None:
+        raise ConflictError(
+            f"transaction {original_txn_id} has repayment records and cannot be "
+            "generically reversed; use the repayment adjustment flow"
+        )
 
     # Load original ledger lines.
     line_rows = (
@@ -684,9 +745,12 @@ async def disburse_loan(
     Steps:
       1. Lock the application row; verify stage == approved.
       2. Verify the deposit-multiplier eligibility under the deposit
-         account row lock (issue #15); transition stage to disbursed.
-      3. Create the loan record; link the application's live
-         guarantees to it (issue #15).
+         account row lock (issue #15), then refuse any unconsented
+         (pledged) guarantee — collateral is never activated without
+         the guarantor's recorded consent (external Codex review,
+         re-derived); transition stage to disbursed.
+      3. Create the loan record; link the application's consented
+         (active) guarantees to it (issue #15).
       4. Post the disbursement ledger entry.
       5. Generate and persist the amortisation schedule.
       6. Enqueue the outbox event.
@@ -766,6 +830,31 @@ async def disburse_loan(
             "increase deposits or guarantees before disbursement"
         )
 
+    # Step 2c: no unconsented collateral (external Codex review,
+    # re-derived): a pledged guarantee may support cover% while the
+    # application is in flight, but it must never be activated as
+    # collateral on a live loan without the guarantor's recorded
+    # consent (P9 consent contract). Any remaining 'pledged' row
+    # blocks disbursement — the resolution paths are consent
+    # (guarantees.consent_guarantee) or release/substitution
+    # (BUILD_PROMPTS P13.14). Read under the application row lock
+    # held since step 1 (pledging locks the application FOR UPDATE,
+    # so the set cannot change underneath us). Least disclosure:
+    # neither amounts nor guarantor identities are echoed.
+    pledged_guarantee = (
+        await session.execute(
+            text(
+                "SELECT 1 FROM guarantees "
+                "WHERE application_id = CAST(:aid AS uuid) "
+                "AND tenant_id = CAST(:tid AS uuid) "
+                "AND status = 'pledged' LIMIT 1"
+            ),
+            {"aid": str(application_id), "tid": str(tenant_id)},
+        )
+    ).first()
+    if pledged_guarantee is not None:
+        raise ConflictError("all guarantees must be consented before disbursement")
+
     update_result = cast(
         CursorResult[Any],
         await session.execute(
@@ -812,22 +901,24 @@ async def disburse_loan(
         },
     )
 
-    # Step 3b: link every live guarantee to the loan (issue #15,
-    # gate 1.5): pledges carry application_id with loan_id NULL until
-    # this moment; from disbursement on, the guarantee lifecycle
-    # follows the loan, so the P10 release-on-closure hook and the P12
-    # exit sweep always find them. Runs inside the same atomic
-    # disbursement transaction (P7 contract). Explicit tenant predicate
-    # on the write, on top of RLS (gate 1.6 v1.1).
+    # Step 3b: link every consented guarantee to the loan (issue #15,
+    # gate 1.5): active guarantees carry application_id with loan_id
+    # NULL until this moment; from disbursement on, the guarantee
+    # lifecycle follows the loan, so the P10 release-on-closure hook
+    # and the P12 exit sweep always find them. Step 2c already proved
+    # no 'pledged' row remains, so the filter is exactly the consented
+    # set. Runs inside the same atomic disbursement transaction (P7
+    # contract). Explicit tenant predicate on the write, on top of RLS
+    # (gate 1.6 v1.1).
     linked = cast(
         CursorResult[Any],
         await session.execute(
             text(
-                "UPDATE guarantees SET loan_id = CAST(:lid AS uuid), status = 'active', "
+                "UPDATE guarantees SET loan_id = CAST(:lid AS uuid), "
                 "version = version + 1, updated_at = now() "
                 "WHERE application_id = CAST(:aid AS uuid) "
                 "AND tenant_id = CAST(:tid AS uuid) "
-                "AND status IN ('pledged', 'active')"
+                "AND status = 'active'"
             ),
             {"lid": str(loan_id), "aid": str(application_id), "tid": str(tenant_id)},
         ),

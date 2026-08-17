@@ -165,6 +165,136 @@ def test_trigger_blocks_unbalanced_ledger_insert() -> None:
     asyncio.run(run())
 
 
+def test_trigger_blocks_ledger_totals_below_transaction_amount() -> None:
+    """Balanced lines must still equal transactions.amount at COMMIT
+    (0014; external Codex review, re-derived). Hand-computed: the
+    transaction claims 100.00 but the balanced legs move only 90.00 —
+    the deferred trigger rejects the commit. Falsifiable: drop the
+    txn_amount comparison from check_ledger_balanced and the legs pass
+    balanced-only validation, so this test fails."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        mid = await _seed_member(tid)
+        txn_id = uuid.uuid4()
+
+        with pytest.raises(Exception, match="do not match transaction amount"):
+            async with tenant_session(factory(), tid) as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO transactions "
+                        "(id, tenant_id, txn_ref, member_id, type, amount, channel) "
+                        "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), :ref, "
+                        "CAST(:mid AS uuid), 'deposit', 100.00, 'mpesa')"
+                    ),
+                    {
+                        "id": str(txn_id),
+                        "tid": str(tid),
+                        "mid": str(mid),
+                        "ref": f"MP-{txn_id.hex[:8]}",
+                    },
+                )
+                await session.execute(
+                    text(
+                        "INSERT INTO ledger_entries "
+                        "(id, tenant_id, transaction_id, account, side, amount) "
+                        "VALUES "
+                        "(CAST(:dr AS uuid), CAST(:tid AS uuid), "
+                        "CAST(:txn AS uuid), 'cash.mpesa', 'debit', 90.00), "
+                        "(CAST(:cr AS uuid), CAST(:tid AS uuid), "
+                        "CAST(:txn AS uuid), 'member.deposits', 'credit', 90.00)"
+                    ),
+                    {
+                        "dr": str(uuid.uuid4()),
+                        "cr": str(uuid.uuid4()),
+                        "tid": str(tid),
+                        "txn": str(txn_id),
+                    },
+                )
+
+    asyncio.run(run())
+
+
+def test_trigger_blocks_extra_balanced_lines_on_posted_transaction() -> None:
+    """Appending a balanced 5.00/5.00 pair to an already-committed
+    100.00 deposit makes ledger totals 105.00 != transactions.amount
+    100.00 -> the deferred trigger rejects the second commit (0014).
+    Under 0004 alone this passed (still balanced), silently inflating
+    both sides of the trial balance."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        mid = await _seed_member(tid)
+
+        async with tenant_session(factory(), tid) as session:
+            result = await post_deposit(session, tid, mid, Decimal("100"), Channel.MPESA)
+            txn_id = result.txn_id
+
+        with pytest.raises(Exception, match="do not match transaction amount"):
+            async with tenant_session(factory(), tid) as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO ledger_entries "
+                        "(id, tenant_id, transaction_id, account, side, amount) "
+                        "VALUES "
+                        "(CAST(:dr AS uuid), CAST(:tid AS uuid), "
+                        "CAST(:txn AS uuid), 'cash.mpesa', 'debit', 5.00), "
+                        "(CAST(:cr AS uuid), CAST(:tid AS uuid), "
+                        "CAST(:txn AS uuid), 'member.deposits', 'credit', 5.00)"
+                    ),
+                    {
+                        "dr": str(uuid.uuid4()),
+                        "cr": str(uuid.uuid4()),
+                        "tid": str(tid),
+                        "txn": str(txn_id),
+                    },
+                )
+
+    asyncio.run(run())
+
+
+def test_reversal_link_must_reference_same_tenant_transaction() -> None:
+    """The composite (tenant_id, reversal_of_id) FK (0014) rejects a
+    cross-tenant reversal link even when RLS is out of the picture
+    (the insert runs under tenant B's own session, naming tenant A's
+    transaction id — RLS permits the row; only the FK can refuse the
+    foreign parent). Falsifiable: with the old single-column FK the
+    parent exists and the insert commits, so this test fails."""
+
+    async def run() -> None:
+        tenant_a, _ = await seed_user(unique_email())
+        tenant_b, _ = await seed_user(unique_email())
+        member_a = await _seed_member(tenant_a)
+        member_b = await _seed_member(tenant_b)
+
+        async with tenant_session(factory(), tenant_a) as session:
+            original = await post_deposit(
+                session, tenant_a, member_a, Decimal("100"), Channel.MPESA
+            )
+
+        with pytest.raises(Exception, match="fk_transactions_reversal_same_tenant"):
+            async with tenant_session(factory(), tenant_b) as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO transactions "
+                        "(id, tenant_id, txn_ref, member_id, type, amount, "
+                        "channel, reversal_of_id) "
+                        "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), :ref, "
+                        "CAST(:mid AS uuid), 'deposit', 100.00, 'mpesa', "
+                        "CAST(:rev AS uuid))"
+                    ),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "tid": str(tenant_b),
+                        "mid": str(member_b),
+                        "ref": f"MP-X{uuid.uuid4().hex[:8]}",
+                        "rev": str(original.txn_id),
+                    },
+                )
+
+    asyncio.run(run())
+
+
 def test_trigger_blocks_update_on_ledger_entries() -> None:
     """UPDATE on ledger_entries must raise (gate 1.5)."""
 
@@ -379,9 +509,145 @@ def test_deposit_interest_ref_prefix() -> None:
     asyncio.run(run())
 
 
+def test_repayment_rejects_loan_of_another_member() -> None:
+    """External Codex review, re-derived: the posting primitive itself
+    verifies loan ownership — member B's cash can never be credited
+    against member A's loan by a buggy caller. 409 (conflict) for a
+    mismatched pair, 404 for an unknown loan; zero rows written either
+    way. Falsifiable: drop _assert_loan_owned_by_member and the
+    mismatched posting commits (repayments row + legs land)."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        borrower = await _seed_member(tid)
+        stranger = await _seed_member(tid)
+        pid = await _seed_product(tid)
+        app_id = await _seed_approved_application(tid, borrower, pid, Decimal("10000"))
+        async with tenant_session(factory(), tid) as session:
+            disb = await disburse_loan(session, tid, app_id, Channel.BANK)
+
+        async with tenant_session(factory(), tid) as session:
+            with pytest.raises(ConflictError, match="does not belong"):
+                await post_repayment(
+                    session, tid, stranger, disb.loan_id, Decimal("100.00"), Channel.MPESA
+                )
+            with pytest.raises(NotFoundError):
+                await post_repayment(
+                    session, tid, borrower, uuid.uuid4(), Decimal("100.00"), Channel.MPESA
+                )
+
+        async with tenant_session(factory(), tid) as session:
+            repayments = (
+                await session.execute(text("SELECT count(*) FROM repayments"))
+            ).scalar_one()
+        assert int(repayments) == 0
+
+    asyncio.run(run())
+
+
+def test_posting_payloads_and_repayment_row_carry_rounded_amount() -> None:
+    """External Codex review, re-derived: outbox payloads and the
+    repayments auxiliary row publish the ROUNDED spec.amount, never the
+    caller's raw input. Hand-computed: 1000.005 rounds half-up to
+    1000.01 (domain.money.to_cents); the ledger legs already carry
+    1000.01, so a payload saying 1000.005 would disagree with the
+    books. Asserted on the stored side-effect rows, not return values."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        mid = await _seed_member(tid)
+        pid = await _seed_product(tid)
+        app_id = await _seed_approved_application(tid, mid, pid, Decimal("10000"))
+        async with tenant_session(factory(), tid) as session:
+            disb = await disburse_loan(session, tid, app_id, Channel.BANK)
+
+        async with tenant_session(factory(), tid) as session:
+            await post_deposit(session, tid, mid, Decimal("1000.005"), Channel.MPESA)
+            repay = await post_repayment(
+                session, tid, mid, disb.loan_id, Decimal("1000.005"), Channel.MPESA
+            )
+
+        async with tenant_session(factory(), tid) as session:
+            deposit_amounts = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT payload->>'amount' FROM outbox_events "
+                            "WHERE event_type = 'ledger.deposit_posted'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            repay_amounts = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT payload->>'amount' FROM outbox_events "
+                            "WHERE event_type = 'ledger.repayment_posted'"
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            repay_row = (
+                await session.execute(
+                    text("SELECT amount FROM repayments WHERE transaction_id = CAST(:t AS uuid)"),
+                    {"t": str(repay.txn_id)},
+                )
+            ).scalar_one()
+        assert deposit_amounts == ["1000.01"]
+        assert repay_amounts == ["1000.01"]
+        assert Decimal(str(repay_row)) == Decimal("1000.01")
+
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------------------
 # Reversal tests
 # ---------------------------------------------------------------------------
+
+
+def test_reversal_of_repayment_linked_transaction_is_blocked() -> None:
+    """External Codex review, re-derived: a generic reversal only
+    mirrors ledger legs — it cannot undo loans.balance/penalty_due or
+    the repayments history row, so reversing a repayment would leave a
+    'paid' record against a restored receivable. 409, zero new rows;
+    the correction path is the dedicated adjustment flow
+    (BUILD_PROMPTS P13.15). Falsifiable: drop the repayments guard in
+    post_reversal and the mirror posting commits, so this test fails."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        mid = await _seed_member(tid)
+        pid = await _seed_product(tid)
+        app_id = await _seed_approved_application(tid, mid, pid, Decimal("10000"))
+        async with tenant_session(factory(), tid) as session:
+            disb = await disburse_loan(session, tid, app_id, Channel.BANK)
+        async with tenant_session(factory(), tid) as session:
+            repay = await post_repayment(
+                session, tid, mid, disb.loan_id, Decimal("500.00"), Channel.MPESA
+            )
+        async with tenant_session(factory(), tid) as session:
+            before = (await session.execute(text("SELECT count(*) FROM transactions"))).scalar_one()
+
+        async with tenant_session(factory(), tid) as session:
+            with pytest.raises(ConflictError, match="repayment"):
+                await post_reversal(session, tid, repay.txn_id)
+
+        async with tenant_session(factory(), tid) as session:
+            after = (await session.execute(text("SELECT count(*) FROM transactions"))).scalar_one()
+            reversal_audits = (
+                await session.execute(
+                    text("SELECT count(*) FROM audit_log WHERE action = 'ledger.reversal'")
+                )
+            ).scalar_one()
+        assert int(after) == int(before)
+        assert int(reversal_audits) == 0
+
+    asyncio.run(run())
 
 
 def test_reversal_creates_mirror_entry_and_leaves_original_intact() -> None:

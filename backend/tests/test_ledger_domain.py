@@ -1,6 +1,7 @@
 # ruff: noqa: I001
 """Unit tests for genesis.domain.ledger — pure, no I/O (P7 gate 1.5)."""
 
+from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
@@ -274,6 +275,37 @@ def test_ref_prefix_rejects_non_cash_deposit_channels(channel: Channel) -> None:
 def test_build_deposit_posting_rejects_non_cash_channels(channel: Channel) -> None:
     with pytest.raises(ValueError, match="MPESA or BANK"):
         build_deposit_posting(Decimal("100"), channel)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        build_withdrawal_posting,
+        build_share_topup_posting,
+        build_disbursement_posting,
+        build_repayment_posting,
+    ],
+)
+@pytest.mark.parametrize("channel", [Channel.ACCRUAL, Channel.INTERNAL])
+def test_cash_posting_factories_reject_non_cash_channels(
+    build: Callable[[Decimal, Channel], PostingSpec], channel: Channel
+) -> None:
+    """A structural cash leg must never route to suspense (external
+    Codex review, re-derived): ACCRUAL/INTERNAL on a cash factory is a
+    caller bug and raises instead of hiding the posting inside the
+    exceptional-items account. Falsifiable: restore the old
+    `return Account.SUSPENSE` fallback in _cash_account and this test
+    fails (the specs would build successfully with a suspense leg)."""
+    with pytest.raises(ValueError, match="MPESA or BANK"):
+        build(Decimal("100"), channel)
+
+
+def test_allocated_repayment_rejects_non_cash_channels() -> None:
+    """Same guard through the split-leg factory (its cash DR leg)."""
+    with pytest.raises(ValueError, match="MPESA or BANK"):
+        build_allocated_repayment_posting(
+            Decimal("1"), Decimal("1"), Decimal("1"), Channel.INTERNAL
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,11 @@ rotate on every use, and belong to a family: any reuse of a spent token
 revokes the whole family. OTP delivery goes through the transactional
 outbox stub (gate 1.2). All verification runs under row locks (gate 1.4).
 
+Lock ordering (P13.5): user row -> otp_challenges row -> refresh_tokens
+rows, matching application/users.py (which additionally leads with the
+ordered active-admin set). Token issue writes users.last_active_at
+under the already-held user row lock and acquires nothing new.
+
 Tenant-predicate exemption (documented per issue #17, gate 1.6 v1.1):
 authentication queries here deliberately do NOT carry an explicit bound
 tenant_id predicate. They run BEFORE a tenant context exists — the
@@ -165,21 +170,32 @@ async def verify_otp(
     commits with the surrounding transaction; the API layer raises the
     401 after commit.
     """
+    # Lock ordering (P13.5): the USER row is locked before the challenge
+    # row, matching the suspension writer (application/users.py), which
+    # holds the user row while voiding challenges. Locking in the other
+    # order (the pre-P13.5 join) would deadlock verify-vs-suspend.
+    user_row = (
+        await session.execute(
+            text("SELECT id, role_id FROM users WHERE email = :email FOR UPDATE"),
+            {"email": email},
+        )
+    ).first()
+    if user_row is None:
+        return AuthFailure("no otp challenge")
+    user_id, role_id = user_row
     row = (
         await session.execute(
             text(
-                "SELECT c.id, c.code_hash, c.attempts, c.expires_at, c.consumed_at, "
-                "u.id AS user_id, u.role_id "
-                "FROM otp_challenges c JOIN users u ON u.id = c.user_id "
-                "WHERE u.email = :email "
-                "ORDER BY c.created_at DESC LIMIT 1 FOR UPDATE OF c"
+                "SELECT id, code_hash, attempts, expires_at, consumed_at "
+                "FROM otp_challenges WHERE user_id = CAST(:uid AS uuid) "
+                "ORDER BY created_at DESC LIMIT 1 FOR UPDATE"
             ),
-            {"email": email},
+            {"uid": str(user_id)},
         )
     ).first()
     if row is None:
         return AuthFailure("no otp challenge")
-    challenge_id, stored_hash, attempts, expires_at, consumed_at, user_id, role_id = row
+    challenge_id, stored_hash, attempts, expires_at, consumed_at = row
     presented = hash_code(code, salt=str(challenge_id), pepper=_otp_pepper())
     result = evaluate_challenge(
         stored_hash=str(stored_hash),
@@ -219,6 +235,27 @@ async def rotate_refresh_token(
     commits with the surrounding transaction; the API layer raises the
     401 after commit.
     """
+    # Lock ordering (P13.5): peek at the token row WITHOUT a lock to
+    # learn the user, lock the USER row first, then re-lock and
+    # re-validate the token row. The suspension writer holds the user
+    # row while revoking refresh rows, so taking the token row first
+    # (the pre-P13.5 order) would deadlock rotate-vs-suspend. The
+    # re-validation under the lock keeps rotation race-safe: a token
+    # spent between peek and lock is caught by the status check below.
+    peek = (
+        await session.execute(
+            text("SELECT user_id FROM refresh_tokens WHERE token_hash = :th"),
+            {"th": _hash_refresh_token(refresh_token)},
+        )
+    ).first()
+    if peek is None:
+        return AuthFailure("unknown refresh token")
+    role_id = (
+        await session.execute(
+            text("SELECT role_id FROM users WHERE id = CAST(:uid AS uuid) FOR UPDATE"),
+            {"uid": str(peek[0])},
+        )
+    ).scalar_one()
     row = (
         await session.execute(
             text(
@@ -239,12 +276,6 @@ async def rotate_refresh_token(
     if _now() >= expires_at:
         await _revoke_family(session, family_id)
         return AuthFailure("refresh token expired")
-    role_id = (
-        await session.execute(
-            text("SELECT role_id FROM users WHERE id = CAST(:uid AS uuid)"),
-            {"uid": str(user_id)},
-        )
-    ).scalar_one()
     await session.execute(
         text(
             "UPDATE refresh_tokens SET status = 'rotated', rotated_at = :now "
@@ -277,6 +308,19 @@ async def _issue_token_pair(
     session: AsyncSession, ctx: AuthContext, *, family_id: uuid.UUID
 ) -> TokenPair:
     refresh_token = secrets.token_urlsafe(48)
+    # last_active_at is written at TOKEN ISSUE only (P13.5) — never per
+    # request — so the prototype "last active" column costs one write
+    # per login/refresh instead of one per API call. Both callers
+    # already hold this user row FOR UPDATE (lock ordering above), so
+    # this update never acquires a new lock. Explicit tenant predicate
+    # on the write (v1.1 rule 4): the tenant is known here.
+    await session.execute(
+        text(
+            "UPDATE users SET last_active_at = :now "
+            "WHERE id = CAST(:uid AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+        ),
+        {"now": _now(), "uid": str(ctx.user_id), "tid": str(ctx.tenant_id)},
+    )
     await session.execute(
         text(
             "INSERT INTO refresh_tokens "

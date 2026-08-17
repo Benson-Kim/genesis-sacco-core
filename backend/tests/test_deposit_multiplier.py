@@ -253,6 +253,84 @@ def test_disbursement_at_exact_cap_succeeds_with_guarantees() -> None:
     asyncio.run(run())
 
 
+def test_disbursement_blocks_unconsented_pledged_guarantees() -> None:
+    """External Codex review, re-derived: a pledged guarantee may
+    support cover% while the application is in flight, but it must
+    never be activated as loan collateral without the guarantor's
+    recorded consent (the P9 consent contract).
+
+    Hand-computed cap: deposits 10000.00 x 3.00 + pledged guarantee
+    5000.00 = 35000.00 — the cap is satisfied, yet disbursement still
+    409s while the pledge is unconsented. Zero side effects: no loan,
+    no transaction, stage stays approved, the guarantee row is
+    untouched (still pledged, no loan_id), no link audit. Falsifiable:
+    drop the Step 2c pledged-guarantee check from disburse_loan and
+    the loan disburses with unconsented collateral — this test fails.
+    """
+
+    async def run() -> None:
+        tid, uid, token = await _seed_actor()
+        mid = await _make_member(tid, deposit="10000.00")
+        guarantor = await _make_member(tid, deposit="6000.00")
+        pid = await _make_product(token)  # multiplier 3.00
+        app_id = await _approved_application(tid, token, mid, pid, "35000.00")
+        gid = uuid.uuid4()
+        async with tenant_session(factory(), tid) as session:
+            await session.execute(
+                text(
+                    "INSERT INTO guarantees "
+                    "(id, tenant_id, guarantor_member_id, borrower_member_id, "
+                    " application_id, amount, status) "
+                    "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:g AS uuid), "
+                    "CAST(:b AS uuid), CAST(:a AS uuid), '5000.00', 'pledged')"
+                ),
+                {
+                    "id": str(gid),
+                    "tid": str(tid),
+                    "g": str(guarantor),
+                    "b": str(mid),
+                    "a": str(app_id),
+                },
+            )
+
+        with pytest.raises(ConflictError) as excinfo:
+            async with tenant_session(factory(), tid) as session:
+                await disburse_loan(session, tid, app_id, Channel.BANK, uid)
+        message = str(excinfo.value)
+        assert "consented" in message
+        # Least disclosure: no amounts or guarantor identity echoed.
+        assert "5000" not in message
+        assert str(guarantor) not in message
+        assert await _loan_count(tid) == 0
+        assert await _guarantee_row(tid, gid) == (None, "pledged")
+        async with tenant_session(factory(), tid) as session:
+            stage = (
+                await session.execute(
+                    text("SELECT stage FROM loan_applications WHERE id = CAST(:id AS uuid)"),
+                    {"id": str(app_id)},
+                )
+            ).scalar_one()
+            txns = (await session.execute(text("SELECT count(*) FROM transactions"))).scalar_one()
+            link_audits = (
+                await session.execute(
+                    text("SELECT count(*) FROM audit_log WHERE action = 'guarantee.link_loan'")
+                )
+            ).scalar_one()
+        assert str(stage) == "approved"
+        assert int(txns) == 0
+        assert int(link_audits) == 0
+
+        # The documented resolution path: consent the pledge, then the
+        # same disbursement succeeds and links exactly that guarantee.
+        async with tenant_session(factory(), tid) as session:
+            await consent_guarantee(session, tid, uid, gid, version=1)
+        async with tenant_session(factory(), tid) as session:
+            result = await disburse_loan(session, tid, app_id, Channel.BANK, uid)
+        assert await _guarantee_row(tid, gid) == (str(result.loan_id), "active")
+
+    asyncio.run(run())
+
+
 def test_max_eligible_surfaced_on_application_read() -> None:
     """Hand-computed: deposits 10000.00 x 3.00 + live pledge 5000.00
     = 35000.00 on the single-application read model (issue #15)."""

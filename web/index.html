@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--
+  Strict CSP: no inline script/style, no external origins. If the API is
+  hosted cross-origin, the deployment must extend connect-src AND set
+  window.GENESIS_API_BASE via a same-origin config script. frame-ancestors
+  cannot be delivered via <meta>; the static host MUST send
+  Content-Security-Policy: frame-ancestors 'none' (see web/README.md).
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'">
+<title>Genesis Prestige — Access Control</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div id="framed-warning" hidden>
+  <p>This console refuses to run inside a frame.</p>
+</div>
+<div id="gate" hidden></div>
+<div class="app" id="app" hidden>
+  <aside>
+    <div class="brand">
+      <div class="mark">G</div>
+      <div>
+        <div class="n">Genesis Prestige</div>
+        <div class="t">ZURI GENESIS · SACCO</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="who" id="who"></div>
+  </aside>
+  <div class="main">
+    <header>
+      <div>
+        <div class="ttl" id="h-title">Access control</div>
+        <div class="sub" id="h-sub">Genesis Prestige Sacco</div>
+      </div>
+      <div id="h-actions"></div>
+    </header>
+    <main id="main"></main>
+  </div>
+</div>
+<div id="modal-host"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

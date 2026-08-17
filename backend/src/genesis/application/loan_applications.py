@@ -203,9 +203,19 @@ async def create_application(
         )
     member_row = (
         await session.execute(
+            # FOR SHARE holds off a concurrent terminal member exit
+            # (which locks the row FOR UPDATE) until this create
+            # commits, closing the TOCTOU window between the status
+            # check and the insert (gate 1.4; the P9 pledge / P11
+            # _require_member precedent — external Codex review,
+            # re-derived). Lock order: member row only, nothing after
+            # it — consistent with the P12 chain (member first), so no
+            # cycle with settlement (member -> accounts -> loans) is
+            # possible. Explicit tenant predicate on top of RLS
+            # (gate 1.6 v1.1).
             text(
                 "SELECT status FROM members WHERE id = CAST(:m AS uuid) "
-                "AND tenant_id = CAST(:tid AS uuid)"
+                "AND tenant_id = CAST(:tid AS uuid) FOR SHARE"
             ),
             {"m": str(member_id), "tid": str(tenant_id)},
         )
@@ -217,6 +227,18 @@ async def create_application(
             f"member {member_id} is '{member_row[0]}': only active members may apply"
         )
     deposits = await _deposit_balance(session, tenant_id, member_id)
+    # Deliberately NO deposit-multiplier gate at creation (external
+    # Codex review fix REJECTED, with reasoning): the shipped issue #15
+    # eligibility is deposits x multiplier + live guarantees, and
+    # guarantees are pledged AFTER creation — a deposits-only creation
+    # block would foreclose guarantee-backed borrowing entirely (a
+    # zero-deposit borrower with full guarantor cover is legitimate
+    # and covered by the P9/P12.5 test suite). The cap is surfaced to
+    # callers via max_eligible on the single-application read, and the
+    # BINDING check runs at disbursement under the full lock set (P7
+    # step 2b). An own-multiplier product policy independent of
+    # guarantees is a tenant-configuration decision (BUILD_PROMPTS
+    # P13.7), not a hard-coded creation block.
     cover = _cover_pct(deposits, ZERO, amount)
     application_id = uuid.uuid4()
     await session.execute(

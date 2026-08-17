@@ -174,12 +174,21 @@ def ref_prefix(txn_type: TxnType, channel: Channel) -> str:
 
 
 def _cash_account(channel: Channel) -> Account:
+    """Cash account for a channel on which money physically moves.
+
+    ACCRUAL/INTERNAL are refused instead of silently routing to
+    suspense (external Codex review, re-derived): a structural cash
+    leg parked in suspense would hide a mis-channelled posting inside
+    the exceptional-items account, defeating reconciliation (gate 1.5).
+    The API boundary already rejects non-cash channels
+    (api.params.require_cash_channel); this is the defence in depth
+    for internal callers and future code paths.
+    """
     if channel is Channel.MPESA:
         return Account.CASH_MPESA
     if channel is Channel.BANK:
         return Account.CASH_BANK
-    # Accrual / internal postings use suspense
-    return Account.SUSPENSE
+    raise ValueError(f"cash postings require MPESA or BANK channels, got {channel!r}")
 
 
 def build_deposit_posting(amount: Decimal, channel: Channel) -> PostingSpec:
@@ -392,10 +401,11 @@ def build_exit_settlement_posting(
     if fee > ZERO:
         lines.append(LedgerLine(account=Account.FEE_INCOME, side=Side.CREDIT, amount=fee))
     if net > ZERO:
-        cash = _cash_account(channel)
-        if cash is Account.SUSPENSE:
+        # Zero-net set-offs post as INTERNAL with no cash leg; a
+        # positive refund must name the cash account it leaves through.
+        if channel not in (Channel.MPESA, Channel.BANK):
             raise ValueError("a net exit refund requires a cash channel (mpesa or bank)")
-        lines.append(LedgerLine(account=cash, side=Side.CREDIT, amount=net))
+        lines.append(LedgerLine(account=_cash_account(channel), side=Side.CREDIT, amount=net))
     return PostingSpec(
         txn_type=TxnType.EXIT_SETTLEMENT,
         channel=channel,

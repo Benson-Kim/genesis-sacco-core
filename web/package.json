@@ -1,0 +1,15 @@
+{
+  "name": "genesis-prestige-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Genesis Prestige admin web (static, dependency-free). P13.5: system users administration & audit-log viewer.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "build": "node scripts/build.mjs"
+  }
+}

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from genesis.api.access import router as access_router
 from genesis.api.accounting_periods import router as accounting_periods_router
+from genesis.api.audit_log import router as audit_log_router
 from genesis.api.auth import router as auth_router
 from genesis.api.health import router as health_router
 from genesis.api.idempotency import IdempotencyMiddleware
@@ -19,6 +20,7 @@ from genesis.api.member_exits import router as member_exits_router
 from genesis.api.members import router as members_router
 from genesis.api.reports import router as reports_router
 from genesis.api.transactions import router as transactions_router
+from genesis.api.users import router as users_router
 from genesis.errors import AppError, ErrorCategory
 from genesis.logging import configure_logging, correlation_id_var
 
@@ -43,6 +45,8 @@ def create_app() -> FastAPI:
     app.include_router(accounting_periods_router)
     app.include_router(me_router)
     app.include_router(access_router)
+    app.include_router(users_router)
+    app.include_router(audit_log_router)
     app.add_middleware(IdempotencyMiddleware)
 
     @app.middleware("http")

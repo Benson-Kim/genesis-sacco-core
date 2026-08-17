@@ -816,6 +816,95 @@ def test_concurrent_settlement_vs_withdrawal_exactly_one_wins() -> None:
     asyncio.run(run())
 
 
+def test_concurrent_application_create_waits_for_exit_member_lock() -> None:
+    """Gate 1.4 (external Codex review, re-derived): create_application
+    takes the member row FOR SHARE (the P9 pledge / P11 _require_member
+    precedent), so a concurrent settlement — which holds the member row
+    FOR UPDATE and marks the member exited before committing — makes
+    the create WAIT, then observe the terminal status and refuse,
+    instead of inserting an open application beside an exited member
+    (which would corrupt the exit invariant mark_member_exited
+    enforces). Falsifiable: drop FOR SHARE from the member read in
+    create_application and the status check reads the stale 'active'
+    row mid-exit — the application lands and this test fails."""
+
+    async def run() -> None:
+        tid, uid, _ = await _seed_actor()
+        mid = await _seed_member(tid, deposit="5000.00")
+        product_id = uuid.uuid4()
+        async with tenant_session(factory(), tid) as session:
+            await session.execute(
+                text(
+                    "INSERT INTO loan_products "
+                    "(id, tenant_id, name, rate_pct, deposit_multiplier, max_term_months) "
+                    "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), :name, "
+                    "'12.00', '3.00', 36)"
+                ),
+                {
+                    "id": str(product_id),
+                    "tid": str(tid),
+                    "name": f"ExitRace-{uuid.uuid4().hex[:8]}",
+                },
+            )
+        locked = asyncio.Event()
+
+        async def exit_holding_member_lock() -> None:
+            # Simulates the P12 settlement mid-transaction: member row
+            # locked FOR UPDATE, status flipped, commit only after the
+            # concurrent create has started waiting.
+            async with tenant_session(factory(), tid) as session:
+                await session.execute(
+                    text(
+                        "SELECT id FROM members WHERE id = CAST(:m AS uuid) "
+                        "AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
+                    ),
+                    {"m": str(mid), "tid": str(tid)},
+                )
+                await session.execute(
+                    text(
+                        "UPDATE members SET status = 'exited' "
+                        "WHERE id = CAST(:m AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                    ),
+                    {"m": str(mid), "tid": str(tid)},
+                )
+                locked.set()
+                await asyncio.sleep(0.3)
+
+        async def apply_after_exit_started() -> bool:
+            await locked.wait()
+            try:
+                async with tenant_session(factory(), tid) as session:
+                    await create_application(
+                        session,
+                        tid,
+                        uid,
+                        member_id=mid,
+                        product_id=product_id,
+                        amount=Decimal("1000.00"),
+                        term_months=6,
+                    )
+            except ConflictError:
+                return False
+            return True
+
+        _, created = await asyncio.gather(exit_holding_member_lock(), apply_after_exit_started())
+        assert created is False, "application create must wait, then reject the exited member"
+        async with tenant_session(factory(), tid) as session:
+            apps = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM loan_applications "
+                        "WHERE member_id = CAST(:m AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                    ),
+                    {"m": str(mid), "tid": str(tid)},
+                )
+            ).scalar_one()
+        assert int(apps) == 0
+        assert await _member_status(tid, mid) == "exited"
+
+    asyncio.run(run())
+
+
 # ---------------------------------------------------------------------------
 # KILL-SWITCH: abort mid-settlement -> zero partial rows (gate 1.5)
 # ---------------------------------------------------------------------------
