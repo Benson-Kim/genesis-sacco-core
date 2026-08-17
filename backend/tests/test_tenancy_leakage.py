@@ -22,6 +22,8 @@ TENANT_TABLES = [
     "users",
     "branches",
     "members",
+    "member_profiles",
+    "member_documents",
     "share_accounts",
     "deposit_accounts",
     "loan_products",
@@ -160,6 +162,77 @@ def test_cross_tenant_branch_rows_are_invisible_and_immutable() -> None:
         async with tenant_session(_factory(), tid_a) as session:
             count = (await session.execute(text("SELECT count(*) FROM branches"))).scalar_one()
             assert count == 1, "tenant A cannot see its own branch"
+
+    asyncio.run(run())
+
+
+def test_cross_tenant_kyc_rows_are_invisible_and_immutable() -> None:
+    """P13.12 EXIT: leakage suite extended to member_profiles and
+    member_documents — KYC rows are the PII surface, so tenant B must
+    not read, update, delete or forge tenant A KYC rows even via raw
+    SQL through the app role (ADR-0002)."""
+
+    async def run() -> None:
+        tid_a = await _create_tenant("kyc-a")
+        tid_b = await _create_tenant("kyc-b")
+        mid = await _insert_member(tid_a, tid_a)
+        async with tenant_session(_factory(), tid_a) as session:
+            await session.execute(
+                text(
+                    "INSERT INTO member_profiles "
+                    "(tenant_id, member_id, member_type, category, profile) "
+                    "VALUES (CAST(:tid AS uuid), CAST(:m AS uuid), 'person', 'Ordinary', "
+                    "CAST(:profile AS jsonb))"
+                ),
+                {
+                    "tid": str(tid_a),
+                    "m": str(mid),
+                    "profile": '{"bio": {}, "contact": {}, "employment": {}, "next_of_kin": {}}',
+                },
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO member_documents "
+                    "(tenant_id, member_id, member_type, doc_type) "
+                    "VALUES (CAST(:tid AS uuid), CAST(:m AS uuid), 'person', 'kra_pin')"
+                ),
+                {"tid": str(tid_a), "m": str(mid)},
+            )
+
+        async with tenant_session(_factory(), tid_b) as session:
+            for table in ("member_profiles", "member_documents"):
+                # Table names from test code, never user input.
+                visible = (
+                    await session.execute(text(f"SELECT count(*) FROM {table}"))  # noqa: S608
+                ).scalar_one()
+                assert visible == 0, f"tenant B can see tenant A {table}"
+                updated = await session.execute(
+                    text(f"UPDATE {table} SET updated_at = now()")  # noqa: S608
+                )
+                assert updated.rowcount == 0, f"tenant B can update tenant A {table}"
+                deleted = await session.execute(text(f"DELETE FROM {table}"))  # noqa: S608
+                assert deleted.rowcount == 0, f"tenant B can delete tenant A {table}"
+
+        with pytest.raises(DBAPIError):
+            async with tenant_session(_factory(), tid_b) as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO member_documents "
+                        "(tenant_id, member_id, member_type, doc_type) "
+                        "VALUES (CAST(:tid AS uuid), CAST(:m AS uuid), 'person', 'signature')"
+                    ),
+                    {"tid": str(tid_a), "m": str(mid)},
+                )
+
+        async with tenant_session(_factory(), tid_a) as session:
+            profiles = (
+                await session.execute(text("SELECT count(*) FROM member_profiles"))
+            ).scalar_one()
+            documents = (
+                await session.execute(text("SELECT count(*) FROM member_documents"))
+            ).scalar_one()
+        assert profiles == 1, "tenant A cannot see its own profile"
+        assert documents == 1, "tenant A cannot see its own document"
 
     asyncio.run(run())
 

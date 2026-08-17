@@ -19,6 +19,7 @@ from genesis.api.loan_book import router as loan_book_router
 from genesis.api.loans import router as loans_router
 from genesis.api.me import router as me_router
 from genesis.api.member_exits import router as member_exits_router
+from genesis.api.member_kyc import router as member_kyc_router
 from genesis.api.members import router as members_router
 from genesis.api.reports import router as reports_router
 from genesis.api.tenant_settings import router as tenant_settings_router
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(members_router)
+    app.include_router(member_kyc_router)
     app.include_router(member_exits_router)
     app.include_router(loans_router)
     app.include_router(loan_book_router)

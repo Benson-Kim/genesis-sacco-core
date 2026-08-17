@@ -41,6 +41,10 @@ from genesis.errors import InvalidInputError
 # under transactions:*, loan products under settings:*).
 ENTITY_MODULES: dict[str, Module] = {
     "members": Module.MEMBERS,
+    # P13.12: KYC payloads are the PII exfiltration surface — their
+    # audit before/after is disclosed only per members:view.
+    "member_profiles": Module.MEMBERS,
+    "member_documents": Module.MEMBERS,
     "share_accounts": Module.MEMBERS,
     "deposit_accounts": Module.MEMBERS,
     "member_exits": Module.MEMBERS,

@@ -106,6 +106,7 @@ backend:test:
     - cat backend/perf/explain_p135.txt || true
     - cat backend/perf/explain_p136.txt || true
     - cat backend/perf/explain_p137.txt || true
+    - cat backend/perf/explain_p1312.txt || true
     - cat backend/perf/explain_codex_review.txt || true
   coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
