@@ -16,9 +16,9 @@
  * registered below, so both teardown paths clear it and the next
  * operator's tab never inherits a previous operator's spent votes.
  *
- * RESOLVED: the S3 disposition assigned the
- * `createSessionScopedRegistry` consolidation to the first batch
- * landing after both in-flight batches — delivered it; this
+ * RESOLVED (issue #30 finding S3): the S3 disposition assigned the
+ * `createSessionScopedRegistry` consolidation to the first #31 batch
+ * landing after both in-flight batches — batch 3 delivered it; this
  * wrapper now consumes the shared primitive.
  *
  * Storage: the shared createSessionScopedRegistry primitive — teardown

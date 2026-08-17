@@ -77,6 +77,18 @@ const memberDetailOut = {
   },
 };
 
+// The DETAIL read (#31 batch 3): the same GET also carries the four
+// advisory aggregates as decimal STRINGS (MemberDetailOut).
+const memberDetailOut = {
+  ...memberOut,
+  aggregates: {
+    deposits_total: "1500.50",
+    shares_total: "750.25",
+    loans_outstanding: "2500.10",
+    guarantees_pledged: "1000.40",
+  },
+};
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,

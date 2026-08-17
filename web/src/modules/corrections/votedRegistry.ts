@@ -16,7 +16,7 @@
  * registered below, so both teardown paths clear it and the next
  * operator's tab never inherits a previous operator's spent votes.
  *
- * Storage: the shared createSessionScopedRegistry
+ * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
  * primitive — teardown on both session-death paths and the reactive
  * read are wired by construction. This wrapper keeps the module's
  * exported vocabulary byte-compatible.

@@ -27,10 +27,10 @@
  * can post the disbursement (403, keyed on the persisted
  * created_by/recommended_by).
  *
- * Storage: the shared createSessionScopedRegistry
+ * Storage (issue #30 finding S3): the shared createSessionScopedRegistry
  * primitive — teardown on BOTH session-death paths (the query-path 401
  * dual-cache teardown and explicit sign-out) is wired by construction
- * (W58-2, the F2 class). This wrapper keeps the module's exported
+ * (W58-2, the !60 F2 class). This wrapper keeps the module's exported
  * vocabulary byte-compatible.
  */
 import { createSessionScopedRegistry } from "@/modules/auth/createSessionScopedRegistry";

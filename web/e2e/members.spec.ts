@@ -71,6 +71,17 @@ const AGGREGATES_OUT = {
   guarantees_pledged: "40.04",
 };
 
+// #31 batch 3 review: the register opts in to the LIST aggregates.
+// DELIBERATELY NON-ADDITIVE: no figure equals any combination of the
+// others, so a register that summed or derived a figure would surface
+// a string this spec asserts ABSENT.
+const AGGREGATES_OUT = {
+  deposits_total: "1000.11",
+  shares_total: "200.22",
+  loans_outstanding: "300.33",
+  guarantees_pledged: "40.04",
+};
+
 interface ApiState {
   permissions: unknown;
   postBodies: Record<string, unknown>[];
