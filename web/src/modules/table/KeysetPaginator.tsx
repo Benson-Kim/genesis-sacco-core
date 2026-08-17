@@ -62,7 +62,7 @@ export function useKeysetPagination(
 export interface KeysetPaginatorProps<T> {
   query: KeysetListResult<T>;
   /** Total number of rows currently loaded (all fetched pages flattened). */
-  totalLoaded: number;
+  loadedRowCount: number;
   /** Current 0-based page index. */
   pageIndex: number;
   /** Rows per page. */
@@ -77,7 +77,7 @@ export interface KeysetPaginatorProps<T> {
 
 export function KeysetPaginator<T>({
   query,
-  totalLoaded,
+  loadedRowCount,
   pageIndex,
   pageSize,
   onPageChange,
@@ -88,27 +88,27 @@ export function KeysetPaginator<T>({
   const isLoadingMore = query.isFetchingNextPage;
 
   // Total pages we can show from accumulated data.
-  const loadedPageCount = Math.max(1, Math.ceil(totalLoaded / pageSize));
+  const loadedPageCount = Math.max(1, Math.ceil(loadedRowCount / pageSize));
   // Last page index reachable without a new fetch.
   const lastLoadedPage = loadedPageCount - 1;
   // True when there may be more pages beyond what's loaded.
   const morePages = hasMore;
 
   // 1-based range for display: "1–10 of 10+"
-  const rangeStart = totalLoaded === 0 ? 0 : pageIndex * pageSize + 1;
-  const rangeEnd = Math.min((pageIndex + 1) * pageSize, totalLoaded);
+  const rangeStart = loadedRowCount === 0 ? 0 : pageIndex * pageSize + 1;
+  const rangeEnd = Math.min((pageIndex + 1) * pageSize, loadedRowCount);
 
   // Auto-fetch next page when the user navigates to a page that needs it.
   useEffect(() => {
     const neededRows = (pageIndex + 1) * pageSize;
-    if (neededRows > totalLoaded && hasMore && !isLoadingMore) {
+    if (neededRows > loadedRowCount && hasMore && !isLoadingMore) {
       query.fetchNextPage();
     }
-  }, [pageIndex, pageSize, totalLoaded, hasMore, isLoadingMore, query]);
+  }, [pageIndex, pageSize, loadedRowCount, hasMore, isLoadingMore, query]);
 
   if (!query.isSuccess) return null;
   // Nothing to paginate: single page, no more data, fits within page size.
-  if (totalLoaded <= pageSize && !hasMore) return null;
+  if (loadedRowCount <= pageSize && !hasMore) return null;
 
   const canPrev = pageIndex > 0;
   const canNext = pageIndex < lastLoadedPage || morePages;
@@ -148,7 +148,10 @@ export function KeysetPaginator<T>({
           Previous
         </button>
 
-        <span className={styles.pageIndicator}>
+        <span
+          className={styles.pageIndicator}
+          aria-label={`Showing ${rangeStart}\u2013${rangeEnd} of the loaded ${rowLabel}`}
+        >
           {isLoadingMore ? (
             <span className={styles.muted}>Loading…</span>
           ) : (

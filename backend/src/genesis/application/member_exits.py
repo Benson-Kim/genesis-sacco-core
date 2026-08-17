@@ -76,7 +76,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from genesis.application.audit import record_audit
 from genesis.application.guarantees import live_guarantee_params, live_pledged_total
-from genesis.application.ledger import post_exit_settlement
+from genesis.application.ledger import allocate_sequence, post_exit_settlement
 from genesis.application.loans import _close_loan, _interest_due
 from genesis.application.members import mark_member_exited
 from genesis.application.outbox import enqueue_event
@@ -90,11 +90,13 @@ from genesis.application.tenant_settings import committee_quorum
 from genesis.application.transactions import _lock_account, _set_balance
 from genesis.domain.committee import Decision, Vote, decide
 from genesis.domain.exits import (
+    EXIT_REF_SEQ,
     ExitStatus,
     InvalidExitTransitionError,
     SettlementComputation,
     compute_settlement,
     exit_transition,
+    format_exit_ref,
 )
 from genesis.domain.ledger import Channel
 from genesis.domain.members import MemberStatus, MoneyOperation, member_may
@@ -104,7 +106,54 @@ from genesis.errors import ConflictError, ForbiddenError, NotFoundError
 _EXIT_COLS = (
     "id, member_id, status, reason, shares_amount, deposits_amount, "
     "loan_balance, fees, net_payable, requested_by, decided_at, settled_at, "
-    "settlement_transaction_id, version, created_at"
+    "settlement_transaction_id, version, created_at, exit_ref"
+)
+
+#: Read-path column list: _EXIT_COLS table-qualified plus the member
+#: display labels. ONLY the un-locked reads use it — the settlement's
+#: FOR UPDATE read keeps the join-free _EXIT_COLS (an outer join under
+#: FOR UPDATE is refused by the database, and the lock must stay on
+#: the exit row alone).
+_EXIT_READ_COLS = (
+    "member_exits.id, member_exits.member_id, member_exits.status, "
+    "member_exits.reason, member_exits.shares_amount, "
+    "member_exits.deposits_amount, member_exits.loan_balance, "
+    "member_exits.fees, member_exits.net_payable, "
+    "member_exits.requested_by, member_exits.decided_at, "
+    "member_exits.settled_at, member_exits.settlement_transaction_id, "
+    "member_exits.version, member_exits.created_at, member_exits.exit_ref, "
+    "mm.member_no, mm.name"
+)
+
+#: Display-label join for the read statements: rides the members
+#: PRIMARY KEY per page row plus the explicit tenant predicate
+#: (index-served, no new index).
+_EXIT_LABEL_JOIN = (
+    "LEFT JOIN members mm ON mm.tenant_id = member_exits.tenant_id "
+    "AND mm.id = member_exits.member_id "
+)
+
+#: Read-path column list: _EXIT_COLS table-qualified plus the member
+#: display labels. ONLY the un-locked reads use it — the settlement's
+#: FOR UPDATE read keeps the join-free _EXIT_COLS (an outer join under
+#: FOR UPDATE is refused by the database, and the lock must stay on
+#: the exit row alone).
+_EXIT_READ_COLS = (
+    "member_exits.id, member_exits.member_id, member_exits.status, "
+    "member_exits.reason, member_exits.shares_amount, "
+    "member_exits.deposits_amount, member_exits.loan_balance, "
+    "member_exits.fees, member_exits.net_payable, "
+    "member_exits.requested_by, member_exits.decided_at, "
+    "member_exits.settled_at, member_exits.settlement_transaction_id, "
+    "member_exits.version, member_exits.created_at, mm.member_no, mm.name"
+)
+
+#: Display-label join for the read statements: rides the members
+#: PRIMARY KEY per page row plus the explicit tenant predicate
+#: (index-served, no new index).
+_EXIT_LABEL_JOIN = (
+    "LEFT JOIN members mm ON mm.tenant_id = member_exits.tenant_id "
+    "AND mm.id = member_exits.member_id "
 )
 
 #: Cursor scope id: signed cursors are bound to this
@@ -189,6 +238,16 @@ class ExitRecord:
     settlement_transaction_id: uuid.UUID | None
     version: int
     created_at: datetime
+    #: Human exit reference (EX-XXXX, 0048) — minted race-safely at
+    #: request time; None only for rows written before the backfill.
+    exit_ref: str | None
+    #: Human display labels — the exiting member's number and
+    #: registered name — resolved server-side in the SAME read
+    #: statement (members PK join). Default None: the locked
+    #: settlement read deliberately skips the join (lock stays on the
+    #: exit row alone) and labels are never invented.
+    member_no: str | None = None
+    member_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -210,6 +269,9 @@ class ExitStatementDoc:
     """Exit statement document (JSON until P13 core/exports lands)."""
 
     exit_id: uuid.UUID
+    #: Human exit reference (EX-XXXX, 0048); None only for statements
+    #: of rows written before the backfill.
+    exit_ref: str | None
     member_id: uuid.UUID
     member_no: str
     member_name: str
@@ -260,6 +322,11 @@ def _row_to_exit(row: Any) -> ExitRecord:
         settlement_transaction_id=uuid.UUID(str(row[12])) if row[12] is not None else None,
         version=int(row[13]),
         created_at=row[14],
+        exit_ref=str(row[15]) if row[15] is not None else None,
+        # Label columns ride only the read-path statements; the locked
+        # settlement read serves the 16-column join-free shape.
+        member_no=str(row[16]) if len(row) > 16 and row[16] is not None else None,
+        member_name=str(row[17]) if len(row) > 17 and row[17] is not None else None,
     )
 
 
@@ -457,20 +524,28 @@ async def request_exit(
             "reduce the loan before requesting exit"
         )
     exit_id = uuid.uuid4()
+    # Human exit reference (EX-XXXX, 0048): the shared P7 allocator in
+    # the SAME transaction — advisory lock + monotonic counter; the
+    # partial UNIQUE uq_member_exits_exit_ref is the final safety net.
+    # Lock order: ADVR advisory tier entered after the member/loan row
+    # locks (the posting-chain direction, lock-order.md E15/E16).
+    exit_ref = format_exit_ref(await allocate_sequence(session, tenant_id, EXIT_REF_SEQ))
     try:
         await session.execute(
             text(
                 "INSERT INTO member_exits "
                 "(id, tenant_id, member_id, status, reason, shares_amount, "
-                " deposits_amount, loan_balance, fees, net_payable, requested_by) "
+                " deposits_amount, loan_balance, fees, net_payable, requested_by, "
+                " exit_ref) "
                 "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:mid AS uuid), "
                 ":status, :reason, :shares, :deposits, :loan, :fees, :net, "
-                "CAST(:actor AS uuid))"
+                "CAST(:actor AS uuid), :ref)"
             ),
             {
                 "id": str(exit_id),
                 "tid": str(tenant_id),
                 "mid": str(member_id),
+                "ref": exit_ref,
                 "status": ExitStatus.REQUESTED.value,
                 "reason": reason,
                 "shares": str(computation.shares),
@@ -609,8 +684,10 @@ async def get_exit(session: AsyncSession, tenant_id: uuid.UUID, exit_id: uuid.UU
     row = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_COLS} FROM member_exits "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid)"
+                f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608
+                f"{_EXIT_LABEL_JOIN}"
+                "WHERE member_exits.id = CAST(:id AS uuid) "
+                "AND member_exits.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(exit_id), "tid": str(tenant_id)},
         )
@@ -636,25 +713,30 @@ async def list_exits(
     DESC, id DESC), also 0010.
     """
     limit = max(1, min(limit, 100))
-    clauses: list[str] = ["tenant_id = CAST(:tid AS uuid)"]
+    # Qualified because the label join brings further tenant_id/status
+    # columns into scope; the predicate stays the leading column of
+    # both keyset indexes.
+    clauses: list[str] = ["member_exits.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
     if status is not None:
-        clauses.append("status = :status")
+        clauses.append("member_exits.status = :status")
         params["status"] = status.value
     if cursor:
         # Opaque signed cursor: verify+unseal first;
         # the plaintext parse stays as defense-in-depth.
         inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=EXITS_LIST_SCOPE, entity="exit")
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="exit")
-        clauses.append("(created_at, id) < (:c_ts, CAST(:c_id AS uuid))")
+        clauses.append("(member_exits.created_at, member_exits.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} "
     # Static fragments chosen in code; all values are bound parameters.
     rows = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_COLS} FROM member_exits "  # noqa: S608
+                f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608
+                f"{_EXIT_LABEL_JOIN}"
                 f"{where}"
-                "ORDER BY created_at DESC, id DESC LIMIT :limit"
+                "ORDER BY member_exits.created_at DESC, "
+                "member_exits.id DESC LIMIT :limit"
             ),
             params,
         )
@@ -1141,7 +1223,8 @@ async def exit_statement(
                 "SELECT e.id, e.member_id, m.member_no, m.name, m.status, "
                 "e.status, e.reason, e.shares_amount, e.deposits_amount, "
                 "e.loan_balance, e.fees, e.net_payable, e.created_at, "
-                "e.decided_at, e.settled_at, t.txn_ref, e.requested_by "
+                "e.decided_at, e.settled_at, t.txn_ref, e.requested_by, "
+                "e.exit_ref "
                 "FROM member_exits e "
                 "JOIN members m ON m.id = e.member_id "
                 "AND m.tenant_id = e.tenant_id "
@@ -1158,6 +1241,7 @@ async def exit_statement(
     deposits = Decimal(str(row[8]))
     return ExitStatementDoc(
         exit_id=uuid.UUID(str(row[0])),
+        exit_ref=str(row[17]) if row[17] is not None else None,
         member_id=uuid.UUID(str(row[1])),
         member_no=str(row[2]),
         member_name=str(row[3]),

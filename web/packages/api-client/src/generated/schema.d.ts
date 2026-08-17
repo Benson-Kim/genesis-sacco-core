@@ -167,6 +167,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/applications/{application_id}/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Override Application Refusal
+         * @description Supervisor override: overturn a refusal (application_overrides:approve).
+         */
+        post: operations["override_application_refusal_applications__application_id__override_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/applications/{application_id}/transition": {
         parameters: {
             query?: never;
@@ -1523,6 +1543,13 @@ export interface paths {
          *     lookup): expand-only EXACT-match filter served by the 0001 UNIQUE
          *     (tenant_id, member_no) key. An unknown number is an EMPTY page,
          *     never a 404 — no existence oracle beyond the members:view grant.
+         *
+         *     id_number (expand-only): EXACT-match
+         *     national-ID lookup through the person KYC profile, served by the
+         *     0045 partial expression index (shipped with this query). An
+         *     EXCLUSIVE identity probe: combining it with any other filter,
+         *     cursor or the aggregates expand is a 422 (one declared meaning,
+         *     no ambiguous merged scopes). Unknown ID: EMPTY page, never 404.
          */
         get: operations["list_members_members_get"];
         put?: never;
@@ -2387,8 +2414,14 @@ export interface components {
             loan_status_at_request: string | null;
             /** Maker Id */
             maker_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Original Transaction Id */
             original_transaction_id: string;
+            /** Original Txn Ref */
+            original_txn_ref: string | null;
             /** Penalties */
             penalties: string;
             /** Principal */
@@ -2465,8 +2498,14 @@ export interface components {
             max_eligible?: string | null;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Product Id */
             product_id: string;
+            /** Product Name */
+            product_name: string | null;
             /** Purpose */
             purpose: string | null;
             /** Rate Pct */
@@ -2537,6 +2576,8 @@ export interface components {
             action: string;
             /** Actor Id */
             actor_id: string | null;
+            /** Actor Name */
+            actor_name: string | null;
             /** After */
             after: {
                 [key: string]: unknown;
@@ -2955,6 +2996,8 @@ export interface components {
         DisbursementOut: {
             /** Loan Id */
             loan_id: string;
+            /** Loan Ref */
+            loan_ref: string;
             /** Schedule */
             schedule: components["schemas"]["ScheduleRowOut"][];
             /** Txn Id */
@@ -3142,6 +3185,8 @@ export interface components {
             decided_at: string | null;
             /** Deposits Amount */
             deposits_amount: string;
+            /** Exit Ref */
+            exit_ref: string | null;
             /** Fees */
             fees: string;
             /** Id */
@@ -3150,6 +3195,10 @@ export interface components {
             loan_balance: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Net Payable */
             net_payable: string;
             /** Reason */
@@ -3190,6 +3239,8 @@ export interface components {
             equity: string;
             /** Exit Id */
             exit_id: string;
+            /** Exit Ref */
+            exit_ref: string | null;
             /** Exit Status */
             exit_status: string;
             /** Fees */
@@ -3253,19 +3304,29 @@ export interface components {
         };
         /**
          * ExportFiltersBody
-         * @description The only caller-suppliable scope (blocker a): ids and dates.
+         * @description The only caller-suppliable scope (blocker a): ids, dates, and —
+         *     for the transactions-ledger register (expand-only) —
+         *     the register page's own declared filters, pinned to the code-owned
+         *     vocabularies (TxnType/Channel/Side) and bounded operator text.
          */
         ExportFiltersBody: {
+            channel?: components["schemas"]["Channel"] | null;
             /** Date From */
             date_from?: string | null;
             /** Date To */
             date_to?: string | null;
             /** Declaration Id */
             declaration_id?: string | null;
+            direction?: components["schemas"]["Side"] | null;
             /** Exit Id */
             exit_id?: string | null;
             /** Member Id */
             member_id?: string | null;
+            /** Ref */
+            ref?: string | null;
+            /** Search */
+            search?: string | null;
+            txn_type?: components["schemas"]["TxnType"] | null;
         };
         /** ExportOut */
         ExportOut: {
@@ -3550,14 +3611,22 @@ export interface components {
             disbursed_at: string | null;
             /** Id */
             id: string;
+            /** Loan Ref */
+            loan_ref: string | null;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Penalty Due */
             penalty_due: string;
             /** Principal */
             principal: string;
             /** Product Id */
             product_id: string;
+            /** Product Name */
+            product_name: string | null;
             /** Provision Pct */
             provision_pct: string;
             /** Rate Pct */
@@ -3770,7 +3839,7 @@ export interface components {
          * Module
          * @enum {string}
          */
-        Module: "members" | "applications" | "loan_book" | "transactions" | "reports" | "settings" | "access_control" | "corrections" | "member_identity";
+        Module: "members" | "applications" | "loan_book" | "transactions" | "reports" | "settings" | "access_control" | "corrections" | "member_identity" | "application_overrides";
         /** ModulePermissionsOut */
         ModulePermissionsOut: {
             /** Can Approve */
@@ -3869,6 +3938,19 @@ export interface components {
             email?: string | null;
             /** Identifier */
             identifier?: string | null;
+        };
+        /**
+         * OverrideBody
+         * @description extra="forbid"; the reason is MANDATORY (an unexplained override
+         *     is a rejected design) and bounded (it lands verbatim on the audit
+         *     row). The version binds the override to the persisted decision
+         *     snapshot the supervisor actually reviewed (409 on drift).
+         */
+        OverrideBody: {
+            /** Reason */
+            reason: string;
+            /** Version */
+            version: number;
         };
         /**
          * Par30TrendPointOut
@@ -4194,7 +4276,7 @@ export interface components {
          * ReportName
          * @enum {string}
          */
-        ReportName: "member_statement" | "trial_balance" | "loan_book" | "disbursement_collections" | "npl_trend" | "member_exit_statement" | "dividend_rebate_schedule" | "portfolio_at_risk_aging" | "membership_register" | "income_statement" | "sasra_return";
+        ReportName: "member_statement" | "trial_balance" | "loan_book" | "disbursement_collections" | "npl_trend" | "member_exit_statement" | "dividend_rebate_schedule" | "portfolio_at_risk_aging" | "membership_register" | "transactions_ledger" | "income_statement" | "sasra_return";
         /** RoleOut */
         RoleOut: {
             /** Id */
@@ -4449,6 +4531,10 @@ export interface components {
             decided_at: string | null;
             /** From Member Id */
             from_member_id: string;
+            /** From Member Name */
+            from_member_name: string | null;
+            /** From Member No */
+            from_member_no: string | null;
             /** Id */
             id: string;
             /** In Transaction Id */
@@ -4459,6 +4545,10 @@ export interface components {
             status: string;
             /** To Member Id */
             to_member_id: string;
+            /** To Member Name */
+            to_member_name: string | null;
+            /** To Member No */
+            to_member_no: string | null;
             /** Version */
             version: number;
         };
@@ -4565,6 +4655,10 @@ export interface components {
             is_reversal: boolean;
             /** Member Id */
             member_id: string | null;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Occurred At */
             occurred_at: string;
             /** Txn Ref */
@@ -4731,6 +4825,10 @@ export interface components {
             loan_id: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Opened At */
             opened_at: string;
             /** Version */
@@ -4764,6 +4862,10 @@ export interface components {
             loan_id: string;
             /** Member Id */
             member_id: string;
+            /** Member Name */
+            member_name: string | null;
+            /** Member No */
+            member_no: string | null;
             /** Penalty Due */
             penalty_due: string;
             /** Posted At */
@@ -5152,6 +5254,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GuaranteeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    override_application_refusal_applications__application_id__override_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationOut"];
                 };
             };
             /** @description Validation Error */
@@ -7434,6 +7571,7 @@ export interface operations {
                 status?: components["schemas"]["MemberStatus"] | null;
                 type?: components["schemas"]["MemberType"] | null;
                 member_no?: string | null;
+                id_number?: string | null;
                 include?: "aggregates" | null;
             };
             header?: never;

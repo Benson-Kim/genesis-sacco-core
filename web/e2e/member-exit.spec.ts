@@ -62,6 +62,8 @@ const APPROVED_EXIT = {
   settlement_txn_id: null,
   version: 7,
   created_at: "2026-08-01T09:00:00+00:00",
+  member_no: "M-0001",
+  member_name: "Jane Wanjiku",
 };
 
 /** A second row on the documented NEGATIVE branch (sign verbatim). */

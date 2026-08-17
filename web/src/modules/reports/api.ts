@@ -69,6 +69,15 @@ export async function requestExport(
               declaration_id: entry.filters.declaration_id,
               date_from: entry.filters.date_from,
               date_to: entry.filters.date_to,
+              // #35 item 5 — transactions-ledger register scope.
+              // validateExportDraft pinned these to the code-owned
+              // vocabulary mirrors of the contract enums; the server
+              // re-validates regardless (unknown value: 422).
+              txn_type: entry.filters.txn_type as never,
+              channel: entry.filters.channel as never,
+              direction: entry.filters.direction as never,
+              ref: entry.filters.ref,
+              search: entry.filters.search,
             },
     },
     headers: { "Idempotency-Key": idempotencyKey },

@@ -49,6 +49,16 @@
   NOT NULL serving the new phone sign-in lookup — no table, column,
   constraint or RLS change);
   diagram 2.A and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0048 by the issue-#35 human-reference MR, IN THE SAME
+  COMMIT as the migration: alembic head 0044 -> 0048
+  (0048_loan_exit_human_refs.py, down_revision = "0044" — claimed as
+  the next FREE number: 0045/0046/0047 are held by open MRs !99/!100/
+  !98 and this branch re-chains after they merge, the 0043 re-chain
+  precedent; expand-only nullable loans.loan_ref /
+  member_exits.exit_ref + two partial per-tenant UNIQUE indexes +
+  deterministic (created_at, id) backfill + counter seeding — no new
+  table, no RLS change);
+  diagrams 2.C/2.D and §3 updated accordingly (v1.2 rules 11/14).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -59,8 +69,8 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0044**: **47 tables** (0035
-creates `member_credentials`; 0033/0034/0036/0037/0040/0043 alter
+The entire schema at alembic head **0048**: **47 tables** (0035
+creates `member_credentials`; 0033/0034/0036/0037/0040/0043/0048 alter
 existing tables and create none; 0038/0041/0044 add indexes only;
 0042 is a data-only backfill touching no schema object), drawn as
 seven subject-area `erDiagram`s (one diagram would not render readably;
@@ -125,6 +135,7 @@ erDiagram
         uuid member_id FK "UNIQUE (tenant_id, member_id) atomic-claim key (0018)"
         text member_type FK "composite FK (member_id, member_type) to members (id, type) (0018)"
         timestamptz dpa_consent_at "immutable once set: consent-guard triggers (0018)"
+        jsonb profile "per-type shape CHECK (0018); partial expression idx_member_profiles_id_number (tenant_id, bio.id_number) serves the posting-drawer national-ID lookup (0045)"
     }
     member_documents {
         uuid id PK
@@ -193,6 +204,7 @@ erDiagram
         uuid product_id FK "-> loan_products.id (0001)"
         text status "active|closed|written_off (0001)"
         numeric penalty_due "receivable bucket, CHECK >= 0 (0007)"
+        text loan_ref "nullable human reference LN-XXXX; partial UNIQUE (tenant_id, loan_ref) WHERE NOT NULL; deterministic backfill (0048)"
     }
     loan_schedules {
         uuid id PK
@@ -358,6 +370,7 @@ erDiagram
         text status "requested|approved|settled|rejected (0001)"
         uuid requested_by FK "nullable -> users.id (0010)"
         uuid settlement_transaction_id FK "nullable -> transactions.id (0010)"
+        text exit_ref "nullable human reference EX-XXXX; partial UNIQUE (tenant_id, exit_ref) WHERE NOT NULL; deterministic backfill (0048)"
     }
     exit_votes {
         uuid id PK
@@ -627,7 +640,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `otp_challenges` | 0001 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_otp_challenges_one_principal` XOR, `idx_otp_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `refresh_tokens` | 0002 | 0035 (`member_credential_id`, `user_id` goes nullable, `ck_refresh_tokens_one_principal` XOR, `idx_refresh_credential`) | `application/auth.py`, `application/member_auth.py` |
 | `members` | 0001 | 0016 (`branch_id`), 0018 (`uq_members_id_type`), 0020 (dividend-scan idx), 0021 (`dormant` status, dormancy-scan idx), 0022 (scan predicate widened, exited-scan idx), 0023 (register keyset idx), 0028 (`uq_members_tenant_id_id` composite-FK anchor) | `application/members.py` (+ `dormancy.py` batch) |
-| `member_profiles` | 0018 | — | `application/member_kyc.py` |
+| `member_profiles` | 0018 | 0045 (partial expression `idx_member_profiles_id_number` — posting-drawer national-ID lookup) | `application/member_kyc.py`, `application/members.py` (id-number lookup read) |
 | `member_documents` | 0018 | — | `application/member_kyc.py` |
 | `branches` | 0016 | — | `application/branches.py` |
 | `member_credentials` | 0035 (incl. partial UNIQUEs `uq_member_credentials_email_active`/`uq_member_credentials_member_active`, `ck_member_credentials_revoked_at`) | — | `application/member_identity.py` (audited link admin), `application/member_auth.py` (member login/refresh reads) |
@@ -636,18 +649,18 @@ Both directions of the table↔migration mapping are machine-checked by
 | `loan_products` | 0001 | 0017 (`guarantors_required`) | `application/loan_products.py` |
 | `loan_applications` | 0001 | 0006 (keyset idx), 0014 (stage-keyset idx, drops 0001 stage idx), 0036 (`created_by` + audit-log backfill — issue #30 R4 disbursement SoD), 0037 (`recommended_by` + audit-log backfill — issue-#30 close-out recommender attribution + vote/disburse SoD) | `application/loan_applications.py` |
 | `committee_votes` | 0005 | — | `application/loan_applications.py` |
-| `loans` | 0001 | 0007 (`penalty_due`, `closed_at`, idxs), 0013 (disbursed idx), 0026 (`idx_loans_dpd_worklist`) | `application/loans.py` (+ `ledger.py` disburse, `arrears.py` batch; terminal write-off transition by `corrections.py`) |
+| `loans` | 0001 | 0007 (`penalty_due`, `closed_at`, idxs), 0013 (disbursed idx), 0026 (`idx_loans_dpd_worklist`), 0048 (`loan_ref` + partial `uq_loans_loan_ref`) | `application/loans.py` (+ `ledger.py` disburse, `arrears.py` batch; terminal write-off transition by `corrections.py`) |
 | `loan_schedules` | 0001 | 0007 (unpaid partial idx) | `application/ledger.py` (creates), `application/loans.py` (allocates) |
 | `repayments` | 0001 | 0014 (transaction-FK idx), 0025 (amount CHECK widened to `<> 0` for negative-linked correction rows), 0032 (append-only triggers `repayments_no_update`/`_no_delete` — issue #24 N4) | `application/ledger.py` (disburse-time rows), `application/loans.py` (repayment rows), `application/corrections.py` (negative correction rows) |
 | `guarantees` | 0001 | 0011 (loan-linkage data backfill), 0035 (consent-principal columns `consented_by_credential_id`/`consent_attested_by`/`consent_reference`, `ck_guarantees_attested_reference`, `guarantees_consent_principal` constraint trigger, consent idxs) | `application/guarantees.py` |
 | `penalty_accruals` | 0019 | — | `application/arrears.py` |
 | `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3), 0043 (`external_ref` nullable CHECK-bounded + partial UNIQUE dedupe + `idx_txns_ref_prefix` text_pattern_ops search index — #35 items 6/13) | `application/ledger.py` (every posting) |
 | `ledger_entries` | 0001 | 0004 (append-only triggers, balanced deferred constraint trigger), 0014 (balance check also pins totals = `transactions.amount`) | `application/ledger.py` |
-| `txn_ref_sequences` | 0004 | — | `application/ledger.py` (`_next_ref`), `application/members.py` (member numbering) |
+| `txn_ref_sequences` | 0004 | — | `application/ledger.py` (`_next_ref`, `allocate_sequence` — 0048 loan/exit reference keys), `application/members.py` (member numbering) |
 | `accounting_periods` | 0012 | 0028 (`rollup_at` marker + write-once marker trigger, composite-FK target for the rollup tables) | `application/accounting_periods.py` (+ `period_rollups.py` marker) |
 | `deposit_interest_accruals` | 0008 | — | `application/deposit_interest.py` |
 | `tenant_settings` | 0009 | 0010 (`exit_fee`), 0017 (rate goes nullable + interest/parameters/approval-matrix columns), 0020 (`deposit_rebate_rate_pct`) | `application/tenant_settings.py` (single legitimate writer) |
-| `member_exits` | 0001 | 0010 (workflow columns, open-exit partial UNIQUE, idxs) | `application/member_exits.py` |
+| `member_exits` | 0001 | 0010 (workflow columns, open-exit partial UNIQUE, idxs), 0048 (`exit_ref` + partial `uq_member_exits_exit_ref`) | `application/member_exits.py` |
 | `exit_votes` | 0010 | — | `application/member_exits.py` |
 | `dividend_declarations` | 0020 (incl. write-once trigger) | — | `application/dividends.py` |
 | `dividend_declaration_votes` | 0020 | — | `application/dividends.py` |
@@ -757,6 +770,8 @@ constraint, v1.1 rule 5):
 | `(tenant_id, application_id, voter_id)` | `committee_votes` | 0005 | one committee vote per voter |
 | `(tenant_id, account_id, period_start)` | `deposit_interest_accruals` | 0008 | one interest accrual per account-quarter |
 | `(tenant_id, member_id)` partial, open statuses | `member_exits` | 0010 | one open exit per member |
+| `(tenant_id, loan_ref)` partial, NOT NULL | `loans` | 0048 | human loan reference LN-XXXX — the allocator's final safety net |
+| `(tenant_id, exit_ref)` partial, NOT NULL | `member_exits` | 0048 | human exit reference EX-XXXX — the allocator's final safety net |
 | `(tenant_id, exit_id, voter_id)` | `exit_votes` | 0010 | one exit vote per voter |
 | `(tenant_id, period_start)` | `accounting_periods` | 0012 | concurrent period closes collapse to one row |
 | `(export_id)` | `export_artifacts` | 0013 | exactly one artifact per export |

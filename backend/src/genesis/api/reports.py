@@ -31,12 +31,13 @@ from functools import partial
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from genesis.api.authz import RequirePermission
 from genesis.application import exports as exports_service
 from genesis.application.auth import AuthContext
 from genesis.application.reports import ExportFilters, ReportName
+from genesis.domain.ledger import Channel, Side, TxnType
 from genesis.domain.rbac import Action, Module
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.tenancy import tenant_session, tenant_snapshot_session
@@ -50,7 +51,10 @@ ViewCtx = Annotated[AuthContext, Depends(_view)]
 
 
 class ExportFiltersBody(BaseModel):
-    """The only caller-suppliable scope (blocker a): ids and dates."""
+    """The only caller-suppliable scope (blocker a): ids, dates, and —
+    for the transactions-ledger register (expand-only) —
+    the register page's own declared filters, pinned to the code-owned
+    vocabularies (TxnType/Channel/Side) and bounded operator text."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -59,6 +63,11 @@ class ExportFiltersBody(BaseModel):
     declaration_id: uuid.UUID | None = None
     date_from: date | None = None
     date_to: date | None = None
+    txn_type: TxnType | None = None
+    channel: Channel | None = None
+    direction: Side | None = None
+    ref: str | None = Field(default=None, min_length=1, max_length=32)
+    search: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ExportRequestBody(BaseModel):
@@ -131,6 +140,11 @@ async def request_export(body: ExportRequestBody, ctx: ViewCtx) -> ExportOut:
         declaration_id=filters_body.declaration_id,
         date_from=filters_body.date_from,
         date_to=filters_body.date_to,
+        txn_type=filters_body.txn_type.value if filters_body.txn_type else None,
+        channel=filters_body.channel.value if filters_body.channel else None,
+        direction=filters_body.direction.value if filters_body.direction else None,
+        ref=filters_body.ref,
+        search=filters_body.search,
     )
     factory = get_sessionmaker(get_settings().database_url)
     async with tenant_session(factory, ctx.tenant_id) as session:

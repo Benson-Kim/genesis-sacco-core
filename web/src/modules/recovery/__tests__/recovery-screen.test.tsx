@@ -110,6 +110,8 @@ function worklistRow(overrides: Partial<WorklistRow> = {}): WorklistRow {
     opened_at: "2026-08-01T09:00:00+00:00",
     first_assigned_at: null,
     version: 2,
+    member_no: "M-0001",
+    member_name: "Jane Wanjiku",
     ...overrides,
   };
 }
@@ -229,14 +231,20 @@ test("attribution honesty on the worklist: NULL assignee renders '— (unassigne
   expect(screen.getByText("No longer assignable")).toBeInTheDocument();
 });
 
-test("keyset paging: Load more follows the server cursor VERBATIM (gate 1.3) with the default NO-FILTER view untouched (both filter values empty)", async () => {
+test("keyset paging: the paginator follows the server cursor VERBATIM (gate 1.3) with the default NO-FILTER view untouched (both filter values empty)", async () => {
   const user = userEvent.setup();
+  // A FULL first page (page size 10): the paginator auto-fills the
+  // current page, so a short page would consume the cursor before the
+  // user ever navigates — full pages make the walk deterministic.
+  const fullPage = Array.from({ length: 10 }, (_, i) =>
+    worklistRow({ case_id: `cacacaca-1111-2222-3333-44444444440${i}` }),
+  );
   mocked.fetchWorklistPage
-    .mockResolvedValueOnce({ items: [worklistRow()], nextCursor: "opaque-cursor-§1" })
+    .mockResolvedValueOnce({ items: fullPage, nextCursor: "opaque-cursor-§1" })
     .mockResolvedValue({ items: [], nextCursor: null });
   mountScreen();
 
-  await user.click(await screen.findByRole("button", { name: "Load more" }));
+  await user.click(await screen.findByRole("button", { name: "Next page" }));
   await waitFor(() => expect(mocked.fetchWorklistPage).toHaveBeenCalledTimes(2));
   // (filters, cursor): the DEFAULT view sends EMPTY filter values (the
   // api layer turns "" into an ABSENT parameter — byte-identical to
@@ -263,6 +271,7 @@ test("DECLARED filters only (issue #31 ledger (a).3): the status segment and cla
     expect(mocked.fetchWorklistPage).toHaveBeenCalledWith(
       { status: "disputed", classification: "" },
       null,
+      10,
     ),
   );
 
@@ -274,6 +283,7 @@ test("DECLARED filters only (issue #31 ledger (a).3): the status segment and cla
     expect(mocked.fetchWorklistPage).toHaveBeenCalledWith(
       { status: "disputed", classification: "doubtful" },
       null,
+      10,
     ),
   );
 
@@ -286,6 +296,7 @@ test("DECLARED filters only (issue #31 ledger (a).3): the status segment and cla
     expect(mocked.fetchWorklistPage).toHaveBeenCalledWith(
       { status: "", classification: "" },
       null,
+      10,
     ),
   );
 });

@@ -124,6 +124,7 @@ export function MemberCreateDrawer({
                         className={styles.input}
                         type="tel"
                         inputMode="tel"
+                        autoComplete="tel"
                         maxLength={32}
                         value={phone}
                         onChange={(event) => {
@@ -140,6 +141,9 @@ export function MemberCreateDrawer({
                         className={styles.input}
                         type="email"
                         inputMode="email"
+                        autoComplete="email"
+                        autoCapitalize="none"
+                        spellCheck={false}
                         maxLength={254}
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}

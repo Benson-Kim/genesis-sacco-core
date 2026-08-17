@@ -41,6 +41,11 @@ class AuditLogEntryOut(BaseModel):
     before: dict[str, object] | None
     after: dict[str, object] | None
     redacted: bool
+    #: Human display label for the acting staff principal, resolved
+    #: server-side in the same page statement; null for system actors
+    #: — labels are never invented. This console is the staff-identity
+    #: resolution surface by design.
+    actor_name: str | None
 
 
 class AuditLogResponse(BaseModel):
@@ -85,6 +90,7 @@ async def list_audit_log(
                 before=entry.before,
                 after=entry.after,
                 redacted=entry.redacted,
+                actor_name=entry.actor_name,
             )
             for entry in page.items
         ],

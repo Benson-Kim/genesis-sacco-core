@@ -2,6 +2,7 @@
 
 import type { KeyboardEvent, ReactNode } from "react";
 import { ApiError } from "@genesis/api-client";
+import { Button } from "@genesis/design-system";
 import type { KeysetListResult } from "./useKeysetList";
 import {
   KeysetPaginator,
@@ -25,7 +26,7 @@ export interface KeysetTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Pagination props — when provided the table slices rows to the current
    *  page and renders the paginator footer. Omit for legacy "load more" tables. */
-  pagination?: Omit<KeysetPaginatorProps<T>, "query" | "totalLoaded">;
+  pagination?: Omit<KeysetPaginatorProps<T>, "query" | "loadedRowCount">;
 }
 
 /**
@@ -120,12 +121,23 @@ export function KeysetTable<T>({
         </tbody>
         </table>
       </div>
-      {pagination && (
+      {pagination ? (
         <KeysetPaginator
           {...pagination}
           query={query}
-          totalLoaded={allRows.length}
+          loadedRowCount={allRows.length}
         />
+      ) : (
+        query.hasNextPage && (
+          <div className={styles.more}>
+            <Button
+              onClick={() => query.fetchNextPage()}
+              disabled={query.isFetchingNextPage}
+            >
+              {query.isFetchingNextPage ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        )
       )}
     </div>
   );

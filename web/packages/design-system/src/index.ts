@@ -62,4 +62,3 @@ export type { SelectProps } from "./components/Select";
 export { Stat } from "./components/Stat";
 export { Textarea } from "./components/Textarea";
 export type { TextareaProps } from "./components/Textarea";
-

@@ -107,6 +107,14 @@ class TransactionOut(BaseModel):
     #: bank slip ref on external-channel teller postings; null is the
     #: honest state for system postings and pre-0043 history.
     external_ref: str | None
+    #: Human display labels for the posting member: member number and
+    #: registered name, resolved server-side in the same list
+    #: statement. Disclosed under transactions:view exactly like
+    #: member_id itself; the declared free-text search already
+    #: matches on these values under this permission. null for
+    #: system postings that carry no member.
+    member_no: str | None
+    member_name: str | None
 
 
 class TransactionListResponse(BaseModel):
@@ -178,6 +186,8 @@ def _txn_out(t: txn_service.TransactionRecord) -> TransactionOut:
         is_reversal=t.is_reversal,
         created_by=str(t.created_by) if t.created_by else None,
         external_ref=t.external_ref,
+        member_no=t.member_no,
+        member_name=t.member_name,
     )
 
 

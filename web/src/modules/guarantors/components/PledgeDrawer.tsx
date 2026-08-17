@@ -256,12 +256,16 @@ export function PledgeDrawer({
             <>
               {borrower.data.name} · {borrower.data.member_no}
             </>
+          ) : app.member_no !== null ? (
+            <span title={app.member_id}>
+              {app.member_no} — {app.member_name}
+            </span>
           ) : (
             <span className={styles.mono}>{app.member_id}</span>
           )}
         </Kv>
         <Kv label="Product">
-          {product !== undefined ? product.name : <span className={styles.mono}>{app.product_id}</span>}
+          {product?.name ?? app.product_name ?? <span className={styles.mono}>{app.product_id}</span>}
         </Kv>
         <Kv label="Applied amount">{fmtKes(app.amount)}</Kv>
         <Kv label="Security cover">{app.cover_pct}% (server-computed)</Kv>

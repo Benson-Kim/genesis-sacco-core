@@ -251,6 +251,40 @@ def test_approval_bands_authority_ceilings() -> None:
     assert not authority_may_ratify("Auditor", Decimal("99999999.00"), bands)
 
 
+def test_senior_role_band_sits_above_its_junior_ceiling() -> None:
+    """#35 item 8: a senior tier is a role name plus a HIGHER band —
+    no new mechanism. Hand-computed bands ((lower, upper] convention):
+      band 0: Credit Committee      (0, 100 000]
+      band 1: Senior Credit Officer (100 000, 500 000]
+    Probe 250 000.00 resolves to band 1 — ABOVE the junior/peer
+    ceiling, WITHIN the senior ceiling — so the Credit Committee is
+    refused and the Senior Credit Officer is accepted. Boundary legs
+    pin the inclusive upper bounds (100 000.00 / 500 000.00) and the
+    finite-top refusal at 500 000.01. Unlisted roles fail closed with
+    the band-0 floor: the Loan Officer (not in this matrix) may ratify
+    100 000.00 but never 100 000.01. Falsifiable: relaxing
+    authority_may_ratify to fail open passes the junior 250 000 leg
+    and the unlisted 100 000.01 leg."""
+    bands = validate_approval_bands(
+        [
+            {"authority": "Credit Committee", "max_amount": "100000.00"},
+            {"authority": "Senior Credit Officer", "max_amount": "500000.00"},
+        ]
+    )
+    # 250 000.00 -> band 1 (hand-computed).
+    assert required_band_index(Decimal("250000.00"), bands) == 1
+    assert not authority_may_ratify("Credit Committee", Decimal("250000.00"), bands)
+    assert authority_may_ratify("Senior Credit Officer", Decimal("250000.00"), bands)
+    # Inclusive upper bounds: both act at 100 000.00; senior at 500 000.00.
+    assert authority_may_ratify("Credit Committee", Decimal("100000.00"), bands)
+    assert authority_may_ratify("Senior Credit Officer", Decimal("500000.00"), bands)
+    # Above the finite top band nobody listed may ratify.
+    assert not authority_may_ratify("Senior Credit Officer", Decimal("500000.01"), bands)
+    # Fail-closed floor for an unlisted role (band-0 ceiling).
+    assert authority_may_ratify("Loan Officer", Decimal("100000.00"), bands)
+    assert not authority_may_ratify("Loan Officer", Decimal("100000.01"), bands)
+
+
 def test_approval_bands_finite_top_band_blocks_all_listed_roles() -> None:
     """Explicit top-band rule: above a finite top band, NO listed
     authority may ratify (the prototype's 'Board above' tier)."""

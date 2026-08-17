@@ -45,7 +45,7 @@ import { announce } from "@/modules/layout/announcer";
 import { isConflict } from "@/lib/errors";
 import { fmtKes } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
-import { fetchMember, lookupMemberByNo } from "@/modules/members/api";
+import { fetchMember, lookupMemberByIdNumber, lookupMemberByNo } from "@/modules/members/api";
 import { postMoneyWrite } from "../api";
 import {
   CASH_CHANNELS,
@@ -69,10 +69,13 @@ const KIND_EFFECT: Record<MoneyEntryInput["kind"], string> = {
 export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => void }>) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState("deposit");
-  // The member is looked up by their UNIQUE number on
+  // The member is looked up by a UNIQUE identifier on
   // blur — the full member-list select no longer exists here. The
   // lookup resolves ONLY the blurred value; editing the field
-  // withdraws the resolution until the next blur.
+  // withdraws the resolution until the next blur. #35 item 14: the
+  // identifier is the member NUMBER or the NATIONAL ID (names
+  // collide; these don't) — the kind select routes the probe.
+  const [idKind, setIdKind] = useState<"member_no" | "id_number">("member_no");
   const [memberNoInput, setMemberNoInput] = useState("");
   const [lookupNo, setLookupNo] = useState("");
   const [amount, setAmount] = useState("");
@@ -99,14 +102,17 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
   const [intentSeq, setIntentSeq] = useState(0);
   const keySlot = useRef<IdempotencyKeySlot>({ key: null, body: null });
 
-  // Unique-identifier lookup: the expand-only member_no
-  // exact-match param on GET /members (DB UNIQUE (tenant_id,
-  // member_no)). No status filter: deposits into arrears or dormant
-  // accounts are legitimate teller flows; the server rejects exited
-  // members regardless.
+  // Unique-identifier lookup: the expand-only member_no /
+  // id_number exact-match params on GET /members (0001 UNIQUE key /
+  // 0045 KYC expression index). No status filter: deposits into
+  // arrears or dormant accounts are legitimate teller flows; the
+  // server rejects exited members regardless. Least disclosure: a
+  // resolved member renders number + name only; a miss is an honest
+  // not-found note.
   const lookup = useQuery({
-    queryKey: ["members", "lookup", lookupNo === "" ? "none" : lookupNo],
-    queryFn: () => lookupMemberByNo(lookupNo),
+    queryKey: ["members", "lookup", idKind, lookupNo === "" ? "none" : lookupNo],
+    queryFn: () =>
+      idKind === "member_no" ? lookupMemberByNo(lookupNo) : lookupMemberByIdNumber(lookupNo),
     enabled: lookupNo !== "",
     staleTime: STALE_TIME.record,
   });
@@ -297,11 +303,37 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
             drawer); misc fees belong to the corrections module — neither is
             posted from this screen.
           </div>
+          <FormField id="txn-id-kind" label="Look up by">
+            {(control) => (
+              <select
+                {...control}
+                className={styles.select}
+                value={idKind}
+                onChange={(event) => {
+                  setIdKind(event.target.value as "member_no" | "id_number");
+                  // Switching identifier kinds withdraws any prior
+                  // resolution AND the typed value: the money write
+                  // can only target what the operator re-enters and
+                  // blurs under the new kind.
+                  setMemberNoInput("");
+                  setLookupNo("");
+                }}
+                disabled={post.isPending}
+              >
+                <option value="member_no">Member number</option>
+                <option value="id_number">National ID number</option>
+              </select>
+            )}
+          </FormField>
           <FormField
             id="txn-member-no"
-            label="Member number"
+            label={idKind === "member_no" ? "Member number" : "National ID number"}
             error={fieldErrors["member_id"]}
-            hint="Unique member number (e.g. GP-0421) — looked up when you leave the field."
+            hint={
+              idKind === "member_no"
+                ? "Unique member number (e.g. GP-0421) — looked up when you leave the field."
+                : "National ID number from the member's KYC profile — looked up when you leave the field."
+            }
           >
             {(control) => (
               <input
@@ -323,12 +355,18 @@ export function PostTransactionDrawer({ onClose }: Readonly<{ onClose: () => voi
             )}
           </FormField>
           {lookupNo !== "" && lookup.isPending && (
-            <div className={styles.formNote}>Looking up member {lookupNo}…</div>
+            <div className={styles.formNote}>
+              {idKind === "member_no"
+                ? `Looking up member ${lookupNo}…`
+                : "Looking up the ID number…"}
+            </div>
           )}
           {lookupNo !== "" && lookup.isError && <ErrorBanner error={lookup.error} />}
           {lookupNo !== "" && !lookup.isPending && !lookup.isError && lookup.data === null && (
             <div className={styles.formNote} role="status">
-              No member found with number {lookupNo} — check the number and try again.
+              {idKind === "member_no"
+                ? `No member found with number ${lookupNo} — check the number and try again.`
+                : `No member found with that ID number — check it and try again.`}
             </div>
           )}
           {memberId !== "" && memberDetail.isPending && (

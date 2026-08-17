@@ -19,6 +19,11 @@ export interface ModalProps {
     dismissOnOverlay?: boolean;
     /** drawer = right-hand panel (prototype drawer); dialog = centered box. */
     variant?: "drawer" | "dialog";
+    /**
+     * ARIA role — "alertdialog" for interruptions that demand an
+     * immediate response (e.g. the inactivity warning); default "dialog".
+     */
+    role?: "dialog" | "alertdialog";
 }
 
 /** Elements a modal focus trap may move focus to. */
@@ -44,6 +49,7 @@ export function Modal({
     closeDisabled = false,
     dismissOnOverlay = true,
     variant = "drawer",
+    role = "dialog",
 }: Readonly<ModalProps>) {
     const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +117,7 @@ export function Modal({
             <div
                 ref={dialogRef}
                 className={variant === "dialog" ? styles.dialog : styles.drawer}
-                role="dialog"
+                role={role}
                 aria-modal="true"
                 aria-label={title}
                 tabIndex={-1}

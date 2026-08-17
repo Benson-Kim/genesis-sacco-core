@@ -10,9 +10,7 @@
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-    padding: var(--space-md) 0;
     margin-bottom: var(--space-md);
-    border-bottom: 1px solid var(--line);
 }
 
 .filters {

@@ -76,6 +76,12 @@ export interface FilterControlProps<V extends string> {
   allCount?: number | null;
   /** When true the "All" badge renders as "n+". */
   allCountMore?: boolean;
+  /**
+   * When false the "show all" sentinel is not rendered at all — for
+   * vocabularies with NO "all" state (the caller's value is always a
+   * concrete option and "" is never emitted). Default: true.
+   */
+  allOption?: boolean;
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -113,6 +119,7 @@ function SegmentFilter<V extends string>({
   allLabel = "All",
   allCount,
   allCountMore,
+  allOption = true,
 }: FilterControlProps<V>) {
   return (
     <div className={styles.filterGroup}>
@@ -127,15 +134,17 @@ function SegmentFilter<V extends string>({
         aria-labelledby={`${id}-label`}
         id={id}
       >
-        <button
-          type="button"
-          className={styles.segmentButton}
-          aria-pressed={value === ""}
-          onClick={() => onChange("")}
-        >
-          {allLabel}
-          <CountBadge count={allCount} countMore={allCountMore} />
-        </button>
+        {allOption && (
+          <button
+            type="button"
+            className={styles.segmentButton}
+            aria-pressed={value === ""}
+            onClick={() => onChange("")}
+          >
+            {allLabel}
+            <CountBadge count={allCount} countMore={allCountMore} />
+          </button>
+        )}
         {options.map((opt) => (
           <button
             key={opt.value}
@@ -164,6 +173,7 @@ function SelectFilter<V extends string>({
   allLabel = "All",
   allCount,
   allCountMore,
+  allOption = true,
 }: FilterControlProps<V>) {
   return (
     <div className={styles.filterGroup}>
@@ -178,7 +188,9 @@ function SelectFilter<V extends string>({
           value={value}
           onChange={(e) => onChange(e.target.value as V | "")}
         >
-          <option value="">{allLabel}{countText(allCount, allCountMore)}</option>
+          {allOption && (
+            <option value="">{allLabel}{countText(allCount, allCountMore)}</option>
+          )}
           {options.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}{countText(opt.count, opt.countMore)}

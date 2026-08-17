@@ -59,12 +59,13 @@ export interface WorklistFilters {
 export async function fetchWorklistPage(
   filters: WorklistFilters,
   cursor: string | null,
+  limit: number = WORKLIST_PAGE_SIZE,
 ): Promise<KeysetPage<WorklistRow>> {
   const { data, error, response } = await api.GET("/recovery-cases", {
     params: {
       query: {
         cursor: cursor ?? undefined,
-        limit: WORKLIST_PAGE_SIZE,
+        limit,
         status: filters.status === "" ? undefined : filters.status,
         classification: filters.classification === "" ? undefined : filters.classification,
       },

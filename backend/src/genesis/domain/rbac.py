@@ -1,8 +1,12 @@
-"""RBAC matrix mirrored verbatim from the prototype `seedPerms()` (P4).
+"""RBAC matrix mirrored from the prototype `seedPerms()` (P4).
 
-7 roles x 7 prototype modules x view/create/edit/approve, deny-by-
-default, plus the `corrections` module (dedicated permission
-strings for the fraud channel — see _CORRECTIONS_GRANTS). Pure data:
+The prototype's 7 roles x 7 modules x view/create/edit/approve,
+deny-by-default, plus the `corrections` module (dedicated permission
+strings for the fraud channel — see _CORRECTIONS_GRANTS) and the
+seeded SENIOR tier (see SENIOR_TIERS): the matrix stays FLAT — no
+inheritance, no chain walk — a senior role is a distinct seeded role
+whose explicit grants form a superset of the grants of its junior
+roles (auditability: every grant is visible in one row). Pure data:
 enforcement lives in the API authz dependency and the permissions table.
 """
 
@@ -31,6 +35,14 @@ class Module(enum.StrEnum):
     # never generic members:edit. Deliberately NARROW grants (see
     # _MEMBER_IDENTITY_GRANTS), the _CORRECTIONS_GRANTS precedent.
     MEMBER_IDENTITY = "member_identity"
+    # supervisor override (#35 item 8, the authorized design): the
+    # power to overturn a subordinate's refusal on a loan application
+    # carries its OWN permission strings — never generic
+    # applications:approve (which committee peers hold). Deliberately
+    # NARROW grants (see _APPLICATION_OVERRIDE_GRANTS): supervisor
+    # tiers only. No console screen — like member_identity it gates a
+    # workflow action, so the web MODULES mirror deliberately omits it.
+    APPLICATION_OVERRIDES = "application_overrides"
 
 
 class Action(enum.StrEnum):
@@ -47,7 +59,12 @@ TELLER = "Teller"
 CREDIT_COMMITTEE = "Credit Committee"
 ACCOUNTANT = "Accountant"
 AUDITOR = "Auditor"
+SENIOR_CREDIT_OFFICER = "Senior Credit Officer"
 
+#: The prototype's 7 roles first (seedPerms() order preserved), then
+#: the seeded senior-tier extensions. Appending here widens the
+#: approval-bands vocabulary and the web authority picker mirror in
+#: the same change (the W57-5 drift tripwire pins order AND content).
 ROLE_NAMES: tuple[str, ...] = (
     SYSTEM_ADMIN,
     BRANCH_MANAGER,
@@ -56,7 +73,26 @@ ROLE_NAMES: tuple[str, ...] = (
     CREDIT_COMMITTEE,
     ACCOUNTANT,
     AUDITOR,
+    SENIOR_CREDIT_OFFICER,
 )
+
+#: Seeded supervisory tiers (SACCO practice), senior -> junior roles.
+#: The matrix stays FLAT: nothing resolves grants through this map at
+#: enforcement time — it documents the supervisory relationship and is
+#: the anchor for the falsifiable superset invariant (a senior role
+#: holds EVERY grant each junior holds, plus a strictly wider explicit
+#: set; tests/test_rbac_matrix.py walks this map). Amount authority
+#: stays in the tenant-configurable approval-bands matrix: a senior
+#: tier is a role name plus a HIGHER configured band ceiling, never a
+#: new enforcement mechanism. The Credit Committee is deliberately NOT
+#: a junior here: it is a PEER approval body whose corrections-checker
+#: grant belongs to the fraud channel (_CORRECTIONS_GRANTS), which the
+#: senior tier must not widen. SoD is preserved unchanged: the senior
+#: tier gains NOTHING on the narrow channels (corrections,
+#: member_identity) or the admin modules, and is not an assurance role.
+SENIOR_TIERS: dict[str, tuple[str, ...]] = {
+    SENIOR_CREDIT_OFFICER: (LOAN_OFFICER,),
+}
 
 #: Assurance functions (the B2 segregation-of-duties principle,
 #: three lines of defense): roles whose FUNCTION is reviewing the
@@ -105,6 +141,25 @@ _MEMBER_IDENTITY_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
     AUDITOR: (True, False, False, False),
 }
 
+#: explicit, narrow grants for the application_overrides module —
+#: (view, create, edit, approve) per role. The override
+#: (application_overrides:approve) is a SUPERVISORY power: only the
+#: seeded senior tier (SENIOR_TIERS keys) and the System Admin hold
+#: it — audited choice (#35 item 8 §5.9): the Branch Manager is a
+#: line-management role, NOT a SENIOR_TIERS supervisor of the credit
+#: workflow, and the Credit Committee is the PEER body whose refusal
+#: the override overturns, so neither may hold it. The Auditor
+#: reviews the trail (view only; ASSURANCE_ROLES also excludes acting
+#: server-side). Roles absent here hold NOTHING (deny by default).
+_APPLICATION_OVERRIDE_GRANTS: dict[str, tuple[bool, bool, bool, bool]] = {
+    # System Admin keeps the root convention (all four actions true on
+    # every module — the matrix-shape invariant); only :approve is
+    # consumed by the override endpoint.
+    SYSTEM_ADMIN: (True, True, True, True),
+    SENIOR_CREDIT_OFFICER: (True, False, False, True),
+    AUDITOR: (True, False, False, False),
+}
+
 
 def _grants(role: str, module: Module) -> dict[Action, bool]:
     view = create = edit = approve = False
@@ -112,6 +167,10 @@ def _grants(role: str, module: Module) -> dict[Action, bool]:
         view, create, edit, approve = _CORRECTIONS_GRANTS.get(role, (False, False, False, False))
     elif module is Module.MEMBER_IDENTITY:
         view, create, edit, approve = _MEMBER_IDENTITY_GRANTS.get(
+            role, (False, False, False, False)
+        )
+    elif module is Module.APPLICATION_OVERRIDES:
+        view, create, edit, approve = _APPLICATION_OVERRIDE_GRANTS.get(
             role, (False, False, False, False)
         )
     elif role == SYSTEM_ADMIN:
@@ -128,6 +187,19 @@ def _grants(role: str, module: Module) -> dict[Action, bool]:
         create = module is Module.TRANSACTIONS
     elif role == CREDIT_COMMITTEE:
         view = module in {Module.APPLICATIONS, Module.LOAN_BOOK, Module.REPORTS}
+        approve = module is Module.APPLICATIONS
+    elif role == SENIOR_CREDIT_OFFICER:
+        # Supervisory tier above the Loan Officer (SENIOR_TIERS) and a
+        # peer of the Credit Committee: every Loan Officer grant plus
+        # the widened set — applications:approve (committee-grade
+        # ratification, so tenants can band it ABOVE both) and
+        # loan_book create/edit (recovery-case and servicing
+        # supervision the junior holds view-only). The narrow channels
+        # (corrections, member_identity) are handled above and stay
+        # ungranted; admin modules stay denied.
+        view = module not in _ADMIN_MODULES
+        create = module in {Module.MEMBERS, Module.APPLICATIONS, Module.LOAN_BOOK}
+        edit = module in {Module.APPLICATIONS, Module.LOAN_BOOK}
         approve = module is Module.APPLICATIONS
     elif role == ACCOUNTANT:
         view = module in {Module.MEMBERS, Module.LOAN_BOOK, Module.TRANSACTIONS, Module.REPORTS}

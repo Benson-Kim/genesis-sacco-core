@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, Pill } from "@genesis/design-system";
 import { KeysetTable, type Column } from "@/modules/table/KeysetTable";
 import { useKeysetList } from "@/modules/table/useKeysetList";
+import { useKeysetPagination } from "@/modules/table/KeysetPaginator";
 import { fmtDateTime, initials, relTime } from "@/lib/format";
 import { STALE_TIME } from "@/lib/query";
 import dynamic from "next/dynamic";
@@ -60,9 +61,11 @@ export function UsersScreen({ triggerCreate = 0 }: { triggerCreate?: number }) {
     if (triggerCreate > 0) setDrawer({ mode: "create" });
   }, [triggerCreate]);
 
+  const pagination = useKeysetPagination();
   const list = useKeysetList<User>({
-    queryKey: ["users", "list"],
-    fetchPage: (cursor) => fetchUsersPage({ status: "", roleId: "" }, cursor),
+    queryKey: ["users", "list", pagination.pageSize],
+    fetchPage: (cursor) =>
+      fetchUsersPage({ status: "", roleId: "" }, cursor, pagination.pageSize),
   });
 
   const columns: Column<User>[] = [
@@ -117,6 +120,13 @@ export function UsersScreen({ triggerCreate = 0 }: { triggerCreate?: number }) {
         rowKey={(user) => user.id}
         emptyMessage="No users found."
         onRowClick={(user) => setDrawer({ mode: "detail", userId: user.id })}
+        pagination={{
+          pageIndex: pagination.pageIndex,
+          pageSize: pagination.pageSize,
+          onPageChange: pagination.setPageIndex,
+          onPageSizeChange: pagination.setPageSize,
+          rowLabel: "users",
+        }}
       />
       {drawer !== null && drawer.mode === "create" && (
         <UserCreateDrawer

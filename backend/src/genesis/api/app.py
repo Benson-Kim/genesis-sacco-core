@@ -33,9 +33,9 @@ from genesis.api.tenant_settings import router as tenant_settings_router
 from genesis.api.transactions import router as transactions_router
 from genesis.api.users import router as users_router
 from genesis.application.pagination import assert_cursor_signing_key_configured
-from genesis.errors import AppError, ErrorCategory
+from genesis.errors import AppError, ErrorCategory, PayloadSchemaError
 from genesis.logging import configure_logging, correlation_id_var
-from genesis.settings import get_settings
+from genesis.settings import assert_dev_otp_display_dev_only, get_settings
 
 logger = logging.getLogger("genesis.api")
 
@@ -50,6 +50,10 @@ def create_app() -> FastAPI:
     # or short cursor-signing key aborts startup here, never at the
     # first decode.
     assert_cursor_signing_key_configured()
+    # Fail-closed boot guard (#35): the dev-mode OTP display refuses
+    # to boot outside development — the enforced replacement for the
+    # old "strip before staging" reminder.
+    assert_dev_otp_display_dev_only()
     settings = get_settings()
     app = FastAPI(title="Genesis Prestige API", version="0.1.0")
     if settings.cors_origins_list:
@@ -102,7 +106,16 @@ def create_app() -> FastAPI:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         logger.warning("handled error: %s", exc.category.value)
-        return JSONResponse(status_code=exc.status_code, content=_envelope(exc.category))
+        content: dict[str, str] = _envelope(exc.category)
+        if isinstance(exc, PayloadSchemaError):
+            # Schema-refusal detail travels (mirroring FastAPI's structural
+            # 422 detail): PayloadSchemaError messages are code-owned prose
+            # naming field LOCATIONS and error TYPES only — never a
+            # submitted value or figure (the least-disclosure discipline
+            # the class contract pins). Every other AppError — including
+            # plain UnprocessableError — stays a category-only envelope.
+            content["detail"] = str(exc)
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:

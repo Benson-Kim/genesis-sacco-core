@@ -233,9 +233,42 @@
             "title": "Maker Id",
             "type": "string"
           },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
+          },
           "original_transaction_id": {
             "title": "Original Transaction Id",
             "type": "string"
+          },
+          "original_txn_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Txn Ref"
           },
           "penalties": {
             "title": "Penalties",
@@ -297,7 +330,10 @@
           "loan_status_at_request",
           "decided_at",
           "version",
-          "created_at"
+          "created_at",
+          "member_no",
+          "member_name",
+          "original_txn_ref"
         ],
         "title": "AdjustmentRecordOut",
         "type": "object"
@@ -448,9 +484,42 @@
             "title": "Member Id",
             "type": "string"
           },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
+          },
           "product_id": {
             "title": "Product Id",
             "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
           },
           "purpose": {
             "anyOf": [
@@ -503,7 +572,10 @@
           "cover_pct",
           "created_by",
           "recommended_by",
-          "version"
+          "version",
+          "member_no",
+          "member_name",
+          "product_name"
         ],
         "title": "ApplicationOut",
         "type": "object"
@@ -654,6 +726,17 @@
             ],
             "title": "Actor Id"
           },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
           "after": {
             "anyOf": [
               {
@@ -708,7 +791,8 @@
           "entity_id",
           "before",
           "after",
-          "redacted"
+          "redacted",
+          "actor_name"
         ],
         "title": "AuditLogEntryOut",
         "type": "object"
@@ -1728,6 +1812,10 @@
             "title": "Loan Id",
             "type": "string"
           },
+          "loan_ref": {
+            "title": "Loan Ref",
+            "type": "string"
+          },
           "schedule": {
             "items": {
               "$ref": "#/components/schemas/ScheduleRowOut"
@@ -1748,7 +1836,8 @@
           "loan_id",
           "txn_id",
           "txn_ref",
-          "schedule"
+          "schedule",
+          "loan_ref"
         ],
         "title": "DisbursementOut",
         "type": "object"
@@ -2206,6 +2295,17 @@
             "title": "Deposits Amount",
             "type": "string"
           },
+          "exit_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Ref"
+          },
           "fees": {
             "title": "Fees",
             "type": "string"
@@ -2221,6 +2321,28 @@
           "member_id": {
             "title": "Member Id",
             "type": "string"
+          },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
           },
           "net_payable": {
             "title": "Net Payable",
@@ -2298,7 +2420,10 @@
           "settled_at",
           "settlement_txn_id",
           "version",
-          "created_at"
+          "created_at",
+          "member_no",
+          "member_name",
+          "exit_ref"
         ],
         "title": "ExitOut",
         "type": "object"
@@ -2355,6 +2480,17 @@
           "exit_id": {
             "title": "Exit Id",
             "type": "string"
+          },
+          "exit_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Ref"
           },
           "exit_status": {
             "title": "Exit Status",
@@ -2443,6 +2579,7 @@
         },
         "required": [
           "exit_id",
+          "exit_ref",
           "member_id",
           "member_no",
           "member_name",
@@ -2557,8 +2694,18 @@
       },
       "ExportFiltersBody": {
         "additionalProperties": false,
-        "description": "The only caller-suppliable scope (blocker a): ids and dates.",
+        "description": "The only caller-suppliable scope (blocker a): ids, dates, and \u2014\nfor the transactions-ledger register (expand-only) \u2014\nthe register page's own declared filters, pinned to the code-owned\nvocabularies (TxnType/Channel/Side) and bounded operator text.",
         "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "date_from": {
             "anyOf": [
               {
@@ -2595,6 +2742,16 @@
             ],
             "title": "Declaration Id"
           },
+          "direction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Side"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "exit_id": {
             "anyOf": [
               {
@@ -2618,6 +2775,42 @@
               }
             ],
             "title": "Member Id"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "search": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          },
+          "txn_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TxnType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "ExportFiltersBody",
@@ -3282,9 +3475,42 @@
             "title": "Id",
             "type": "string"
           },
+          "loan_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Ref"
+          },
           "member_id": {
             "title": "Member Id",
             "type": "string"
+          },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
           },
           "penalty_due": {
             "title": "Penalty Due",
@@ -3297,6 +3523,17 @@
           "product_id": {
             "title": "Product Id",
             "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
           },
           "provision_pct": {
             "title": "Provision Pct",
@@ -3335,7 +3572,11 @@
           "penalty_due",
           "disbursed_at",
           "closed_at",
-          "version"
+          "version",
+          "member_no",
+          "member_name",
+          "product_name",
+          "loan_ref"
         ],
         "title": "LoanOut",
         "type": "object"
@@ -3866,7 +4107,8 @@
           "settings",
           "access_control",
           "corrections",
-          "member_identity"
+          "member_identity",
+          "application_overrides"
         ],
         "title": "Module",
         "type": "string"
@@ -4155,6 +4397,29 @@
           "code"
         ],
         "title": "OtpVerifyBody",
+        "type": "object"
+      },
+      "OverrideBody": {
+        "additionalProperties": false,
+        "description": "extra=\"forbid\"; the reason is MANDATORY (an unexplained override\nis a rejected design) and bounded (it lands verbatim on the audit\nrow). The version binds the override to the persisted decision\nsnapshot the supervisor actually reviewed (409 on drift).",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "OverrideBody",
         "type": "object"
       },
       "Par30TrendPointOut": {
@@ -5055,6 +5320,7 @@
           "dividend_rebate_schedule",
           "portfolio_at_risk_aging",
           "membership_register",
+          "transactions_ledger",
           "income_statement",
           "sasra_return"
         ],
@@ -5982,6 +6248,28 @@
             "title": "From Member Id",
             "type": "string"
           },
+          "from_member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Member Name"
+          },
+          "from_member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Member No"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -6016,6 +6304,28 @@
             "title": "To Member Id",
             "type": "string"
           },
+          "to_member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Member Name"
+          },
+          "to_member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Member No"
+          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -6033,7 +6343,11 @@
           "approved_by",
           "decided_at",
           "version",
-          "created_at"
+          "created_at",
+          "from_member_no",
+          "from_member_name",
+          "to_member_no",
+          "to_member_name"
         ],
         "title": "ShareTransferRecordOut",
         "type": "object"
@@ -6299,6 +6613,28 @@
             ],
             "title": "Member Id"
           },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
+          },
           "occurred_at": {
             "title": "Occurred At",
             "type": "string"
@@ -6323,7 +6659,9 @@
           "occurred_at",
           "is_reversal",
           "created_by",
-          "external_ref"
+          "external_ref",
+          "member_no",
+          "member_name"
         ],
         "title": "TransactionOut",
         "type": "object"
@@ -6825,6 +7163,28 @@
             "title": "Member Id",
             "type": "string"
           },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
+          },
           "opened_at": {
             "title": "Opened At",
             "type": "string"
@@ -6844,7 +7204,9 @@
           "assignee_unassignable",
           "opened_at",
           "first_assigned_at",
-          "version"
+          "version",
+          "member_no",
+          "member_name"
         ],
         "title": "WorklistRowOut",
         "type": "object"
@@ -6915,6 +7277,28 @@
             "title": "Member Id",
             "type": "string"
           },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name"
+          },
+          "member_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member No"
+          },
           "penalty_due": {
             "title": "Penalty Due",
             "type": "string"
@@ -6977,7 +7361,9 @@
           "posted_at",
           "transaction_id",
           "version",
-          "created_at"
+          "created_at",
+          "member_no",
+          "member_name"
         ],
         "title": "WriteOffOut",
         "type": "object"
@@ -7633,6 +8019,60 @@
           }
         },
         "summary": "Pledge Guarantee",
+        "tags": [
+          "loans"
+        ]
+      }
+    },
+    "/applications/{application_id}/override": {
+      "post": {
+        "description": "Supervisor override: overturn a refusal (application_overrides:approve).",
+        "operationId": "override_application_refusal_applications__application_id__override_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Override Application Refusal",
         "tags": [
           "loans"
         ]
@@ -11137,7 +11577,7 @@
     },
     "/members": {
       "get": {
-        "description": "Keyset member register page (members:view).\n\nOPT-IN aggregates: with include=aggregates\nevery row carries the same four advisory decimal-string figures as\nthe detail read, computed by ONE set-based statement per page (the\nkeyset page drives, LEFT JOIN LATERAL supplies the probes \u2014 never\na per-row fan-out). Without the parameter the response is\nbyte-identical to the flat register. No rejection path (403, 422)\ncomputes or echoes an amount.\n\nmember_no (the posting-drawer unique-identifier\nlookup): expand-only EXACT-match filter served by the 0001 UNIQUE\n(tenant_id, member_no) key. An unknown number is an EMPTY page,\nnever a 404 \u2014 no existence oracle beyond the members:view grant.",
+        "description": "Keyset member register page (members:view).\n\nOPT-IN aggregates: with include=aggregates\nevery row carries the same four advisory decimal-string figures as\nthe detail read, computed by ONE set-based statement per page (the\nkeyset page drives, LEFT JOIN LATERAL supplies the probes \u2014 never\na per-row fan-out). Without the parameter the response is\nbyte-identical to the flat register. No rejection path (403, 422)\ncomputes or echoes an amount.\n\nmember_no (the posting-drawer unique-identifier\nlookup): expand-only EXACT-match filter served by the 0001 UNIQUE\n(tenant_id, member_no) key. An unknown number is an EMPTY page,\nnever a 404 \u2014 no existence oracle beyond the members:view grant.\n\nid_number (expand-only): EXACT-match\nnational-ID lookup through the person KYC profile, served by the\n0045 partial expression index (shipped with this query). An\nEXCLUSIVE identity probe: combining it with any other filter,\ncursor or the aggregates expand is a 422 (one declared meaning,\nno ambiguous merged scopes). Unknown ID: EMPTY page, never 404.",
         "operationId": "list_members_members_get",
         "parameters": [
           {
@@ -11216,6 +11656,24 @@
                 }
               ],
               "title": "Member No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "id_number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id Number"
             }
           },
           {

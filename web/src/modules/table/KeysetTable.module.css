@@ -85,11 +85,11 @@
 .rowClickable {
   cursor: pointer;
   background: transparent;
-  transition: all 0.2s ease-in-out;
+  transition: background var(--duration-base) ease-in-out;
 
   &>.td:first-child {
     border-left: 1px solid rgb(from var(--line) r g b / 0%);
-    transition: border-color 0.2s ease-in-out;
+    transition: border-color var(--duration-base) ease-in-out;
   }
 
   &:hover {
@@ -117,6 +117,13 @@
 .tdRight {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Legacy load-more footer (screens not yet on the shared paginator). */
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
 }
 
 .note {
