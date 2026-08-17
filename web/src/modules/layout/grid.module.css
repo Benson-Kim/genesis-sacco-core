@@ -1,0 +1,75 @@
+/*
+ * Shared module-page grid patterns (responsiveness — one copy, reuse-first). BREAKPOINT CONVENTION for the whole console:
+ *   640px — narrow (phones): single column, drawers full-screen
+ *   960px — medium (small laptops/tablets): sidebars stack, 4-up -> 2-up
+ * Scale tokens only; no ad-hoc pixel values besides the two breakpoints.
+ */
+
+/* 4-up stat/card row (dashboard pattern): 4 -> 2 -> 1. */
+.cards4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-md);
+}
+
+.cards3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+}
+
+/* Quarter-width card inside .cards4. */
+.quarter {
+  grid-column: span 1;
+}
+
+.third {
+  grid-column: span 1;
+}
+
+.twoThirds {
+  grid-column: span 2;
+}
+
+/* Half-width card inside .cards4. */
+.half {
+  grid-column: span 2;
+}
+
+/* 3 Quarter-width card inside .cards4. */
+.threeQuarter {
+  grid-column: span 3;
+}
+
+/* Full-width card inside .cards4. */
+.wide {
+  grid-column: 1 / -1;
+}
+
+/* Fixed side panel + fluid main (permissions matrix pattern). */
+.sideMain {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-md);
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .cards4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .half {
+    grid-column: 1 / -1;
+  }
+
+  .sideMain {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .cards4 {
+    grid-template-columns: 1fr;
+  }
+}

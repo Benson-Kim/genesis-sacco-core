@@ -1,0 +1,6 @@
+/* Conflict banner action row — tokens only. */
+.actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
