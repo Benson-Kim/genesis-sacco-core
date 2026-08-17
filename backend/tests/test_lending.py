@@ -13,6 +13,7 @@ from genesis.domain.lending import (
     allowed_transitions,
     build_schedule,
     classify,
+    daily_penalty,
     installment_amount,
     loan_transition,
     settlement_quote,
@@ -243,3 +244,72 @@ def test_settlement_quote_totals_the_three_buckets() -> None:
 def test_settlement_quote_rejects_negative_buckets() -> None:
     with pytest.raises(ValueError, match="negative"):
         settlement_quote(Decimal("-1"), Decimal("0"), Decimal("0"))
+
+
+# ---------------------------------------------------------------------------
+# P13.8: daily arrears penalty — the single rounding point
+# ---------------------------------------------------------------------------
+
+
+def test_daily_penalty_hand_computed_oracle() -> None:
+    """BUILD_PROMPTS P13.8 oracle, HAND-COMPUTED (never from the code):
+
+    1%/mo on a 10,000.00 instalment
+      = 10,000.00 x 1/100         = 100.00 per month
+      / 30 (actual/30 convention) = 3.3333... per day
+      -> to_cents HALF_UP         = 3.33 per day.
+    12 days past grace: 12 x 3.33 = 39.96 (per-day rounding rule).
+    """
+    assert daily_penalty(Decimal("10000.00"), Decimal("1.00")) == Decimal("3.33")
+    assert 12 * daily_penalty(Decimal("10000.00"), Decimal("1.00")) == Decimal("39.96")
+
+
+def test_daily_penalty_rounding_half_up_at_the_single_point() -> None:
+    # 5,000.00 x 3%/mo = 150.00/mo -> 5.00/day exactly (no rounding).
+    assert daily_penalty(Decimal("5000.00"), Decimal("3.00")) == Decimal("5.00")
+    # 100.00 x 1%/mo = 1.00/mo -> 0.03333../day -> 0.03 (HALF_UP down).
+    assert daily_penalty(Decimal("100.00"), Decimal("1.00")) == Decimal("0.03")
+    # 75.00 x 1%/mo = 0.75/mo -> exactly 0.025/day -> 0.03 (the exact
+    # half-cent rounds UP under ROUND_HALF_UP).
+    assert daily_penalty(Decimal("75.00"), Decimal("1.00")) == Decimal("0.03")
+    # A basis too small to yield half a cent per day accrues 0.00 —
+    # every day, forever, and never claims: per-day rounding
+    # permanently starves sub-half-cent daily penalties BY DESIGN
+    # (documented in daily_penalty; review V3).
+    assert daily_penalty(Decimal("1.00"), Decimal("1.00")) == Decimal("0.00")
+    assert daily_penalty(Decimal("0.00"), Decimal("5.00")) == Decimal("0.00")
+
+
+def test_daily_penalty_rejects_out_of_domain_inputs() -> None:
+    with pytest.raises(ValueError, match="negative"):
+        daily_penalty(Decimal("-1"), Decimal("1.00"))
+    with pytest.raises(ValueError, match="rate"):
+        daily_penalty(Decimal("100"), Decimal("-0.01"))
+    with pytest.raises(ValueError, match="rate"):
+        daily_penalty(Decimal("100"), Decimal("100.01"))
+
+
+@given(
+    basis=st.decimals(
+        min_value=Decimal("0"),
+        max_value=Decimal("10000000"),
+        places=2,
+        allow_nan=False,
+        allow_infinity=False,
+    ),
+    rate=st.decimals(
+        min_value=Decimal("0"),
+        max_value=Decimal("100"),
+        places=2,
+        allow_nan=False,
+        allow_infinity=False,
+    ),
+)
+def test_daily_penalty_properties(basis: Decimal, rate: Decimal) -> None:
+    """Decimal-only, cent-quantised, non-negative, bounded by the
+    un-pro-rated monthly figure — the NUMERIC(18,2) domain."""
+    amount = daily_penalty(basis, rate)
+    assert isinstance(amount, Decimal)
+    assert amount >= 0
+    assert amount == amount.quantize(Decimal("0.01"))
+    assert amount <= basis * rate / Decimal(100)  # a day never exceeds the month

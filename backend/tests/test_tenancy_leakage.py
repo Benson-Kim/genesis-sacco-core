@@ -30,6 +30,13 @@ TENANT_TABLES = [
     "loan_applications",
     "loans",
     "loan_schedules",
+    # P13.8: the penalty accrual claim table carries money figures per
+    # loan, so its RLS posture is release-blocking (ADR-0002).
+    "penalty_accruals",
+    # Pre-existing gap closed alongside P13.8 (review finding): the P11
+    # claim table has carried forced RLS since 0008 but was never
+    # listed here, so a policy regression would have gone unnoticed.
+    "deposit_interest_accruals",
     "transactions",
     "ledger_entries",
     "repayments",

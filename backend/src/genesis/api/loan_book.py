@@ -152,6 +152,11 @@ class ArrearsRunOut(BaseModel):
     scanned: int
     updated: int
     batches: int
+    #: P13.8 — False means the tenant has not configured all three
+    #: penalty keys and the run accrued nothing by design (fail closed).
+    penalty_configured: bool
+    penalties_accrued: int
+    penalty_total: str
 
 
 def _loan_out(loan: loans_service.LoanRecord) -> LoanOut:
@@ -329,11 +334,23 @@ async def run_arrears(body: ArrearsRunBody, ctx: BookEditCtx) -> ArrearsRunOut:
     exists for operations and backfills. Each batch commits its own
     short transaction (gate 1.3).
 
+    P13.8: the same run accrues arrears penalties into
+    loans.penalty_due, write-once per (loan, UTC day) via the
+    penalty_accruals claim. Configuration (rate/grace/basis) is
+    resolved server-side from tenant settings only — this body accepts
+    none of it (extra="forbid"; v1.1 rule 1) — and an unconfigured
+    tenant accrues nothing (penalty_configured=false, fail closed).
+    Ledger boundary: penalty income stays recognised ON RECEIPT by the
+    P10 repayment allocation (income.penalties); this job maintains
+    only the receivable-side loans.penalty_due and posts no ledger
+    rows.
+
     Permission (P4 matrix, verified): loan_book x EDIT. Reclassifying
-    days-past-due/provisioning rewrites loan-book rows, so the job sits
-    with the roles the matrix grants loan_book:edit (System Admin,
-    Branch Manager) — not loan_book:approve (a committee decision
-    power) and not any transactions permission (no money moves here).
+    days-past-due/provisioning and maintaining the penalty receivable
+    rewrite loan-book rows, so the job sits with the roles the matrix
+    grants loan_book:edit (System Admin, Branch Manager) — not
+    loan_book:approve (a committee decision power) and not any
+    transactions permission (no ledger posting happens here).
     """
     as_of = resolve_as_of(body.as_of)
     factory = get_sessionmaker(get_settings().database_url)
@@ -348,4 +365,7 @@ async def run_arrears(body: ArrearsRunBody, ctx: BookEditCtx) -> ArrearsRunOut:
         scanned=result.scanned,
         updated=result.updated,
         batches=result.batches,
+        penalty_configured=result.penalty_configured,
+        penalties_accrued=result.penalties_accrued,
+        penalty_total=str(result.penalty_total),
     )

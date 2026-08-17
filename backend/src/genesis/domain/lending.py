@@ -129,6 +129,47 @@ def loan_transition(current: LoanStatus, target: LoanStatus) -> LoanStatus:
     return target
 
 
+#: Day-count convention for the arrears penalty (P13.8): a penalty
+#: rate quoted in % per MONTH accrues in daily steps of 1/30 of the
+#: monthly figure — "actual/30". Every calendar day past grace accrues
+#: the same daily amount regardless of which month it falls in
+#: (28/29/30/31-day months and leap years are all identical by
+#: construction; pinned by month-boundary and leap-year oracle tests).
+PENALTY_DAYS_PER_MONTH = Decimal(30)
+
+
+def daily_penalty(basis_amount: Decimal, rate_pct_per_month: Decimal) -> Decimal:
+    """One day's arrears penalty on the given basis (P13.8).
+
+    THE single rounding point for penalty accrual (rounding-drift
+    blocker): the daily amount is cent-rounded HERE via to_cents
+    (ROUND_HALF_UP) and accrued as-is — no other code path rounds or
+    recomputes a penalty figure. The documented rule is per-day
+    rounding: N days past grace accrue N x to_cents(basis x rate% /
+    30), not to_cents(basis x rate% x N / 30); each day's figure is
+    final the night it is claimed and never restated, so the accrued
+    total always equals the exact sum of the claim rows.
+
+    INTENDED consequence of the per-day rule (review V3): per-day
+    rounding permanently starves sub-half-cent daily penalties — any
+    basis where basis x rate / 3000 < 0.005 rounds to a 0.00 day and
+    therefore accrues 0.00 every day FOREVER and never claims, where
+    period-end rounding would eventually accrue. A "why is this small
+    loan never penalised" incident resolves to design, not defect.
+
+    Hand-computed anchor (documented in BUILD_PROMPTS P13.8): 1%/mo on
+    a 10,000.00 instalment -> 100.00/month -> 3.3333../day -> 3.33/day;
+    12 days past grace accrue exactly 39.96.
+
+    Pure function; Decimal only (money is NEVER float).
+    """
+    if basis_amount < 0:
+        raise ValueError("penalty basis must not be negative")
+    if rate_pct_per_month < 0 or rate_pct_per_month > 100:
+        raise ValueError("penalty rate must be within [0, 100] % per month")
+    return to_cents(basis_amount * rate_pct_per_month / Decimal(100) / PENALTY_DAYS_PER_MONTH)
+
+
 @dataclass(frozen=True)
 class RepaymentAllocation:
     """One repayment split across the documented allocation order.

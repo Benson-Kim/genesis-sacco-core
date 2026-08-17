@@ -134,7 +134,7 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = dict(
             "percent",
             "% per month",
             ">= 0 and <= 100",
-            ("stored for P13.8 penalty accrual",),
+            ("application/arrears.resolve_penalty_config",),
         ),
         _spec(
             "penalty_grace_days",
@@ -142,7 +142,7 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = dict(
             "integer",
             "days",
             ">= 0 and <= 365",
-            ("stored for P13.8 penalty accrual",),
+            ("application/arrears.resolve_penalty_config",),
         ),
         _spec(
             "penalty_charged_on",
@@ -150,7 +150,7 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = dict(
             "enum:PenaltyChargedOn",
             "basis",
             "instalment_in_arrears | full_outstanding",
-            ("stored for P13.8 penalty accrual",),
+            ("application/arrears.resolve_penalty_config",),
         ),
         _spec(
             "loan_interest_method",
