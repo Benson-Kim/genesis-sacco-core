@@ -105,6 +105,19 @@ DELEGATED = {
     WO_RECOVERIES_SCOPE: (
         "test_loan_recoveries.py::test_receipts_listing_pages_by_keyset_with_reconstructed_totals"
     ),
+    # The member self-service routes (ADR-0007) need a MEMBER-audience
+    # principal this staff-token matrix cannot mint; their garbage AND
+    # cross-scope legs (both directions vs the staff twins) live with
+    # the member-portal seeders.
+    MEMBER_TXN_LIST_SCOPE: (
+        "test_member_portal.py::test_cursor_scopes_are_isolated_between_staff_and_member_routes"
+    ),
+    MEMBER_LOANS_SCOPE: (
+        "test_member_portal.py::test_cursor_scopes_are_isolated_between_staff_and_member_routes"
+    ),
+    MEMBER_STATEMENT_SCOPE: (
+        "test_member_portal.py::test_cursor_scopes_are_isolated_between_staff_and_member_routes"
+    ),
 }
 
 #: Seeded once, shared across the parametrized legs (ids and the JWT
