@@ -30,12 +30,19 @@ OTP_CHANNEL_SMS = "sms"
 class OtpDeliveryPort(Protocol):
     """Delivery seam for issued OTP codes.
 
-    Implementations MUST be idempotent by event id (the outbox
-    redelivery contract — genesis.infrastructure.providers) and MUST
-    NEVER log or persist the code or the full destination (gate 1.6).
-    Raising signals the outbox dispatcher to retry with backoff and
-    dead-letter after MAX_ATTEMPTS — a delivery outage is never a
-    silent drop.
+    Delivery is AT-LEAST-ONCE: the outbox redelivers on any crash
+    between the provider call and the dispatched-mark, and the cron
+    one-shot deployment rebuilds the adapter every tick, so any
+    dedupe-by-event-id an implementation keeps is per-process,
+    best-effort memory only (a durable delivery marker is the open
+    question in #20). That is the ACCEPTED semantic for OTP: a re-sent
+    code is an annoyance, an unsent one blocks sign-in, and the code
+    expires after OTP_TTL_SECONDS regardless.
+
+    Implementations MUST NEVER log or persist the code or the full
+    destination (gate 1.6). Raising signals the outbox dispatcher to
+    retry with backoff and dead-letter after MAX_ATTEMPTS — a delivery
+    outage is never a silent drop.
     """
 
     async def deliver_otp(

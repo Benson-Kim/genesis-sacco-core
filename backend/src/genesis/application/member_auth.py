@@ -160,6 +160,7 @@ async def request_member_otp(session: AsyncSession, tenant_id: uuid.UUID, email:
         return
     challenge_id = uuid.uuid4()
     code = f"{secrets.randbelow(10**OTP_LENGTH):0{OTP_LENGTH}d}"
+    expires_at = _now() + timedelta(seconds=OTP_TTL_SECONDS)
     await session.execute(
         text(
             "INSERT INTO otp_challenges "
@@ -171,11 +172,14 @@ async def request_member_otp(session: AsyncSession, tenant_id: uuid.UUID, email:
             "tid": str(tenant_id),
             "cid": str(credential.credential_id),
             "ch": hash_code(code, salt=str(challenge_id), pepper=_otp_pepper()),
-            "exp": _now() + timedelta(seconds=OTP_TTL_SECONDS),
+            "exp": expires_at,
         },
     )
     # Routing fields for the OTP delivery port (application.otp_delivery):
     # member credentials are email-only, so the channel is fixed.
+    # expires_at mirrors the challenge TTL so the dispatcher can
+    # drop-with-audit an already expired code instead of retrying
+    # worthless deliveries (#20).
     await enqueue_event(
         session,
         tenant_id,
@@ -187,6 +191,7 @@ async def request_member_otp(session: AsyncSession, tenant_id: uuid.UUID, email:
             "code": code,
             "channel": OTP_CHANNEL_EMAIL,
             "destination": email,
+            "expires_at": expires_at.isoformat(),
         },
     )
 
