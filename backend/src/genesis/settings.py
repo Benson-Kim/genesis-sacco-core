@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     jwt_signing_key: str = ""
     otp_pepper: str = ""
     auth_rate_limit_per_minute: int = 60
+    # Secondary pure-IP bucket for the auth rate guard: applies regardless
+    # of the x-tenant-id header, so rotating header values cannot mint a
+    # fresh bucket per request. Deliberately higher than the per-tenant
+    # limit — it is a backstop, not the primary control. NOTE: behind a
+    # reverse proxy the client host is the proxy until trusted-proxy
+    # forwarded-for handling exists (docs/technical/security-hardening-backlog.md).
+    auth_rate_limit_ip_per_minute: int = 240
     # Comma-separated list of browser origins allowed to call this API.
     # Example: "http://localhost:3000,https://admin.example.com"
     # Stored as a plain string so pydantic-settings does not attempt JSON

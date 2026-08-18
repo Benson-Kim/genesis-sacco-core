@@ -75,11 +75,28 @@ def tenant_id_from_headers(request: Request) -> uuid.UUID:
 
 
 async def _rate_guard(request: Request) -> None:
+    """Two-bucket fixed-window guard for the pre-auth endpoints (the house gates).
+
+    The tenant header is VALIDATED before it becomes part of a bucket key:
+    every unparseable value shares ONE ``invalid`` bucket, so rotating
+    garbage ``x-tenant-id`` values can never mint a fresh bucket per
+    request. A secondary pure-IP bucket with its own higher limit applies
+    regardless of the header, so rotating syntactically VALID tenant ids
+    does not bypass the guard either. Both buckets must pass; both are
+    incremented on every call so neither can be starved of evidence.
+    """
     client_host = request.client.host if request.client else "unknown"
-    tenant = request.headers.get("x-tenant-id", "")
-    key = f"auth:{request.url.path}:{tenant}:{client_host}"
-    allowed = await check_rate_limit(key, get_settings().auth_rate_limit_per_minute)
-    if not allowed:
+    raw_tenant = request.headers.get("x-tenant-id", "")
+    try:
+        tenant = str(uuid.UUID(raw_tenant))
+    except ValueError:
+        tenant = "invalid"
+    settings = get_settings()
+    tenant_key = f"auth:{request.url.path}:{tenant}:{client_host}"
+    ip_key = f"auth:ip:{client_host}"
+    tenant_allowed = await check_rate_limit(tenant_key, settings.auth_rate_limit_per_minute)
+    ip_allowed = await check_rate_limit(ip_key, settings.auth_rate_limit_ip_per_minute)
+    if not (tenant_allowed and ip_allowed):
         raise RateLimitedError("auth rate limit exceeded")
 
 
