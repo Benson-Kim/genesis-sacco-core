@@ -496,10 +496,15 @@ def test_dead_lettered_otp_event_is_redacted_at_rest() -> None:
         assert payload["channel"] == "sms"
         assert payload["challenge_id"] == "c-1"
         assert payload["destination_masked"] == mask_destination(destination)
-        # Sweep the raw row text: no 6-digit code, no full destination.
+        # Sweep the raw row text: the code appears nowhere, the full
+        # destination appears nowhere, and no OTP-shaped 6-digit token
+        # survives outside expires_at (whose ISO microseconds are a
+        # legitimate 6-digit run — excluded from the shape sweep only).
         raw = json.dumps(payload)
-        assert re.search(r"\b\d{6}\b", raw) is None
+        assert "123456" not in raw
         assert destination not in raw
+        sweep = json.dumps({k: v for k, v in payload.items() if k != "expires_at"})
+        assert re.search(r"\b\d{6}\b", sweep) is None
 
     asyncio.run(run())
 
