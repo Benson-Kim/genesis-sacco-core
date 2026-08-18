@@ -1127,9 +1127,11 @@ test("the export request carries the register's ACTIVE filters (hand-computed pa
   mountScreen();
   await screen.findByText("MP-1042");
 
-  // The register's ACTIVE filters: Type=deposit, Channel=mpesa.
+  // The register's ACTIVE filters: Type=deposit, Channel=mpesa. Type
+  // (≥5 options) renders the select variant; Channel (4 declared
+  // channels) renders the shared filter's segment variant.
   await user.selectOptions(screen.getByLabelText("Type"), "deposit");
-  await user.selectOptions(screen.getByLabelText("Channel"), "mpesa");
+  await user.click(screen.getByRole("button", { name: "M-Pesa" }));
 
   await user.click(screen.getByRole("button", { name: "Export" }));
   const drawer = await screen.findByRole("dialog", { name: "Request export" });
