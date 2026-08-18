@@ -18,7 +18,6 @@ import uuid
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
-
 from redis.exceptions import RedisError
 
 from genesis.api.auth import _logout_rate_guard, _rate_guard, resolve_client_ip
