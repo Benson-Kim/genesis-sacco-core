@@ -15,6 +15,7 @@ The plain-language guide for SACCO staff lives in
 | [api-guide.md](api-guide.md) | Reading the OpenAPI snapshot, auth headers, pagination and filter conventions, error taxonomy, contract evolution policy |
 | [operations.md](operations.md) | CI pipeline stages and jobs, migration workflow, environment flags, development constraints |
 | [contributing.md](contributing.md) | The house engineering doctrine distilled: merge gates, review expectations, evidence honesty, editing discipline |
+| [security-hardening-backlog.md](security-hardening-backlog.md) | Known hardening follow-ups: refresh-token custody, build-time tenant binding, the hardcoded chart of accounts, trusted-proxy forwarded-for handling |
 
 ## Related authoritative sources
 
