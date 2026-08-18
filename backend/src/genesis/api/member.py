@@ -43,8 +43,10 @@ from genesis.api.authz import RequireMemberPrincipal
 from genesis.api.loans import GuaranteeOut, _guarantee_out
 from genesis.api.members import StatementLineOut, StatementResponse
 from genesis.application import guarantees as guarantees_service
+from genesis.application import loans as loans_service
 from genesis.application import member_auth as member_auth_service
 from genesis.application import member_portal as member_portal_service
+from genesis.application import transactions as txn_service
 from genesis.application.auth import AuthFailure, MemberAuthContext
 from genesis.errors import UnauthenticatedError
 from genesis.infrastructure.db import get_sessionmaker
@@ -274,7 +276,7 @@ async def release_guarantee_as_member(
     return _guarantee_out(record)
 
 
-def _member_txn_out(t: member_portal_service.txn_service.TransactionRecord) -> MemberTransactionOut:
+def _member_txn_out(t: txn_service.TransactionRecord) -> MemberTransactionOut:
     return MemberTransactionOut(
         id=str(t.id),
         txn_ref=t.txn_ref,
