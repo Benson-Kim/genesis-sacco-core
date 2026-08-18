@@ -38,10 +38,6 @@ where = ["src"]
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
-# Dev-data generator (landed red from a parallel track): excluded from
-# lint/format until its own track brings it to the house rules — it must
-# not gate unrelated MR pipelines.
-extend-exclude = ["scripts/generate_dev_data.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "BLE", "S", "T20", "SIM", "RUF"]

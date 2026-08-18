@@ -21,10 +21,6 @@ const eslintConfig = [
       "next-env.d.ts",
       // GENERATED from OpenAPI — never hand-edited (MASTER_PROMPT §2.1).
       "packages/api-client/src/generated/**",
-      // Passenger/cPanel Node entrypoint (CommonJS, runs OUTSIDE the
-      // Next bundle; its console output is server ops logging, not a
-      // browser leak channel) — see docs/technical/mochahost-deployment.md.
-      "server.js",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
