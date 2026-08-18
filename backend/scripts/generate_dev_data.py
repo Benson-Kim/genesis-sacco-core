@@ -97,8 +97,9 @@ Faker.seed(42)
 # SEEDER driving fake records through the live API: reproducibility (a
 # fixed seed) is the requirement and cryptographic strength (S311's
 # concern) deliberately is NOT -- nothing security-sensitive is drawn
-# from this generator; the OTP path below uses hmac/sha256.
-_RNG = random.Random(42)
+# from this generator; the OTP path below uses hmac/sha256. The single
+# suppression lives here so every draw goes through this one instance.
+_RNG = random.Random(42)  # noqa: S311 -- dev seeder, not crypto (see above)
 
 # On Windows the default cp1252 console cannot encode Rich's Unicode spinner
 # characters.  Force UTF-8 on stdout/stderr and tell Rich to use the plain
