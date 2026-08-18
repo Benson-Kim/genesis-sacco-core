@@ -13,9 +13,10 @@ Usage (from backend/ directory, venv active):
   python scripts/generate_dev_data.py
 
 Prerequisites:
-  pip install httpx faker rich
+  pip install httpx faker rich   (psycopg is already a backend dependency)
   seed_dev.sql already run   (provides tenant, roles, users, products)
-  uvicorn running:  uvicorn genesis.api.app:create_app --factory --reload --port 8000 --env-file .env
+  uvicorn running:
+    uvicorn genesis.api.app:create_app --factory --reload --port 8000 --env-file .env
 
 The script is IDEMPOTENT: re-running skips completed phases via a local
 state file (dev_data_state.json).  Delete it to regenerate from scratch.
@@ -38,9 +39,9 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import random
-import subprocess
 import sys
 import time
 import uuid
@@ -48,43 +49,57 @@ from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
-# Dependency check -- friendly error before optional packages are imported
+# Third-party imports -- guarded so a missing dev package fails with a
+# friendly, timestamped install hint (the cron_*.py scripts' logging
+# convention) instead of a bare traceback.
 # ---------------------------------------------------------------------------
-import importlib.util as _importlib_util
-_missing = [
-    m for m in ("httpx", "faker", "rich")
-    if _importlib_util.find_spec(m) is None
-]
-if _missing:
-    print(f"Missing packages: {', '.join(_missing)}")
-    print("Install with:  pip install httpx faker rich")
+try:
+    import httpx
+    import psycopg
+    from faker import Faker
+    from rich.console import Console
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+except ModuleNotFoundError as exc:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    logging.getLogger(Path(__file__).stem).error(
+        "missing package: %s -- install with: pip install httpx faker rich "
+        "(psycopg ships with the backend package)",
+        exc.name,
+    )
     sys.exit(1)
-
-import httpx
-from faker import Faker
-from rich.console import Console
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-API_BASE         = os.getenv("API_BASE_URL",        "http://localhost:8000")
-DATABASE_URL     = os.getenv("DATABASE_URL",         "postgresql://genesis:genesis@localhost:5432/genesis")
-TENANT_ID        = os.getenv("TENANT_ID",            "11111111-1111-1111-1111-111111111111")
-OTP_PEPPER       = os.getenv("OTP_PEPPER",           "dev-only-otp-pepper-change-me")
-ADMIN_EMAIL      = os.getenv("ADMIN_EMAIL",          "admin@genesisprestige.test")
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://genesis:genesis@localhost:5432/genesis")
+# psycopg needs a plain libpq URL; tolerate the SQLAlchemy driver scheme.
+_DSN = DATABASE_URL.replace("postgresql+psycopg://", "postgresql://", 1)
+TENANT_ID = os.getenv("TENANT_ID", "11111111-1111-1111-1111-111111111111")
+OTP_PEPPER = os.getenv("OTP_PEPPER", "dev-only-otp-pepper-change-me")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@genesisprestige.test")
 LOAN_OFFICER_EMAIL = os.getenv("LOAN_OFFICER_EMAIL", "antony.maina@dev.test")
-COMMITTEE_EMAIL  = os.getenv("COMMITTEE_EMAIL",      "board.member.a@dev.test")
+COMMITTEE_EMAIL = os.getenv("COMMITTEE_EMAIL", "board.member.a@dev.test")
 
-NUM_MEMBERS      = int(os.getenv("NUM_MEMBERS",      "200"))
-NUM_LOAN_MEMBERS = int(os.getenv("NUM_LOAN_MEMBERS",  "80"))
-MONTHS_HISTORY   = int(os.getenv("MONTHS_HISTORY",    "14"))
+NUM_MEMBERS = int(os.getenv("NUM_MEMBERS", "200"))
+NUM_LOAN_MEMBERS = int(os.getenv("NUM_LOAN_MEMBERS", "80"))
+MONTHS_HISTORY = int(os.getenv("MONTHS_HISTORY", "14"))
 
 STATE_FILE = Path(__file__).parent / "dev_data_state.json"
 
 fake = Faker("en_GB")
 Faker.seed(42)
-random.seed(42)
+
+# Deterministic randomness for the generated volume data. This is a DEV
+# SEEDER driving fake records through the live API: reproducibility (a
+# fixed seed) is the requirement and cryptographic strength (S311's
+# concern) deliberately is NOT -- nothing security-sensitive is drawn
+# from this generator; the OTP path below uses hmac/sha256. The single
+# suppression lives here so every draw goes through this one instance.
+_RNG = random.Random(42)  # noqa: S311 -- dev seeder, not crypto (see above)
 
 # On Windows the default cp1252 console cannot encode Rich's Unicode spinner
 # characters.  Force UTF-8 on stdout/stderr and tell Rich to use the plain
@@ -103,9 +118,7 @@ _SPINNER = "dots" if sys.platform != "win32" else "line"
 class State:
     def __init__(self, path: Path) -> None:
         self._path = path
-        self._data: dict[str, Any] = (
-            json.loads(path.read_text()) if path.exists() else {}
-        )
+        self._data: dict[str, Any] = json.loads(path.read_text()) if path.exists() else {}
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._data.get(key, default)
@@ -119,15 +132,10 @@ class State:
 
 
 # ---------------------------------------------------------------------------
-# OTP injection -- inserts a known challenge directly via psql (dev only)
+# OTP injection -- inserts a known challenge directly in the database
+# (dev only)
 # ---------------------------------------------------------------------------
 KNOWN_CODE = "999999"  # fixed dev OTP; never used in production
-
-
-# Docker container name for psql access (Windows -- psql not on host PATH)
-_POSTGRES_CONTAINER = os.getenv("POSTGRES_CONTAINER", "genesis-prestige-postgres-1")
-_POSTGRES_USER      = os.getenv("POSTGRES_USER",      "genesis")
-_POSTGRES_DB        = os.getenv("POSTGRES_DB",        "genesis")
 
 
 def _inject_otp(email: str) -> bool:
@@ -136,9 +144,10 @@ def _inject_otp(email: str) -> bool:
     Uses the same hash_code() logic as genesis/domain/otp.py:
       hmac(pepper, f"{challenge_id}:{code}", sha256)
 
-    Runs psql inside the Docker postgres container so no host psql install
-    is required (Windows-friendly).  Falls back to a host `psql` binary if
-    POSTGRES_CONTAINER is set to the empty string.
+    Connects with psycopg and PARAMETERIZED statements -- no string-built
+    SQL, no shelling out to psql.  RLS is FORCED on otp_challenges, so
+    set_config('app.tenant_id', ..., true) scopes the transaction and the
+    policy is satisfied without needing BYPASSRLS.
 
     Returns True on success.
     """
@@ -149,42 +158,26 @@ def _inject_otp(email: str) -> bool:
         hashlib.sha256,
     ).hexdigest()
 
-    # RLS is FORCED on otp_challenges -- use a DO block so we can call
-    # set_config('app.tenant_id', ..., true) before the DML and stay in
-    # one transaction. The genesis superuser bypasses RLS, so set_config
-    # makes the policy happy without needing BYPASSRLS.
-    sql = f"""
-DO $$
-DECLARE
-  v_tenant_id text;
-  v_user_id   uuid;
-BEGIN
-  SELECT tenant_id::text, id
-    INTO v_tenant_id, v_user_id
-    FROM users WHERE email = '{email}' LIMIT 1;
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'user not found: {email}';
-  END IF;
-  PERFORM set_config('app.tenant_id', v_tenant_id, true);
-  DELETE FROM otp_challenges WHERE user_id = v_user_id;
-  INSERT INTO otp_challenges (id, tenant_id, user_id, code_hash, expires_at)
-  VALUES ('{challenge_id}', v_tenant_id::uuid, v_user_id,
-          '{code_hash}', now() + interval '10 minutes');
-END
-$$;
-"""
-
-    if _POSTGRES_CONTAINER:
-        cmd = [
-            "docker", "exec", _POSTGRES_CONTAINER,
-            "psql", "-U", _POSTGRES_USER, "-d", _POSTGRES_DB, "-c", sql,
-        ]
-    else:
-        cmd = ["psql", DATABASE_URL, "-c", sql]
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        console.print(f"[red]psql inject failed for {email}:[/red] {result.stderr.strip()}")
+    try:
+        with psycopg.connect(_DSN) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT tenant_id::text, id FROM users WHERE email = %s LIMIT 1",
+                (email,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                console.print(f"[red]OTP inject failed: user not found: {email}[/red]")
+                return False
+            tenant_id, user_id = row
+            cur.execute("SELECT set_config('app.tenant_id', %s, true)", (tenant_id,))
+            cur.execute("DELETE FROM otp_challenges WHERE user_id = %s", (user_id,))
+            cur.execute(
+                "INSERT INTO otp_challenges (id, tenant_id, user_id, code_hash, expires_at) "
+                "VALUES (%s, %s::uuid, %s, %s, now() + interval '10 minutes')",
+                (challenge_id, tenant_id, user_id, code_hash),
+            )
+    except psycopg.Error as exc:
+        console.print(f"[red]OTP inject failed for {email}:[/red] {exc}")
         return False
     return True
 
@@ -194,10 +187,10 @@ $$;
 # ---------------------------------------------------------------------------
 class GenesisClient:
     def __init__(self, base_url: str, tenant_id: str) -> None:
-        self._base  = base_url.rstrip("/")
-        self._tid   = tenant_id
+        self._base = base_url.rstrip("/")
+        self._tid = tenant_id
         self._token: str | None = None
-        self._http  = httpx.Client(timeout=30.0)
+        self._http = httpx.Client(timeout=30.0)
 
     def _headers(self) -> dict[str, str]:
         h: dict[str, str] = {"x-tenant-id": self._tid}
@@ -228,28 +221,20 @@ class GenesisClient:
             },
         )
         if r.status_code != 200:
-            raise RuntimeError(
-                f"OTP verify failed for {email}: {r.status_code} {r.text[:200]}"
-            )
+            raise RuntimeError(f"OTP verify failed for {email}: {r.status_code} {r.text[:200]}")
         self._token = r.json()["access_token"]
 
     def get(self, path: str, **kwargs: Any) -> httpx.Response:
-        return self._http.get(
-            f"{self._base}{path}", headers=self._headers(), **kwargs
-        )
+        return self._http.get(f"{self._base}{path}", headers=self._headers(), **kwargs)
 
     def post(self, path: str, *, idem: bool = True, **kwargs: Any) -> httpx.Response:
         h = self._headers()
         if idem:
             h["Idempotency-Key"] = str(uuid.uuid4())
-        return self._http.post(
-            f"{self._base}{path}", headers=h, **kwargs
-        )
+        return self._http.post(f"{self._base}{path}", headers=h, **kwargs)
 
     def put(self, path: str, **kwargs: Any) -> httpx.Response:
-        return self._http.put(
-            f"{self._base}{path}", headers=self._headers(), **kwargs
-        )
+        return self._http.put(f"{self._base}{path}", headers=self._headers(), **kwargs)
 
     def close(self) -> None:
         self._http.close()
@@ -264,8 +249,7 @@ def _body(r: httpx.Response, *, allow_409: bool = True) -> dict[str, Any] | None
         return None
     if r.status_code >= 400:
         console.print(
-            f"[red]HTTP {r.status_code}[/red] {r.request.method} {r.url}\n"
-            f"  {r.text[:300]}"
+            f"[red]HTTP {r.status_code}[/red] {r.request.method} {r.url}\n  {r.text[:300]}"
         )
         raise RuntimeError(f"API {r.status_code}")
     return r.json()  # type: ignore[no-any-return]
@@ -279,7 +263,7 @@ def phase_login() -> tuple[GenesisClient, GenesisClient, GenesisClient]:
 
     try:
         httpx.get(f"{API_BASE}/healthz", timeout=5).raise_for_status()
-    except Exception as exc:
+    except httpx.HTTPError as exc:
         console.print(f"[red]API not reachable at {API_BASE}: {exc}[/red]")
         console.print(
             "Start with:  uvicorn genesis.api.app:create_app "
@@ -288,9 +272,9 @@ def phase_login() -> tuple[GenesisClient, GenesisClient, GenesisClient]:
         sys.exit(1)
 
     roles = [
-        ("admin",        ADMIN_EMAIL),
+        ("admin", ADMIN_EMAIL),
         ("loan_officer", LOAN_OFFICER_EMAIL),
-        ("committee",    COMMITTEE_EMAIL),
+        ("committee", COMMITTEE_EMAIL),
     ]
     clients: list[GenesisClient] = []
     for label, email in roles:
@@ -327,16 +311,17 @@ def phase_members(admin: GenesisClient, state: State) -> list[str]:
     ) as prog:
         task = prog.add_task("Creating members", total=NUM_MEMBERS)
         for i in range(NUM_MEMBERS):
-            mtype = random.choice(_TYPES)
-            name  = (
-                fake.name()    if mtype == "person"  else
-                fake.company() if mtype == "company" else
-                f"{fake.word().capitalize()} Chama"
-            )
+            mtype = _RNG.choice(_TYPES)
+            if mtype == "person":
+                name = fake.name()
+            elif mtype == "company":
+                name = fake.company()
+            else:
+                name = f"{fake.word().capitalize()} Chama"
             payload: dict[str, Any] = {
-                "type":  mtype,
-                "name":  name[:200],
-                "phone": f"+2547{random.randint(10_000_000, 99_999_999)}",
+                "type": mtype,
+                "name": name[:200],
+                "phone": f"+2547{_RNG.randint(10_000_000, 99_999_999)}",
                 "email": fake.unique.email(),
             }
             r = admin.post("/members", json=payload)
@@ -345,7 +330,7 @@ def phase_members(admin: GenesisClient, state: State) -> list[str]:
                 member_ids.append(b["id"])
             prog.advance(task)
             if i % 25 == 24:
-                time.sleep(0.1)   # gentle throttle
+                time.sleep(0.1)  # gentle throttle
 
     state.set("member_ids", member_ids)
     console.print(f"  OK {len(member_ids)} members created")
@@ -357,9 +342,7 @@ def phase_members(admin: GenesisClient, state: State) -> list[str]:
 # (Historical months are handled by seed_dev.sql which inserts directly.
 #  The API only posts to the open/current period, so we do one round here.)
 # ---------------------------------------------------------------------------
-def phase_transactions(
-    admin: GenesisClient, member_ids: list[str], state: State
-) -> None:
+def phase_transactions(admin: GenesisClient, member_ids: list[str], state: State) -> None:
     console.rule("[bold]Phase 2 - Current-month deposits & share top-ups")
 
     if state.get("transactions_done"):
@@ -367,7 +350,7 @@ def phase_transactions(
         return
 
     channels = ["mpesa", "bank"]
-    total = len(member_ids) * 2   # one deposit + one share top-up each
+    total = len(member_ids) * 2  # one deposit + one share top-up each
 
     t0 = time.monotonic()
     with Progress(
@@ -379,9 +362,9 @@ def phase_transactions(
     ) as prog:
         task = prog.add_task("Posting transactions", total=total)
         for i, mid in enumerate(member_ids):
-            ch = random.choice(channels)
+            ch = _RNG.choice(channels)
 
-            dep = str(round(random.uniform(1000, 10_000), 2))
+            dep = str(round(_RNG.uniform(1000, 10_000), 2))
             r = admin.post(
                 f"/members/{mid}/deposits",
                 json={"amount": dep, "channel": ch},
@@ -389,7 +372,7 @@ def phase_transactions(
             _body(r)
             prog.advance(task)
 
-            sha = str(round(random.uniform(500, 5_000), 2))
+            sha = str(round(_RNG.uniform(500, 5_000), 2))
             r = admin.post(
                 f"/members/{mid}/share-topups",
                 json={"amount": sha, "channel": ch},
@@ -401,7 +384,9 @@ def phase_transactions(
                 time.sleep(0.02)
 
     elapsed = time.monotonic() - t0
-    console.print(f"  OK {total} transactions posted in {elapsed:.1f}s ({total/elapsed:.0f} txn/s)")
+    console.print(
+        f"  OK {total} transactions posted in {elapsed:.1f}s ({total / elapsed:.0f} txn/s)"
+    )
     state.set("transactions_done", True)
 
 
@@ -429,15 +414,18 @@ def phase_loans(
         console.print("[yellow]  ! No products found -- run seed_dev.sql first[/yellow]")
         return
 
-    borrowers = random.sample(member_ids, min(NUM_LOAN_MEMBERS, len(member_ids)))
-    # Use remaining members as potential guarantors
-    non_borrowers = [m for m in member_ids if m not in set(borrowers)]
+    borrowers = _RNG.sample(member_ids, min(NUM_LOAN_MEMBERS, len(member_ids)))
 
     created = disbursed = 0
     purposes = [
-        "Business expansion", "School fees", "Medical expenses",
-        "Home improvement", "Equipment purchase", "General purpose",
-        "Salary advance", "Agricultural input",
+        "Business expansion",
+        "School fees",
+        "Medical expenses",
+        "Home improvement",
+        "Equipment purchase",
+        "General purpose",
+        "Salary advance",
+        "Agricultural input",
     ]
 
     with Progress(
@@ -450,20 +438,20 @@ def phase_loans(
         task = prog.add_task("Processing loans", total=len(borrowers))
 
         for mid in borrowers:
-            product = random.choice(products)
-            amount  = str(round(random.uniform(20_000, 500_000), 2))
+            product = _RNG.choice(products)
+            amount = str(round(_RNG.uniform(20_000, 500_000), 2))
             max_term = product.get("max_term_months", 48)
-            term    = random.choice([t for t in [6, 12, 24, 36, 48] if t <= max_term] or [max_term])
+            term = _RNG.choice([t for t in [6, 12, 24, 36, 48] if t <= max_term] or [max_term])
 
             # --- 1. Create application (loan officer) ---
             r = loan_officer.post(
                 "/applications",
                 json={
-                    "member_id":   mid,
-                    "product_id":  product["id"],
-                    "amount":      amount,
+                    "member_id": mid,
+                    "product_id": product["id"],
+                    "amount": amount,
                     "term_months": term,
-                    "purpose":     random.choice(purposes),
+                    "purpose": _RNG.choice(purposes),
                 },
             )
             app = _body(r)
@@ -471,7 +459,7 @@ def phase_loans(
                 prog.advance(task)
                 continue
             app_id = app["id"]
-            ver    = app["version"]
+            ver = app["version"]
             created += 1
 
             # --- 2. Appraisal (loan officer) ---
@@ -506,7 +494,7 @@ def phase_loans(
                     json={"vote": "approve"},
                 )
                 if r.status_code == 403:
-                    continue   # this user lacks approve rights — skip
+                    continue  # this user lacks approve rights -- skip
                 result = _body(r, allow_409=True)
                 if result and result.get("decision") == "approved":
                     approved = True
@@ -530,10 +518,10 @@ def phase_loans(
             disbursed += 1
 
             # --- 6. Post a few repayments ---
-            months_paid = random.randint(1, min(6, term))
+            months_paid = _RNG.randint(1, min(6, term))
             inst = round(float(amount) / term, 2)
             for _ in range(months_paid):
-                repayment = str(round(inst * random.uniform(0.95, 1.05), 2))
+                repayment = str(round(inst * _RNG.uniform(0.95, 1.05), 2))
                 r = admin.post(
                     f"/loans/{loan_id}/repayments",
                     json={"amount": repayment, "channel": "mpesa"},
@@ -597,11 +585,11 @@ def phase_arrears(admin: GenesisClient, state: State) -> None:
 def phase_summary(admin: GenesisClient) -> None:
     console.rule("[bold]Summary")
     checks = [
-        ("/members?limit=1",       "Members"),
-        ("/transactions?limit=1",  "Transactions"),
-        ("/applications?limit=1",  "Applications"),
-        ("/loans?limit=1",         "Loans"),
-        ("/portfolio/summary",     "Portfolio"),
+        ("/members?limit=1", "Members"),
+        ("/transactions?limit=1", "Transactions"),
+        ("/applications?limit=1", "Applications"),
+        ("/loans?limit=1", "Loans"),
+        ("/portfolio/summary", "Portfolio"),
     ]
     for path, label in checks:
         r = admin.get(path)

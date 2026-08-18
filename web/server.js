@@ -9,7 +9,11 @@
  *
  * Requires a production build (`npm run build`) to already exist on
  * disk — see docs/technical/mochahost-deployment.md.
+ *
+ * CommonJS + console by design: Passenger executes this file directly
+ * with Node (no bundler, no TS), and its stdout IS the deployment log.
  */
+/* eslint-disable @typescript-eslint/no-require-imports, no-console */
 const { createServer } = require("http");
 const next = require("next");
 
