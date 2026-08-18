@@ -14,6 +14,7 @@ The plain-language guide for SACCO staff lives in
 | [ledger-and-money.md](ledger-and-money.md) | Double-entry model, posting builders, the withdrawal-source rule, penalty/interest/dividend flows, accounting periods, idempotency, keyset pagination and signed cursors |
 | [api-guide.md](api-guide.md) | Reading the OpenAPI snapshot, auth headers, pagination and filter conventions, error taxonomy, contract evolution policy |
 | [operations.md](operations.md) | CI pipeline stages and jobs, migration workflow, environment flags, development constraints |
+| [backup-and-restore.md](backup-and-restore.md) | Database backup/restore runbook: RPO/RTO targets, nightly encrypted `pg_dump` + weekly restore drill, offsite copy strategy, key management, disaster-recovery procedure |
 | [contributing.md](contributing.md) | The house engineering doctrine distilled: merge gates, review expectations, evidence honesty, editing discipline |
 
 ## Related authoritative sources

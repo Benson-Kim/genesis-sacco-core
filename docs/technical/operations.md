@@ -65,6 +65,10 @@ no literal secrets anywhere (secret-detection CI enforces).
 Health probes: every service exposes `/healthz` (liveness) and `/readyz`
 (dependencies checked).
 
+Database backups and disaster recovery (nightly encrypted `pg_dump`,
+weekly restore drill, RPO/RTO targets, offsite copies, key management):
+see [backup-and-restore.md](backup-and-restore.md).
+
 ## 4. Development constraints
 
 - **Proxy-blocked sandbox**: npm and PyPI installs are blocked in the agent

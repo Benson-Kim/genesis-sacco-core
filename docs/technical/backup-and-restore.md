@@ -1,0 +1,271 @@
+# Database backup and restore
+
+Backup, restore-verification and disaster-recovery runbook for the
+PostgreSQL 16 database. Companion to
+[mochahost-deployment.md](mochahost-deployment.md) — the same shared
+cPanel host, the same constraints (Passenger app slots, cron jobs
+available, ports 21/22 filtered at the network edge, no Docker). The
+executable pieces are `backend/scripts/backup_db.py` (nightly encrypted
+dump) and `backend/scripts/verify_restore.py` (weekly restore drill);
+this document is the operational contract around them.
+
+For a financial ledger, an unverified backup is a hope, not a backup:
+**every backup is exercised** — the nightly job refuses to report
+success until `pg_restore --list` can read the dump it just wrote, and
+the weekly drill restores the newest dump into a scratch database and
+re-proves the double-entry invariant on the restored copy.
+
+## 1. Recovery objectives (current, honest numbers)
+
+| Objective | Target | Why |
+|---|---|---|
+| **RPO** (max data loss) | **up to 24 hours** | Nightly logical dumps (`pg_dump`). Any transaction posted after the last successful dump is lost in a restore. |
+| **RTO** (max downtime) | **≤ 4 hours** | Manual procedure (§7): fetch dump → decrypt → restore → smoke-test. The weekly drill keeps the restore path known-working; the monthly manual drill (§6) keeps a human current on it. |
+
+**A 24-hour RPO is a stopgap for a system holding member money, not an
+end state.** The required next step is **WAL archiving /
+point-in-time recovery (PITR)**, which brings RPO down to minutes. It
+needs hosting capability shared cPanel does not offer: filesystem
+access to the Postgres server's WAL directory and control over
+`archive_command`/`archive_library` in `postgresql.conf` (or a managed
+Postgres with PITR built in). Concretely, any of:
+
+- a VPS/dedicated plan running its own Postgres (then: `pgBackRest` or
+  `wal-g` shipping WAL to object storage), or
+- a managed database service with PITR (most offer ~5-minute RPO), or
+- MochaHost enabling streaming replication to a replica we control.
+
+Until one of those exists, the honest statement to stakeholders is:
+*a database loss can cost up to one day of postings, and the recovery
+playbook below re-enters them from the paper/M-PESA trail.*
+
+## 2. What the nightly backup does
+
+`backend/scripts/backup_db.py`, scheduled from cPanel Cron Jobs:
+
+1. `pg_dump --format=custom` (compressed, `pg_restore`-selectable)
+   against `DATABASE_URL` — a consistent snapshot transaction; it does
+   not block writers.
+2. Verifies the dump is non-empty and `pg_restore --list` can read its
+   table of contents — a truncated/corrupt dump fails the run *now*,
+   not on restore day.
+3. Encrypts it: `openssl enc -aes-256-cbc -md sha256 -pbkdf2 -iter
+   600000 -salt`, key read from the `BACKUP_ENCRYPTION_KEY` env var
+   (never argv, so it never shows in `ps`). **The run fails loudly if
+   the key is unset — an unencrypted backup is never written.** The
+   plaintext temp file is deleted even on failure.
+4. Prunes to the retention policy: newest `BACKUP_RETENTION_DAILY`
+   (default 7) dumps plus the newest `BACKUP_RETENTION_WEEKLY`
+   (default 4) Sunday dumps. Pruning only ever touches files matching
+   the script's own naming scheme (`genesis-<UTC-stamp>.dump.enc`).
+5. Emits exactly one greppable line:
+   `BACKUP_DB SUCCESS file=... bytes=... pruned=...` or
+   `BACKUP_DB FAILURE stage=... error=...`.
+
+`openssl enc` has no authenticated (AEAD) mode; tamper-evidence comes
+from the weekly drill actually restoring the artifact end-to-end.
+
+## 3. Cron wiring (cPanel)
+
+Same pattern as §3a of the MochaHost runbook. cron does **not**
+inherit the Passenger app's environment variables, so first create a
+key file the cron lines source:
+
+```
+# once, over the cPanel Terminal or a one-off cron line:
+umask 077
+cat > ~/.genesis_backup_env <<'EOF'
+export DATABASE_URL='postgresql+psycopg://USER:PASS@localhost:5432/DBNAME'
+export BACKUP_ENCRYPTION_KEY='<64-hex-char key, see §5>'
+export BACKUP_DIR="$HOME/backups/db"
+EOF
+chmod 600 ~/.genesis_backup_env
+mkdir -p ~/backups/db ~/logs
+```
+
+Then cPanel → Cron Jobs (adjust the app-root path as in the deployment
+runbook):
+
+```
+# nightly dump at 01:30 (Sunday's dump doubles as the weekly)
+30 1 * * *  . /home/USER/.genesis_backup_env && /home/USER/virtualenv/api/3.12/bin/python /home/USER/api/scripts/backup_db.py >> /home/USER/logs/backup_db.log 2>&1
+
+# weekly restore drill, Monday 03:15 (after Sunday's dump exists)
+15 3 * * 1  . /home/USER/.genesis_backup_env && /home/USER/virtualenv/api/3.12/bin/python /home/USER/api/scripts/verify_restore.py >> /home/USER/logs/verify_restore.log 2>&1
+```
+
+Both scripts are stdlib-only on purpose — they run under any
+`python3` on the host even if the app venv is broken, which is exactly
+the situation a DR script must survive. Exit codes are non-zero on
+real failures; don't redirect stderr to `/dev/null` (cPanel's cron
+failure email is part of the alerting).
+
+**Dead-man switch:** monitoring must alert on the *absence* of the
+SUCCESS line, not the presence of FAILURE — a host that never ran cron
+prints nothing. Minimal check (run it anywhere that can reach the logs,
+e.g. a third cron line that mails you):
+
+```
+grep -q "BACKUP_DB SUCCESS" <(tail -n 200 ~/logs/backup_db.log) || echo "NO BACKUP IN LOG"
+```
+
+A free ping service (e.g. Healthchecks.io) is the better version:
+append `&& curl -fsS https://hc-ping.com/<uuid>` to the cron line —
+outbound HTTPS is open (§4) — and let the service alert when the ping
+stops arriving.
+
+## 4. Offsite copies (ports 21/22 are filtered)
+
+An on-host backup dies with the host. The MochaHost edge firewall
+filters inbound ports 21 (FTP) and 22 (SSH) — conclusively diagnosed in
+[mochahost-deployment.md §0b](mochahost-deployment.md#0b-ssh-is-blocked-at-the-hosts-network-edge--use-the-cpanel-path-instead)
+— so `scp`/`rsync`/FTP *into* the host are all off the table. What is
+reachable: **HTTP/HTTPS in both directions** (80/443 open inbound;
+outbound HTTPS from the host works — the deploy path itself uses
+cPanel Git clones over HTTPS).
+
+Two workable strategies, in order of preference:
+
+1. **Push from the host over HTTPS (preferred — no new inbound
+   surface).** Object-storage uploads are plain HTTPS. Any
+   S3-compatible bucket works with a presigned-URL `curl -T` upload
+   or a small stdlib uploader; Backblaze B2 / Cloudflare R2 / AWS S3 are
+   all fine choices. Schedule it right after the dump:
+
+   ```
+   45 1 * * * . /home/USER/.genesis_backup_env && <upload newest ~/backups/db/genesis-*.dump.enc over HTTPS> >> /home/USER/logs/backup_offsite.log 2>&1
+   ```
+
+   Give the upload credential **write-only** access to the bucket (no
+   list/read/delete) so a compromised host cannot destroy history, and
+   set the bucket's own lifecycle/retention (e.g. 90 days, versioned).
+
+2. **Fetch from outside over HTTPS.** cPanel exposes the filesystem
+   over the open cPanel ports; an external machine you control can
+   fetch the newest dump daily via the cPanel/UAPI file-download
+   endpoint (token-authenticated, HTTPS) and store it locally. Use a
+   scoped cPanel API token, not the account password. This keeps all
+   credentials off the host but makes the *external* machine's cron
+   the thing to monitor.
+
+Either way the artifact leaving the host is **already encrypted** —
+the object store / fetching machine never holds plaintext, so a bucket
+leak alone does not expose member financial data. Verify the offsite
+copy monthly as part of the manual drill (§6): download one dump from
+offsite (not from the host) and restore it.
+
+## 5. Key management — `BACKUP_ENCRYPTION_KEY`
+
+- **Generate:** `python -c "import secrets; print(secrets.token_hex(32))"`
+  (64 hex chars; the scripts refuse keys shorter than 32 chars).
+- **Store on the host** only in `~/.genesis_backup_env`, `chmod 600`.
+- **Escrow off the host — this is the rule that matters:** a backup
+  encrypted with a key that only lived on the dead host is a shredder,
+  not a backup. Keep the key in at least two places that do not share
+  fate with the host: the organisation's password manager (a vault
+  entry named `genesis BACKUP_ENCRYPTION_KEY`, access limited to the
+  operators on the DR rota) and a sealed printed copy with whoever
+  holds the SACCO's other statutory records. **Never** in the repo, CI
+  variables visible to the pipeline, or the same bucket as the dumps.
+- **Rotate** on operator departure or suspected exposure: generate a
+  new key, update env file + escrow, take an immediate manual backup
+  with the new key, and keep the old key in escrow (marked retired)
+  until every dump encrypted with it has aged out of retention —
+  including offsite copies.
+- **Decrypt by hand** (parameters are pinned; also in the script
+  docstrings):
+
+  ```
+  openssl enc -d -aes-256-cbc -md sha256 -pbkdf2 -iter 600000 \
+    -in genesis-<stamp>.dump.enc -out restore.dump -pass env:BACKUP_ENCRYPTION_KEY
+  ```
+
+## 6. Restore drills
+
+A restore procedure nobody has run is folklore. Two cadences:
+
+- **Weekly, automated** — `verify_restore.py` (cron line in §3):
+  decrypts the newest dump, restores into a scratch DB
+  (`<dbname>_restore_check`; it refuses to target the live database),
+  counts tenants/members/transactions/ledger entries, checks the
+  alembic head is present, and re-proves the ledger invariant —
+  per tenant, `SUM(debits) = SUM(credits)` over `ledger_entries` — on
+  the restored copy, then drops the scratch DB. Greppable
+  `RESTORE_CHECK SUCCESS/FAILURE` line; same absence-alerting as §3.
+  If the DB role lacks `CREATEDB` (common on shared hosting): create
+  the scratch DB once via cPanel → PostgreSQL Databases and set
+  `RESTORE_CHECK_PRECREATED=true` — the drill then resets the scratch
+  DB's `public` schema instead of dropping the database. If shared
+  hosting refuses `CREATE EXTENSION pgcrypto` during restore, that one
+  benign error can be budgeted with
+  `RESTORE_CHECK_MAX_IGNORED_ERRORS=1` (default 0 — strict).
+- **Monthly, manual full drill** — a human executes §7 end-to-end
+  against a scratch database, **starting from the offsite copy**, and
+  records in the operations log: date, dump used, time-to-restore,
+  row counts, invariant result, and any surprise. The point is
+  currency of people, not just of scripts; RTO in §1 is only credible
+  while this log stays current.
+
+## 7. Disaster recovery — step by step
+
+Scenario: the live database is lost or corrupted beyond repair.
+
+1. **Freeze writes.** Stop the API app (cPanel → Setup Python App →
+   Stop) and disable the app cron jobs (outbox/export/dormancy/purge)
+   so nothing writes to a half-restored system. Note the wall-clock
+   time.
+2. **Choose the dump.** Newest `genesis-*.dump.enc` from
+   `$BACKUP_DIR`; if the host is gone, from the offsite copy (§4).
+   Its filename timestamp defines the data-loss window (RPO): every
+   posting after it must be re-entered in step 8.
+3. **Decrypt** with the escrowed key (§5) on the recovery machine.
+4. **Verify before touching anything:** `pg_restore --list
+   restore.dump` must print a table of contents.
+5. **Provision the target database.** Same-host recovery: cPanel →
+   PostgreSQL Databases → create a fresh DB + grant the app user (do
+   not restore over the corrupted DB — keep it for forensics).
+   New-host recovery: follow mochahost-deployment.md §2 first
+   (including the pgcrypto note).
+6. **Restore:**
+
+   ```
+   pg_restore --no-owner --no-privileges \
+     --dbname="postgresql://USER:PASS@localhost:5432/NEWDB" restore.dump
+   ```
+
+7. **Sanity-check the restored data** (the same checks the drill
+   automates): `SELECT version_num FROM alembic_version;` matches the
+   deployed code's migration head (`ls backend/migrations/versions |
+   sort | tail -1`); row counts on tenants/members/transactions look
+   right; the §6 ledger invariant returns zero imbalanced tenants. If
+   the code deployed is newer than the dump, run `alembic upgrade
+   head` now.
+8. **Reconcile the gap.** Pull the M-PESA/bank statements and paper
+   records for the window since the dump timestamp and re-enter
+   postings through the normal API flows (never raw SQL — the ledger
+   triggers and audit trail must see them). Two people, one entering,
+   one checking against the statement.
+9. **Repoint and restart.** Update `DATABASE_URL` in the Passenger
+   app's env (and `~/.genesis_backup_env`!) to the new DB, start the
+   app, re-enable cron, smoke-test `/healthz` + `/readyz` + a sign-in.
+10. **Take an immediate backup** of the restored DB (run
+    `backup_db.py` by hand) so the recovery point is itself protected,
+    and confirm the nightly line is still scheduled.
+11. **Write the incident up**: cause, dump used, minutes of data
+    re-entered, total downtime vs the §1 RTO, and any step of this
+    document that was wrong — then fix the document.
+
+## 8. Environment variable reference
+
+| Variable | Script | Default | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | both | — (required) | SQLAlchemy-style accepted; driver marker stripped for libpq tools |
+| `BACKUP_ENCRYPTION_KEY` | both | — (required, ≥ 32 chars) | fail-closed: no key, no backup |
+| `BACKUP_DIR` | both | `~/backups/db` | created `0700`; dumps written `0600` |
+| `BACKUP_RETENTION_DAILY` | backup | `7` | newest N dumps kept |
+| `BACKUP_RETENTION_WEEKLY` | backup | `4` | newest N Sunday dumps kept |
+| `BACKUP_TIMEOUT_SECONDS` | both | `3600` | per external command |
+| `RESTORE_CHECK_DB` | drill | `<dbname>_restore_check` | explicit scratch DB name; live-DB collision refused |
+| `RESTORE_CHECK_DB_SUFFIX` | drill | `_restore_check` | used when `RESTORE_CHECK_DB` unset |
+| `RESTORE_CHECK_PRECREATED` | drill | `false` | for roles without `CREATEDB` (§6) |
+| `RESTORE_CHECK_MAX_IGNORED_ERRORS` | drill | `0` | budget for known-benign restore errors (§6) |
