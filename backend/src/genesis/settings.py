@@ -1,5 +1,6 @@
 """Environment-only configuration (no literal secrets)."""
 
+import ipaddress
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -21,8 +22,8 @@ class Settings(BaseSettings):
     # of the x-tenant-id header, so rotating header values cannot mint a
     # fresh bucket per request. Deliberately higher than the per-tenant
     # limit — it is a backstop, not the primary control. NOTE: behind a
-    # reverse proxy the client host is the proxy until trusted-proxy
-    # forwarded-for handling exists (docs/technical/security-hardening-backlog.md).
+    # reverse proxy, set trusted_proxy_ips (below) so the bucket keys on
+    # the forwarded client IP instead of the proxy's own address.
     auth_rate_limit_ip_per_minute: int = 240
     # Comma-separated list of browser origins allowed to call this API.
     # Example: "http://localhost:3000,https://admin.example.com"
@@ -42,6 +43,43 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Return origins as a list, filtering out any blank entries."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    # Trusted reverse-proxy addresses for X-Forwarded-For resolution
+    # (issue #13). Comma-separated IP addresses of the proxy hops this
+    # deployment actually terminates behind (e.g. the Passenger host on
+    # MochaHost). DEFAULT EMPTY = X-Forwarded-For is NEVER trusted and the
+    # rate buckets key on the direct peer — today's safe behavior. Only
+    # when the immediate peer is in this set does the guard walk the
+    # forwarded chain (from the right) for the real client IP.
+    trusted_proxy_ips: str = ""
+
+    @field_validator("trusted_proxy_ips", mode="before")
+    @classmethod
+    def _coerce_proxy_list(cls, v: object) -> str:
+        """Accept a pre-split list (e.g. from tests) and join it back to a string."""
+        if isinstance(v, list):
+            return ",".join(str(i) for i in v)
+        return str(v) if v is not None else ""
+
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def _validate_proxy_ips(cls, v: str) -> str:
+        """FAIL CLOSED at settings load: a malformed trusted-proxy entry is a
+        deployment error, never a silently-ignored one — a typo here must
+        not quietly leave the deployment on shared-bucket behavior."""
+        for entry in v.split(","):
+            if entry.strip():
+                ipaddress.ip_address(entry.strip())  # raises ValueError on garbage
+        return v
+
+    @property
+    def trusted_proxy_ips_set(self) -> frozenset[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+        """Normalized trusted-proxy addresses (validated at settings load)."""
+        return frozenset(
+            ipaddress.ip_address(entry.strip())
+            for entry in self.trusted_proxy_ips.split(",")
+            if entry.strip()
+        )
 
     # Export configuration (P13): resolved exclusively server-side —
     # request bodies never carry formats, row limits, or storage

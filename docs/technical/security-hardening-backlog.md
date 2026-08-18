@@ -26,12 +26,16 @@ The chart of accounts is a hardcoded enum
 tenant can add, rename, or restructure accounts without a code change; a
 per-tenant chart (or per-tenant overlay) is the follow-up.
 
-## 4. Trusted-proxy forwarded-for handling (backend)
+## 4. Trusted-proxy forwarded-for handling (backend) — IMPLEMENTED
 
-The auth rate guard's pure-IP backstop bucket
-(`backend/src/genesis/api/auth.py:_rate_guard`) keys on
-`request.client.host`. Behind Passenger (the MochaHost deployment,
-`docs/technical/mochahost-deployment.md`) that is the proxy's address, so
-all clients share one bucket and per-IP limits are not meaningful. Trusted
-proxy configuration with `X-Forwarded-For` validation (trust only the known
-proxy hop) is required before the per-IP limit carries real weight.
+Resolved (issue #13): the auth rate guard now keys BOTH buckets on
+`genesis.api.auth.resolve_client_ip`, which consults `X-Forwarded-For`
+only when the immediate peer is listed in the `TRUSTED_PROXY_IPS` setting
+(`backend/src/genesis/settings.py:Settings.trusted_proxy_ips`; default
+empty = never trust the header). The chain is walked from the right,
+every candidate is `ipaddress`-validated, and malformed chains collapse
+to one shared bucket. **Deployment prerequisite remains operational**:
+the MochaHost/Passenger deployment (`docs/technical/mochahost-deployment.md`)
+must set `TRUSTED_PROXY_IPS` to the actual proxy address, or the per-IP
+backstop stays one shared bucket behind the proxy (the safe default, not
+a meaningful per-client limit).

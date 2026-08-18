@@ -19,14 +19,16 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from genesis.api.auth import _rate_guard
+from genesis.api.auth import _rate_guard, resolve_client_ip
 from genesis.errors import RateLimitedError
 from genesis.infrastructure import rate_limit
 from genesis.settings import get_settings
 
 
-def _request(tenant: str | None, host: str) -> Request:
+def _request(tenant: str | None, host: str, xff: str | None = None) -> Request:
     headers = [] if tenant is None else [(b"x-tenant-id", tenant.encode())]
+    if xff is not None:
+        headers.append((b"x-forwarded-for", xff.encode()))
     scope = {
         "type": "http",
         "http_version": "1.1",
@@ -49,6 +51,7 @@ def _guard_limits(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AUTH_RATE_LIMIT_PER_MINUTE", "3")
     monkeypatch.setenv("AUTH_RATE_LIMIT_IP_PER_MINUTE", "5")
     monkeypatch.delenv("REDIS_URL", raising=False)
+    monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
     get_settings.cache_clear()
     monkeypatch.setattr(rate_limit, "_local_events", {})
     monkeypatch.setattr(rate_limit.time, "time", lambda: 1_000_000_000.0)
@@ -98,6 +101,93 @@ def test_distinct_hosts_keep_independent_ip_buckets(_guard_limits) -> None:
         await _rate_guard(_request(str(uuid.uuid4()), "203.0.113.5"))
 
     asyncio.run(run())
+
+
+@pytest.fixture()
+def _trusted_proxy(_guard_limits, monkeypatch: pytest.MonkeyPatch):
+    """Layer a trusted proxy (192.0.2.10) on top of the pinned guard limits."""
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", "192.0.2.10")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_spoofed_xff_from_untrusted_peer_never_changes_the_bucket_key(_guard_limits) -> None:
+    # No trusted proxies configured (the default): the header is inert.
+    assert resolve_client_ip(_request(None, "203.0.113.6", xff="198.51.100.1")) == "203.0.113.6"
+
+    async def run() -> None:
+        # Rotating spoofed XFF values cannot mint buckets: the pure-IP
+        # backstop (limit 5) still trips on the DIRECT peer address.
+        for i in range(5):
+            await _rate_guard(_request(str(uuid.uuid4()), "203.0.113.6", xff=f"198.51.100.{i}"))
+        with pytest.raises(RateLimitedError):
+            await _rate_guard(_request(str(uuid.uuid4()), "203.0.113.6", xff="198.51.100.99"))
+
+    asyncio.run(run())
+
+
+def test_trusted_proxy_chain_resolves_the_real_client(_trusted_proxy) -> None:
+    # Right-walk: the trusted hop is skipped, the first untrusted entry
+    # from the right wins, and an attacker-prepended left entry is ignored.
+    req = _request(None, "192.0.2.10", xff="6.6.6.6, 198.51.100.7, 192.0.2.10")
+    assert resolve_client_ip(req) == "198.51.100.7"
+
+    async def run() -> None:
+        # Client A exhausts its per-IP bucket through the proxy...
+        for _ in range(5):
+            await _rate_guard(_request(str(uuid.uuid4()), "192.0.2.10", xff="198.51.100.7"))
+        with pytest.raises(RateLimitedError):
+            await _rate_guard(_request(str(uuid.uuid4()), "192.0.2.10", xff="198.51.100.7"))
+        # ...while client B behind the SAME proxy is untouched — the
+        # backstop is per-client again, not one global bucket.
+        await _rate_guard(_request(str(uuid.uuid4()), "192.0.2.10", xff="198.51.100.8"))
+
+    asyncio.run(run())
+
+
+def test_malformed_xff_through_trusted_proxy_shares_one_bucket(_trusted_proxy) -> None:
+    # Malformed and empty chains all collapse to the SAME sentinel: an
+    # attacker-controlled string can never mint a fresh bucket (the MR lesson).
+    assert resolve_client_ip(_request(None, "192.0.2.10", xff="not-an-ip")) == (
+        "invalid-forwarded-for"
+    )
+    assert resolve_client_ip(_request(None, "192.0.2.10")) == "invalid-forwarded-for"
+    assert resolve_client_ip(_request(None, "192.0.2.10", xff="192.0.2.10")) == (
+        "invalid-forwarded-for"
+    )
+
+    async def run() -> None:
+        # Rotating garbage XFF values share ONE bucket, so the limit trips.
+        for i in range(5):
+            await _rate_guard(_request(str(uuid.uuid4()), "192.0.2.10", xff=f"garbage-{i}"))
+        with pytest.raises(RateLimitedError):
+            await _rate_guard(_request(str(uuid.uuid4()), "192.0.2.10", xff="garbage-fresh"))
+
+    asyncio.run(run())
+
+
+def test_tenant_bucket_keys_on_the_resolved_ip_too(_trusted_proxy) -> None:
+    """The consistency requirement: BOTH buckets embed the resolved client
+    IP — one tenant's spend through the proxy must not throttle the same
+    tenant arriving from a different real client."""
+    tenant = str(uuid.uuid4())
+
+    async def run() -> None:
+        for _ in range(3):
+            await _rate_guard(_request(tenant, "192.0.2.10", xff="198.51.100.20"))
+        with pytest.raises(RateLimitedError):
+            await _rate_guard(_request(tenant, "192.0.2.10", xff="198.51.100.20"))
+        # SAME tenant id, different resolved client: its own tenant bucket.
+        await _rate_guard(_request(tenant, "192.0.2.10", xff="198.51.100.21"))
+
+    asyncio.run(run())
+
+
+def test_request_without_client_uses_the_shared_unknown_bucket(_guard_limits) -> None:
+    scope = _request(None, "203.0.113.9").scope
+    scope["client"] = None
+    assert resolve_client_ip(Request(scope)) == "unknown"
 
 
 def test_guard_is_wired_into_the_auth_routes(_guard_limits, client: TestClient) -> None:
