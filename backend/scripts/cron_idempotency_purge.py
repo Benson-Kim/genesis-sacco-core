@@ -18,6 +18,7 @@ import logging
 import sys
 from pathlib import Path
 
+from genesis.infrastructure.cron_lock import CRON_LOCK_IDEMPOTENCY_PURGE, try_cron_lock
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.idempotency_worker import run_purge_cycle
 from genesis.settings import get_settings

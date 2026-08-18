@@ -23,6 +23,7 @@ from types import ModuleType
 
 import pytest
 
+from db_helpers import factory
 from genesis.infrastructure.cron_lock import (
     CRON_LOCK_DORMANCY,
     CRON_LOCK_EXPORT,
@@ -90,8 +91,6 @@ def test_every_cron_script_is_registered() -> None:
 
 @_requires_db
 def test_same_key_contention_yields_false_and_releases_on_exit() -> None:
-    from db_helpers import factory
-
     async def run() -> None:
         f = factory()
         async with try_cron_lock(f, CRON_LOCK_EXPORT, worker="export") as first:
@@ -109,8 +108,6 @@ def test_same_key_contention_yields_false_and_releases_on_exit() -> None:
 
 @_requires_db
 def test_distinct_worker_keys_never_block_each_other() -> None:
-    from db_helpers import factory
-
     async def run() -> None:
         f = factory()
         async with try_cron_lock(f, CRON_LOCK_EXPORT, worker="export") as export_lock:
