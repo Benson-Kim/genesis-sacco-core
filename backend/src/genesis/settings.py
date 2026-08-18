@@ -155,3 +155,26 @@ def assert_dev_otp_display_dev_only(settings: Settings | None = None) -> None:
             f"'{resolved.environment}' — the dev-mode OTP display is "
             "development-only and refuses to boot anywhere else"
         )
+
+
+def assert_redis_configured_outside_dev(settings: Settings | None = None) -> None:
+    """Fail-closed BOOT guard (#15): outside development the rate limiter
+    must never silently degrade to its per-process in-memory fallback.
+
+    With REDIS_URL empty, ``infrastructure.rate_limit`` counts PER
+    PROCESS — under N workers the effective auth rate limit is N x the
+    configured value, and the degradation is invisible: the deployment
+    boots cleanly and *looks* rate-limited. A forgotten REDIS_URL is a
+    DEPLOYMENT error and aborts startup here (the
+    assert_dev_otp_display_dev_only / assert_cursor_signing_key_configured
+    posture). Called by ``genesis.api.app.create_app`` before any router
+    is wired.
+    """
+    resolved = settings if settings is not None else get_settings()
+    if resolved.environment != "development" and not resolved.redis_url:
+        raise RuntimeError(
+            "REDIS_URL is empty but ENVIRONMENT is "
+            f"'{resolved.environment}' — the auth rate limiter requires "
+            "Redis outside development (the in-process fallback enforces "
+            "per-worker limits only); refusing to boot"
+        )

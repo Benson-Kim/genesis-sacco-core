@@ -52,7 +52,7 @@ no literal secrets anywhere (secret-detection CI enforces).
 
 | Setting | Default | Notes |
 |---|---|---|
-| `DATABASE_URL`, `REDIS_URL` | — | Connection strings. The runtime DB role must be non-superuser without BYPASSRLS. |
+| `DATABASE_URL`, `REDIS_URL` | — | Connection strings. The runtime DB role must be non-superuser without BYPASSRLS. `REDIS_URL` is **required whenever `ENVIRONMENT != development`** — boot refuses an empty value (fail-closed guard `assert_redis_configured_outside_dev`), because the rate limiter's in-process fallback counts per worker and would silently weaken auth limits N-fold. |
 | `JWT_SIGNING_KEY` | — | Access-token signing; unset fails requests loudly. |
 | `OTP_PEPPER` | — | Keyed OTP hashing. |
 | `CURSOR_SIGNING_KEY` / `CURSOR_KEY_VERSION` (+ `_PREVIOUS` pair) | — / 1 | Signed pagination cursors; boot **fails closed** on missing/short key material or a version collision. Rotation = dual-version window. |

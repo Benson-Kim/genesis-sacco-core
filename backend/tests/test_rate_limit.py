@@ -16,7 +16,7 @@ from genesis.infrastructure.rate_limit import (
     check_rate_limit,
     consume_rate_limit,
 )
-from genesis.settings import get_settings
+from genesis.settings import Settings, assert_redis_configured_outside_dev, get_settings
 
 
 class FakeRedis:
@@ -229,6 +229,18 @@ def test_local_rate_limiter_blocks_after_limit() -> None:
 
     results = asyncio.run(run())
     assert results == [True, True, True, False, False]
+
+
+def test_boot_refuses_empty_redis_url_outside_development() -> None:
+    """The #15 boot guard, falsifiable both ways: (production, empty)
+    refuses loudly; (development, empty) and (production, set) boot clean."""
+    for environment in ("staging", "production"):
+        with pytest.raises(RuntimeError, match="REDIS_URL is empty"):
+            assert_redis_configured_outside_dev(Settings(environment=environment, redis_url=""))
+    assert_redis_configured_outside_dev(Settings(environment="development", redis_url=""))
+    assert_redis_configured_outside_dev(
+        Settings(environment="production", redis_url="redis://cache:6379/0")
+    )
 
 
 def test_limits_are_per_key() -> None:

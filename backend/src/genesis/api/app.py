@@ -35,7 +35,11 @@ from genesis.api.users import router as users_router
 from genesis.application.pagination import assert_cursor_signing_key_configured
 from genesis.errors import AppError, ErrorCategory, PayloadSchemaError
 from genesis.logging import configure_logging, correlation_id_var
-from genesis.settings import assert_dev_otp_display_dev_only, get_settings
+from genesis.settings import (
+    assert_dev_otp_display_dev_only,
+    assert_redis_configured_outside_dev,
+    get_settings,
+)
 
 logger = logging.getLogger("genesis.api")
 
@@ -54,6 +58,10 @@ def create_app() -> FastAPI:
     # to boot outside development — the enforced replacement for the
     # old "strip before staging" reminder.
     assert_dev_otp_display_dev_only()
+    # Fail-closed boot guard (#15): outside development an empty
+    # REDIS_URL would silently weaken the auth rate limiter to
+    # per-worker counting — refuse to boot instead.
+    assert_redis_configured_outside_dev()
     settings = get_settings()
     app = FastAPI(title="Genesis Prestige API", version="0.1.0")
     if settings.cors_origins_list:
