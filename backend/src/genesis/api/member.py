@@ -87,7 +87,7 @@ class MemberLoanSummaryOut(BaseModel):
 class MemberMeOut(BaseModel):
     """The authenticated member's own profile and advisory balances.
 
-    Least disclosure (gate 1.6): exactly what ADR-0007 declares —
+    Least disclosure: exactly what the read surface declares —
     profile (name, member_no, status), the two account balances and the
     loan summary. No internal ids beyond the member's own, no staff
     attribution, no guarantee exposure figures.

@@ -47,13 +47,17 @@ from genesis.application.corrections import (
 )
 from genesis.application.dividends import DECLARATIONS_LIST_SCOPE, SHARE_TRANSFERS_SCOPE
 from genesis.application.loan_applications import APPLICATIONS_LIST_SCOPE
-from genesis.application.loans import LOAN_BOOK_SCOPE
+from genesis.application.loans import LOAN_BOOK_SCOPE, MEMBER_LOANS_SCOPE
 from genesis.application.member_exits import EXITS_LIST_SCOPE
 from genesis.application.member_kyc import DOCUMENTS_LIST_SCOPE
-from genesis.application.members import MEMBERS_LIST_SCOPE, STATEMENT_SCOPE
+from genesis.application.members import (
+    MEMBER_STATEMENT_SCOPE,
+    MEMBERS_LIST_SCOPE,
+    STATEMENT_SCOPE,
+)
 from genesis.application.pagination import encode_cursor
 from genesis.application.recovery import CASE_NOTES_SCOPE, WORKLIST_SCOPE
-from genesis.application.transactions import TXN_LIST_SCOPE
+from genesis.application.transactions import MEMBER_TXN_LIST_SCOPE, TXN_LIST_SCOPE
 from genesis.application.users import USERS_LIST_SCOPE
 
 pytestmark = pytest.mark.skipif(

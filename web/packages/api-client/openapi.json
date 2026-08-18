@@ -4134,7 +4134,7 @@
         "type": "object"
       },
       "MemberMeOut": {
-        "description": "The authenticated member's own profile and advisory balances.\n\nLeast disclosure (gate 1.6): exactly what ADR-0007 declares \u2014\nprofile (name, member_no, status), the two account balances and the\nloan summary. No internal ids beyond the member's own, no staff\nattribution, no guarantee exposure figures.",
+        "description": "The authenticated member's own profile and advisory balances.\n\nLeast disclosure: exactly what the read surface declares \u2014\nprofile (name, member_no, status), the two account balances and the\nloan summary. No internal ids beyond the member's own, no staff\nattribution, no guarantee exposure figures.",
         "properties": {
           "deposit_balance": {
             "title": "Deposit Balance",

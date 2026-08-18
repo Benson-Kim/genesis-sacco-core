@@ -1520,6 +1520,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/member/loans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Member Loans
+         * @description The member's OWN loans, keyset-paginated (ADR-0007).
+         *
+         *     Ownership is the loans.member_id predicate inside the reused book
+         *     statement — never fetch-then-check; cursors mint under the
+         *     member-own scope (member.loans.list).
+         */
+        get: operations["list_member_loans_member_loans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/member/loans/{loan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Member Loan
+         * @description One OWN loan with schedule/installment status (ADR-0007).
+         *
+         *     Ownership is enforced IN the query via the principal-derived member
+         *     id: another member's loan is indistinguishable from a nonexistent
+         *     one — 404 with no figures echoed (least disclosure).
+         */
+        get: operations["get_member_loan_member_loans__loan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/member/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Member Me
+         * @description The authenticated member's profile, balances and loan summary
+         *     (ADR-0007). Identity comes ONLY from the live-linked credential —
+         *     there is no member id to pass and nothing to get wrong.
+         */
+        get: operations["get_member_me_member_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/member/statement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Member Statement
+         * @description The member's OWN statement (ADR-0007) — the staff statement
+         *     service verbatim (reuse-first), the member id derived from the
+         *     principal, cursors under the member-own scope (member.statement).
+         */
+        get: operations["get_member_statement_member_statement_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/member/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Member Transactions
+         * @description The member's OWN postings, keyset-paginated (ADR-0007).
+         *
+         *     The principal-derived member filter is a predicate in the reused
+         *     staff list statement; cursors are signed under the member-own scope
+         *     (member.transactions.list), so a staff transactions cursor is a
+         *     sanitized 400 here — and vice versa.
+         */
+        get: operations["list_member_transactions_member_transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/members": {
         parameters: {
             query?: never;
@@ -3730,6 +3847,31 @@ export interface components {
             version: number;
         };
         /**
+         * MemberInstallmentOut
+         * @description One schedule row on the loan detail read.
+         *
+         *     status is derived SERVER-side ('paid'/'partial'/'open' — see
+         *     member_portal.installment_status) so the client never compares
+         *     money; the contractual dues and paid_amount come verbatim from the
+         *     schedule the P10 repayment allocator maintains.
+         */
+        MemberInstallmentOut: {
+            /** Due Date */
+            due_date: string;
+            /** Installment No */
+            installment_no: number;
+            /** Interest Due */
+            interest_due: string;
+            /** Paid Amount */
+            paid_amount: string;
+            /** Principal Due */
+            principal_due: string;
+            /** Status */
+            status: string;
+            /** Total Due */
+            total_due: string;
+        };
+        /**
          * MemberListDetailResponse
          * @description Register page whose rows carry the advisory aggregates.
          *
@@ -3748,6 +3890,120 @@ export interface components {
             items: components["schemas"]["MemberOut"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /**
+         * MemberLoanDetailOut
+         * @description MemberLoanOut expanded with the amortisation schedule.
+         *
+         *     Unpaginated BY CONSTRUCTION: the schedule is bounded by the loan
+         *     term (<= 120 rows), the established staff-schedule posture.
+         */
+        MemberLoanDetailOut: {
+            /** Balance */
+            balance: string;
+            /** Closed At */
+            closed_at: string | null;
+            /** Days Past Due */
+            days_past_due: number;
+            /** Disbursed At */
+            disbursed_at: string | null;
+            /** Id */
+            id: string;
+            /** Loan Ref */
+            loan_ref: string | null;
+            /** Penalty Due */
+            penalty_due: string;
+            /** Principal */
+            principal: string;
+            /** Product Name */
+            product_name: string | null;
+            /** Rate Pct */
+            rate_pct: string;
+            /** Schedule */
+            schedule: components["schemas"]["MemberInstallmentOut"][];
+            /** Status */
+            status: string;
+            /** Term Months */
+            term_months: number;
+        };
+        /** MemberLoanListResponse */
+        MemberLoanListResponse: {
+            /** Items */
+            items: components["schemas"]["MemberLoanOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * MemberLoanOut
+         * @description One OWN loan on the member surface.
+         *
+         *     Least disclosure vs the staff LoanOut: no classification or
+         *     provision_pct (prudential internals stay behind loan_book:view),
+         *     no application/product UUIDs, no optimistic-lock version (this
+         *     surface is read-only). days_past_due and penalty_due ARE the
+         *     member's own arrears facts — the figures they are asked to pay.
+         */
+        MemberLoanOut: {
+            /** Balance */
+            balance: string;
+            /** Closed At */
+            closed_at: string | null;
+            /** Days Past Due */
+            days_past_due: number;
+            /** Disbursed At */
+            disbursed_at: string | null;
+            /** Id */
+            id: string;
+            /** Loan Ref */
+            loan_ref: string | null;
+            /** Penalty Due */
+            penalty_due: string;
+            /** Principal */
+            principal: string;
+            /** Product Name */
+            product_name: string | null;
+            /** Rate Pct */
+            rate_pct: string;
+            /** Status */
+            status: string;
+            /** Term Months */
+            term_months: number;
+        };
+        /**
+         * MemberLoanSummaryOut
+         * @description Loan summary on /member/me: active-loan count + outstanding total.
+         *
+         *     The total is the SAME figure the staff member drawer shows
+         *     (member_aggregates — single source of truth); a canonical decimal
+         *     string rendered verbatim by clients (no client-side money math).
+         */
+        MemberLoanSummaryOut: {
+            /** Count */
+            count: number;
+            /** Total Outstanding */
+            total_outstanding: string;
+        };
+        /**
+         * MemberMeOut
+         * @description The authenticated member's own profile and advisory balances.
+         *
+         *     Least disclosure: exactly what the read surface declares —
+         *     profile (name, member_no, status), the two account balances and the
+         *     loan summary. No internal ids beyond the member's own, no staff
+         *     attribution, no guarantee exposure figures.
+         */
+        MemberMeOut: {
+            /** Deposit Balance */
+            deposit_balance: string;
+            loans: components["schemas"]["MemberLoanSummaryOut"];
+            /** Member No */
+            member_no: string;
+            /** Name */
+            name: string;
+            /** Share Balance */
+            share_balance: string;
+            /** Status */
+            status: string;
         };
         /** MemberOut */
         MemberOut: {
@@ -3782,6 +4038,43 @@ export interface components {
             status: components["schemas"]["MemberStatus"];
             /** Version */
             version: number;
+        };
+        /** MemberTransactionListResponse */
+        MemberTransactionListResponse: {
+            /** Items */
+            items: components["schemas"]["MemberTransactionOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * MemberTransactionOut
+         * @description One OWN posting on the member surface.
+         *
+         *     Least disclosure vs the staff TransactionOut: no created_by (staff
+         *     actor attribution stays behind transactions:view), no member_id or
+         *     display labels (the postings are the principal's own by
+         *     construction). Amounts are canonical decimal strings rendered
+         *     verbatim (no client-side money math).
+         */
+        MemberTransactionOut: {
+            /** Amount */
+            amount: string;
+            /** Channel */
+            channel: string;
+            /** Direction */
+            direction: string;
+            /** External Ref */
+            external_ref: string | null;
+            /** Id */
+            id: string;
+            /** Is Reversal */
+            is_reversal: boolean;
+            /** Occurred At */
+            occurred_at: string;
+            /** Txn Ref */
+            txn_ref: string;
+            /** Type */
+            type: string;
         };
         /**
          * MemberType
@@ -7550,6 +7843,153 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GuaranteeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_member_loans_member_loans_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberLoanListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_member_loan_member_loans__loan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                loan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberLoanDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_member_me_member_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberMeOut"];
+                };
+            };
+        };
+    };
+    get_member_statement_member_statement_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatementResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_member_transactions_member_transactions_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberTransactionListResponse"];
                 };
             };
             /** @description Validation Error */

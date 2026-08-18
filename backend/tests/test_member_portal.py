@@ -343,7 +343,19 @@ def test_revoked_or_repointed_credential_dies_within_one_request() -> None:
     async def run() -> None:
         tid, _, _ = await seed_actor()
         mid, cid, token = await _seed_member_principal(tid, name="Revoked M", member_no="GP-7301")
-        other_mid, _, _ = await _seed_member_principal(tid, name="Other M", member_no="GP-7302")
+        # The re-point target deliberately has NO credential of its own:
+        # the 0035 uq_member_credentials_member_active net allows one
+        # ACTIVE link per member, and this test moves an existing link.
+        other_mid = uuid.uuid4()
+        async with tenant_session(factory(), tid) as session:
+            await session.execute(
+                text(
+                    "INSERT INTO members (id, tenant_id, member_no, type, name, status) VALUES "
+                    "(CAST(:id AS uuid), CAST(:tid AS uuid), 'GP-7302', 'person', "
+                    "'Other M', 'active')"
+                ),
+                {"id": str(other_mid), "tid": str(tid)},
+            )
         pid = await _seed_product(tid)
         loan_id = await _seed_loan(tid, mid, pid, balance="100.00")
         paths = (
@@ -426,6 +438,20 @@ def test_cursor_scopes_are_isolated_between_staff_and_member_routes() -> None:
                 assert member_page.status_code == 200, member_page.text
                 member_cursor = member_page.json()["next_cursor"]
                 assert member_cursor is not None
+
+                # Garbage cursor (the FM9 tamper contract, delegated
+                # here for the member-scoped routes): strict decode,
+                # sanitized 400, envelope only — never a 500, never a
+                # silently empty 200 page.
+                garbage = await client.get(
+                    member_path,
+                    params={"limit": 1, "cursor": "not-a-cursor"},
+                    headers=_headers(member_token),
+                )
+                assert garbage.status_code == 400, f"{member_path}: {garbage.status_code}"
+                body = garbage.json()
+                assert set(body) == {"category", "correlation_id"}
+                assert body["category"] == "validation_error"
 
                 # Staff cursor on the member route: sanitized 400.
                 crossed = await client.get(

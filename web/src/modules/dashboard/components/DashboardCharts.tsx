@@ -19,7 +19,6 @@
  * SVG/CSS within the test-locked design tokens — NO third-party chart
  * library (the client-hygiene gate bans third-party requests).
  */
-import { fmtKes } from "@/lib/format";
 import type { FlowsChart, PortfolioChart } from "../schemas";
 import styles from "./DashboardCharts.module.css";
 
