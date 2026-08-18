@@ -104,6 +104,84 @@ async def _seed_member_with_loans(tid: uuid.UUID) -> uuid.UUID:
     return mid
 
 
+async def _seed_decoy_active_book(tid: uuid.UUID) -> None:
+    """Bulk decoy book: 32 decoy members x 32 active loans each.
+
+    Cardinality that discriminates (the tiny-CI-tables discipline):
+    with only one member's loans in the book every loans index ties on
+    cost and the planner enters the count through the partial
+    idx_loans_active_scan with member_id demoted to a Filter — the
+    exact tenant-wide shape this gate exists to reject. ANALYZE is not
+    available here (the suite runs as the unprivileged RLS app role;
+    Postgres lets only the table owner analyze, so it is a silent
+    no-op WARNING), but the planner estimates row counts from the
+    table's PHYSICAL size even without stats — so a physically
+    non-trivial book makes every tenant-led entry point strictly more
+    expensive than the two-qual member probe, deterministically.
+    Batched executemany keeps the 1024-loan seed to four round trips.
+    """
+    pid = uuid.uuid4()
+    member_rows: list[dict[str, str]] = []
+    app_rows: list[dict[str, str]] = []
+    loan_rows: list[dict[str, str]] = []
+    for _ in range(32):
+        decoy_mid = uuid.uuid4()
+        member_rows.append(
+            {"id": str(decoy_mid), "tid": str(tid), "no": f"GP-{decoy_mid.hex[:6].upper()}"}
+        )
+        for _ in range(32):
+            aid = uuid.uuid4()
+            app_rows.append(
+                {"id": str(aid), "tid": str(tid), "mid": str(decoy_mid), "pid": str(pid)}
+            )
+            loan_rows.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "tid": str(tid),
+                    "aid": str(aid),
+                    "mid": str(decoy_mid),
+                    "pid": str(pid),
+                }
+            )
+    async with tenant_session(factory(), tid) as session:
+        await session.execute(
+            text(
+                "INSERT INTO loan_products "
+                "(id, tenant_id, name, rate_pct, deposit_multiplier, max_term_months) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), :name, '12.00', '3.00', 36)"
+            ),
+            {"id": str(pid), "tid": str(tid), "name": f"DECOY-{uuid.uuid4().hex[:8]}"},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO members (id, tenant_id, member_no, type, name) VALUES "
+                "(CAST(:id AS uuid), CAST(:tid AS uuid), :no, 'person', 'Decoy Member')"
+            ),
+            member_rows,
+        )
+        await session.execute(
+            text(
+                "INSERT INTO loan_applications "
+                "(id, tenant_id, member_id, product_id, amount, term_months, "
+                " rate_pct, stage, cover_pct) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:mid AS uuid), "
+                "CAST(:pid AS uuid), '100.00', 12, '12.00', 'disbursed', '0.00')"
+            ),
+            app_rows,
+        )
+        await session.execute(
+            text(
+                "INSERT INTO loans "
+                "(id, tenant_id, application_id, member_id, product_id, "
+                " principal, balance, rate_pct, term_months, status) "
+                "VALUES (CAST(:id AS uuid), CAST(:tid AS uuid), CAST(:aid AS uuid), "
+                "CAST(:mid AS uuid), CAST(:pid AS uuid), '100.00', '100.00', "
+                "'12.00', 12, 'active')"
+            ),
+            loan_rows,
+        )
+
+
 async def _explain(session: AsyncSession, sql: str, params: dict[str, object]) -> str:
     rows = (await session.execute(text(f"EXPLAIN (ANALYZE, BUFFERS) {sql}"), params)).scalars()
     return "\n".join(str(r) for r in rows)
@@ -118,19 +196,11 @@ def test_member_portal_statements_are_index_served() -> None:
     async def run() -> None:
         tid, _, _ = await seed_actor()
         mid = await _seed_member_with_loans(tid)
-        # Cardinality that discriminates (the tiny-CI-tables
-        # discipline, the test_idnumber_lookup precedent): with only
-        # one member's loans in the book every loans index ties on
-        # cost and the planner may enter through the partial
-        # idx_loans_active_scan (member_id demoted to a Filter — the
-        # exact shape this gate exists to reject). Decoy members with
-        # their own active loans make the tenant-wide entry points
-        # strictly more expensive, and ANALYZE hands the planner the
-        # real row counts, so the winning plan must enter through the
-        # member probe — while dropping idx_loans_member still fails
-        # the asserts below (no surviving plan can name it).
-        for _ in range(8):
-            await _seed_member_with_loans(tid)
+        # Decoy active loans make the tenant-wide entry points
+        # strictly more expensive than the member probe (see
+        # _seed_decoy_active_book) — while dropping idx_loans_member
+        # still fails the asserts below (no surviving plan can name it).
+        await _seed_decoy_active_book(tid)
 
         count_params: dict[str, object] = {
             "mid": str(mid),
@@ -151,7 +221,6 @@ def test_member_portal_statements_are_index_served() -> None:
         page_params: dict[str, object] = {"tid": str(tid), "mid": str(mid), "limit": 21}
 
         async with tenant_session(factory(), tid) as session:
-            await session.execute(text("ANALYZE loans, members, loan_products"))
             await session.execute(text("SET LOCAL enable_seqscan = off"))
             count_plan = await _explain(session, MEMBER_LOAN_COUNT_SQL, count_params)
             page_plan = await _explain(session, page_sql, page_params)
@@ -161,7 +230,7 @@ def test_member_portal_statements_are_index_served() -> None:
         OUT_PATH.write_text(
             "ADR-0007 member read surface EXPLAIN (ANALYZE, BUFFERS) — captured\n"
             "in CI against the migrated Postgres service under the RLS app\n"
-            "role, enable_seqscan=off, decoy members seeded + ANALYZE so the\n"
+            "role, enable_seqscan=off, a decoy active book seeded so the\n"
             "cardinality discriminates (tiny CI tables): both statements enter\n"
             "loans through idx_loans_member (0001); the loan page's residual\n"
             "top-N orders ONE member's loans only (bounded by lending\n"
@@ -173,12 +242,10 @@ def test_member_portal_statements_are_index_served() -> None:
 
         for name, plan in (("loan count", count_plan), ("member loan page", page_plan)):
             assert "Seq Scan" not in plan, f"{name} fell back to a sequential scan:\n{plan}"
-            # Tiny CI tables leave the planner a near-tie between the
-            # member probe and the tenant-led keyset index (both are
-            # loans indexes led by tenant_id — either is index-served
-            # and structural; the test_p11_explain two-name precedent).
-            assert "idx_loans_member" in plan or "idx_loans_created_keyset" in plan, (
-                f"{name} is not served by a loans index:\n{plan}"
-            )
+            # The decoy book discriminates the cardinality, so the
+            # winning plan must enter loans through the member probe —
+            # a tenant-led index with member_id demoted to a Filter
+            # (the shape that degrades with the tenant book) fails.
+            assert "idx_loans_member" in plan, f"{name} is not served by the member probe:\n{plan}"
 
     asyncio.run(run())
