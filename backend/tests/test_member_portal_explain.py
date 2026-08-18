@@ -37,6 +37,7 @@ from export_helpers import seed_actor
 from genesis.application.loans import _LOAN_COLS, _LOAN_LABEL_JOINS
 from genesis.application.member_portal import MEMBER_LOAN_COUNT_SQL
 from genesis.domain.lending import LoanStatus
+from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.tenancy import tenant_session
 
 pytestmark = pytest.mark.skipif(
@@ -111,13 +112,9 @@ async def _seed_decoy_active_book(tid: uuid.UUID) -> None:
     with only one member's loans in the book every loans index ties on
     cost and the planner enters the count through the partial
     idx_loans_active_scan with member_id demoted to a Filter — the
-    exact tenant-wide shape this gate exists to reject. ANALYZE is not
-    available here (the suite runs as the unprivileged RLS app role;
-    Postgres lets only the table owner analyze, so it is a silent
-    no-op WARNING), but the planner estimates row counts from the
-    table's PHYSICAL size even without stats — so a physically
-    non-trivial book makes every tenant-led entry point strictly more
-    expensive than the two-qual member probe, deterministically.
+    exact tenant-wide shape this gate exists to reject. The decoys
+    plus real statistics (_analyze_book) make every tenant-led entry
+    point strictly more expensive than the two-qual member probe.
     Batched executemany keeps the 1024-loan seed to four round trips.
     """
     pid = uuid.uuid4()
@@ -182,6 +179,22 @@ async def _seed_decoy_active_book(tid: uuid.UUID) -> None:
         )
 
 
+async def _analyze_book() -> None:
+    """Hand the planner real row counts for the seeded book.
+
+    Postgres lets only the table OWNER run ANALYZE — as the
+    unprivileged RLS app role the statement is a silent no-op WARNING,
+    stats stay unset, the cost model is degenerate (every loans index
+    ties near the minimum whatever the physical size) and the plan
+    choice below would assert planner noise. CI provides the owner
+    DSN as DATABASE_MAINT_URL (the role migrations ran as); the
+    probes themselves still run through the RLS app role session.
+    """
+    maint_url = os.environ.get("DATABASE_MAINT_URL", os.environ["DATABASE_URL"])
+    async with get_sessionmaker(maint_url)() as session, session.begin():
+        await session.execute(text("ANALYZE loans, members, loan_products"))
+
+
 async def _explain(session: AsyncSession, sql: str, params: dict[str, object]) -> str:
     rows = (await session.execute(text(f"EXPLAIN (ANALYZE, BUFFERS) {sql}"), params)).scalars()
     return "\n".join(str(r) for r in rows)
@@ -196,11 +209,13 @@ def test_member_portal_statements_are_index_served() -> None:
     async def run() -> None:
         tid, _, _ = await seed_actor()
         mid = await _seed_member_with_loans(tid)
-        # Decoy active loans make the tenant-wide entry points
-        # strictly more expensive than the member probe (see
-        # _seed_decoy_active_book) — while dropping idx_loans_member
-        # still fails the asserts below (no surviving plan can name it).
+        # Decoy active loans + real statistics make the tenant-wide
+        # entry points strictly more expensive than the member probe
+        # (see _seed_decoy_active_book) — while dropping
+        # idx_loans_member still fails the asserts below (no surviving
+        # plan can name it).
         await _seed_decoy_active_book(tid)
+        await _analyze_book()
 
         count_params: dict[str, object] = {
             "mid": str(mid),
@@ -230,8 +245,8 @@ def test_member_portal_statements_are_index_served() -> None:
         OUT_PATH.write_text(
             "ADR-0007 member read surface EXPLAIN (ANALYZE, BUFFERS) — captured\n"
             "in CI against the migrated Postgres service under the RLS app\n"
-            "role, enable_seqscan=off, a decoy active book seeded so the\n"
-            "cardinality discriminates (tiny CI tables): both statements enter\n"
+            "role, enable_seqscan=off, a decoy active book seeded + ANALYZE\n"
+            "(owner DSN) so the cardinality discriminates: both statements enter\n"
             "loans through idx_loans_member (0001); the loan page's residual\n"
             "top-N orders ONE member's loans only (bounded by lending\n"
             "reality). The member transactions/statement pages reuse the\n"

@@ -203,6 +203,14 @@ backend:test:
       )
       PYEOF
     - export DATABASE_URL="postgresql+psycopg://genesis_app@postgres:5432/genesis_test"
+    # Postgres lets only the table OWNER run ANALYZE (PG16 has no
+    # MAINTAIN privilege), and without stats the planner's costs are
+    # degenerate — every loans index ties and the EXPLAIN structural
+    # gates assert planner noise. The maintenance DSN (the same
+    # privileged owner the migrations above ran as) lets those gates
+    # hand the planner real statistics after seeding; the suite itself
+    # still runs as the unprivileged RLS app role.
+    - export DATABASE_MAINT_URL="postgresql+psycopg://genesis@postgres:5432/genesis_test"
     - pytest --cov=src --cov-fail-under=85 --junitxml=report.xml
   # Surface captured EXPLAIN plans in the job log so MR authors can copy
   # them into the description (artifact download needs an api-scope token).
