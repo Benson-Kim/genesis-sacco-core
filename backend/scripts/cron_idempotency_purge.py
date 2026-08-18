@@ -37,7 +37,15 @@ async def main() -> int:
         logger.error("DATABASE_URL is not configured")
         return 1
     factory = get_sessionmaker(settings.database_url)
-    purged = await run_purge_cycle(factory)
+    # Overlap guard: skip-and-log when a previous purge still holds the
+    # lock (genesis.infrastructure.cron_lock).
+    async with try_cron_lock(
+        factory, CRON_LOCK_IDEMPOTENCY_PURGE, worker="idempotency_purge"
+    ) as acquired:
+        if not acquired:
+            logger.info("idempotency: skipped — previous cycle still running")
+            return 0
+        purged = await run_purge_cycle(factory)
     logger.info(f"idempotency: purged={purged}")
     return 0
 

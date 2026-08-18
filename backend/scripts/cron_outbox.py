@@ -23,6 +23,7 @@ import logging
 import sys
 from pathlib import Path
 
+from genesis.infrastructure.cron_lock import CRON_LOCK_OUTBOX, try_cron_lock
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.outbox_worker import run_dispatch_cycle, run_purge_cycle
 from genesis.infrastructure.providers import StubProvider
@@ -44,8 +45,15 @@ async def main() -> int:
         return 1
     factory = get_sessionmaker(settings.database_url)
     provider = StubProvider(channel="stub")
-    delivered = await run_dispatch_cycle(factory, provider)
-    purged = await run_purge_cycle(factory)
+    # Overlap guard: a slow cycle must never run concurrently with the
+    # next cron tick's cycle — skip-and-log when the lock is held
+    # (genesis.infrastructure.cron_lock).
+    async with try_cron_lock(factory, CRON_LOCK_OUTBOX, worker="outbox") as acquired:
+        if not acquired:
+            logger.info("outbox: skipped — previous cycle still running")
+            return 0
+        delivered = await run_dispatch_cycle(factory, provider)
+        purged = await run_purge_cycle(factory)
     logger.info(f"outbox: delivered={delivered} purged={purged}")
     return 0
 

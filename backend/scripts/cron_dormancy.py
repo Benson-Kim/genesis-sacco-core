@@ -35,7 +35,13 @@ async def main() -> int:
         logger.error("DATABASE_URL is not configured")
         return 1
     factory = get_sessionmaker(settings.database_url)
-    summary = await run_dormancy_cycle(factory)
+    # Overlap guard: skip-and-log when yesterday's cycle is somehow
+    # still running (genesis.infrastructure.cron_lock).
+    async with try_cron_lock(factory, CRON_LOCK_DORMANCY, worker="dormancy") as acquired:
+        if not acquired:
+            logger.info("dormancy: skipped — previous cycle still running")
+            return 0
+        summary = await run_dormancy_cycle(factory)
     logger.info(
         f"dormancy: tenants={summary.tenants} transitioned={summary.transitioned} "
         f"refused={summary.refused} errored={summary.errored}"

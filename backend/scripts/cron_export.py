@@ -34,7 +34,14 @@ async def main() -> int:
         logger.error("DATABASE_URL is not configured")
         return 1
     factory = get_sessionmaker(settings.database_url)
-    summary = await run_export_cycle(factory)
+    # Overlap guard: a large export can outlive the 2-minute cron
+    # cadence — skip-and-log instead of running two drains at once
+    # (genesis.infrastructure.cron_lock).
+    async with try_cron_lock(factory, CRON_LOCK_EXPORT, worker="export") as acquired:
+        if not acquired:
+            logger.info("exports: skipped — previous cycle still running")
+            return 0
+        summary = await run_export_cycle(factory)
     logger.info(f"exports: completed={summary.completed} failed={summary.failed}")
     return 0
 
