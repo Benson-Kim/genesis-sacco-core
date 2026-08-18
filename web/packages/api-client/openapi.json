@@ -3783,6 +3783,50 @@
         "title": "MemberDetailOut",
         "type": "object"
       },
+      "MemberInstallmentOut": {
+        "description": "One schedule row on the loan detail read.\n\nstatus is derived SERVER-side ('paid'/'partial'/'open' \u2014 see\nmember_portal.installment_status) so the client never compares\nmoney; the contractual dues and paid_amount come verbatim from the\nschedule the P10 repayment allocator maintains.",
+        "properties": {
+          "due_date": {
+            "title": "Due Date",
+            "type": "string"
+          },
+          "installment_no": {
+            "title": "Installment No",
+            "type": "integer"
+          },
+          "interest_due": {
+            "title": "Interest Due",
+            "type": "string"
+          },
+          "paid_amount": {
+            "title": "Paid Amount",
+            "type": "string"
+          },
+          "principal_due": {
+            "title": "Principal Due",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_due": {
+            "title": "Total Due",
+            "type": "string"
+          }
+        },
+        "required": [
+          "installment_no",
+          "due_date",
+          "principal_due",
+          "interest_due",
+          "total_due",
+          "paid_amount",
+          "status"
+        ],
+        "title": "MemberInstallmentOut",
+        "type": "object"
+      },
       "MemberListDetailResponse": {
         "description": "Register page whose rows carry the advisory aggregates.\n\nServed ONLY when the request opts in with include=aggregates; the\nflat MemberListResponse stays byte-identical otherwise.",
         "properties": {
@@ -3838,6 +3882,293 @@
           "next_cursor"
         ],
         "title": "MemberListResponse",
+        "type": "object"
+      },
+      "MemberLoanDetailOut": {
+        "description": "MemberLoanOut expanded with the amortisation schedule.\n\nUnpaginated BY CONSTRUCTION: the schedule is bounded by the loan\nterm (<= 120 rows), the established staff-schedule posture.",
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "days_past_due": {
+            "title": "Days Past Due",
+            "type": "integer"
+          },
+          "disbursed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "loan_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Ref"
+          },
+          "penalty_due": {
+            "title": "Penalty Due",
+            "type": "string"
+          },
+          "principal": {
+            "title": "Principal",
+            "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "rate_pct": {
+            "title": "Rate Pct",
+            "type": "string"
+          },
+          "schedule": {
+            "items": {
+              "$ref": "#/components/schemas/MemberInstallmentOut"
+            },
+            "title": "Schedule",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "term_months": {
+            "title": "Term Months",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "loan_ref",
+          "product_name",
+          "principal",
+          "balance",
+          "rate_pct",
+          "term_months",
+          "status",
+          "days_past_due",
+          "penalty_due",
+          "disbursed_at",
+          "closed_at",
+          "schedule"
+        ],
+        "title": "MemberLoanDetailOut",
+        "type": "object"
+      },
+      "MemberLoanListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberLoanOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "MemberLoanListResponse",
+        "type": "object"
+      },
+      "MemberLoanOut": {
+        "description": "One OWN loan on the member surface.\n\nLeast disclosure vs the staff LoanOut: no classification or\nprovision_pct (prudential internals stay behind loan_book:view),\nno application/product UUIDs, no optimistic-lock version (this\nsurface is read-only). days_past_due and penalty_due ARE the\nmember's own arrears facts \u2014 the figures they are asked to pay.",
+        "properties": {
+          "balance": {
+            "title": "Balance",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "days_past_due": {
+            "title": "Days Past Due",
+            "type": "integer"
+          },
+          "disbursed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disbursed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "loan_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Ref"
+          },
+          "penalty_due": {
+            "title": "Penalty Due",
+            "type": "string"
+          },
+          "principal": {
+            "title": "Principal",
+            "type": "string"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "rate_pct": {
+            "title": "Rate Pct",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "term_months": {
+            "title": "Term Months",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "loan_ref",
+          "product_name",
+          "principal",
+          "balance",
+          "rate_pct",
+          "term_months",
+          "status",
+          "days_past_due",
+          "penalty_due",
+          "disbursed_at",
+          "closed_at"
+        ],
+        "title": "MemberLoanOut",
+        "type": "object"
+      },
+      "MemberLoanSummaryOut": {
+        "description": "Loan summary on /member/me: active-loan count + outstanding total.\n\nThe total is the SAME figure the staff member drawer shows\n(member_aggregates \u2014 single source of truth); a canonical decimal\nstring rendered verbatim by clients (no client-side money math).",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "total_outstanding": {
+            "title": "Total Outstanding",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "total_outstanding"
+        ],
+        "title": "MemberLoanSummaryOut",
+        "type": "object"
+      },
+      "MemberMeOut": {
+        "description": "The authenticated member's own profile and advisory balances.\n\nLeast disclosure (gate 1.6): exactly what ADR-0007 declares \u2014\nprofile (name, member_no, status), the two account balances and the\nloan summary. No internal ids beyond the member's own, no staff\nattribution, no guarantee exposure figures.",
+        "properties": {
+          "deposit_balance": {
+            "title": "Deposit Balance",
+            "type": "string"
+          },
+          "loans": {
+            "$ref": "#/components/schemas/MemberLoanSummaryOut"
+          },
+          "member_no": {
+            "title": "Member No",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "share_balance": {
+            "title": "Share Balance",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_no",
+          "name",
+          "status",
+          "deposit_balance",
+          "share_balance",
+          "loans"
+        ],
+        "title": "MemberMeOut",
         "type": "object"
       },
       "MemberOut": {
@@ -3952,6 +4283,95 @@
           "status"
         ],
         "title": "MemberStatusBody",
+        "type": "object"
+      },
+      "MemberTransactionListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemberTransactionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "MemberTransactionListResponse",
+        "type": "object"
+      },
+      "MemberTransactionOut": {
+        "description": "One OWN posting on the member surface.\n\nLeast disclosure vs the staff TransactionOut: no created_by (staff\nactor attribution stays behind transactions:view), no member_id or\ndisplay labels (the postings are the principal's own by\nconstruction). Amounts are canonical decimal strings rendered\nverbatim (no client-side money math).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_reversal": {
+            "title": "Is Reversal",
+            "type": "boolean"
+          },
+          "occurred_at": {
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "txn_ref": {
+            "title": "Txn Ref",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "txn_ref",
+          "type",
+          "amount",
+          "channel",
+          "direction",
+          "occurred_at",
+          "is_reversal",
+          "external_ref"
+        ],
+        "title": "MemberTransactionOut",
         "type": "object"
       },
       "MemberType": {
@@ -11570,6 +11990,258 @@
           }
         },
         "summary": "Release Guarantee As Member",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/loans": {
+      "get": {
+        "description": "The member's OWN loans, keyset-paginated (ADR-0007).\n\nOwnership is the loans.member_id predicate inside the reused book\nstatement \u2014 never fetch-then-check; cursors mint under the\nmember-own scope (member.loans.list).",
+        "operationId": "list_member_loans_member_loans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberLoanListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Member Loans",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/loans/{loan_id}": {
+      "get": {
+        "description": "One OWN loan with schedule/installment status (ADR-0007).\n\nOwnership is enforced IN the query via the principal-derived member\nid: another member's loan is indistinguishable from a nonexistent\none \u2014 404 with no figures echoed (least disclosure).",
+        "operationId": "get_member_loan_member_loans__loan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "loan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Loan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberLoanDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Member Loan",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/me": {
+      "get": {
+        "description": "The authenticated member's profile, balances and loan summary\n(ADR-0007). Identity comes ONLY from the live-linked credential \u2014\nthere is no member id to pass and nothing to get wrong.",
+        "operationId": "get_member_me_member_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberMeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Member Me",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/statement": {
+      "get": {
+        "description": "The member's OWN statement (ADR-0007) \u2014 the staff statement\nservice verbatim (reuse-first), the member id derived from the\nprincipal, cursors under the member-own scope (member.statement).",
+        "operationId": "get_member_statement_member_statement_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Member Statement",
+        "tags": [
+          "member"
+        ]
+      }
+    },
+    "/member/transactions": {
+      "get": {
+        "description": "The member's OWN postings, keyset-paginated (ADR-0007).\n\nThe principal-derived member filter is a predicate in the reused\nstaff list statement; cursors are signed under the member-own scope\n(member.transactions.list), so a staff transactions cursor is a\nsanitized 400 here \u2014 and vice versa.",
+        "operationId": "list_member_transactions_member_transactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberTransactionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Member Transactions",
         "tags": [
           "member"
         ]
