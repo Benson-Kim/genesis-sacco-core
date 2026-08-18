@@ -147,7 +147,40 @@ function FlowsCard({
     return (
         <Card className={grid.twoThirds}>
             <h2 className={styles.title}>Deposits vs disbursements</h2>
+            {/* Chart supplement: server-computed geometry;
+                the table below stays the accessible, signed truth. */}
             {flowsChart !== null && <FlowsBarChart flows={flowsChart} />}
+            <table className={styles.flows}>
+                <thead>
+                    <tr>
+                        <th scope="col" className={styles.th}>
+                            Month
+                        </th>
+                        <th scope="col" className={styles.thRight}>
+                            Deposits
+                        </th>
+                        <th scope="col" className={styles.thRight}>
+                            Disbursements
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {flows.map((flow) => (
+                        <tr key={flow.month}>
+                            <td className={styles.td}>{flow.month}</td>
+                            <td className={styles.tdRight}>{fmtAmount(flow.deposits)}</td>
+                            <td className={styles.tdRight}>{fmtAmount(flow.disbursements)}</td>
+                        </tr>
+                    ))}
+                    {flows.length === 0 && (
+                        <tr>
+                            <td className={styles.muted} colSpan={3}>
+                                No flows recorded yet.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
         </Card>
     );
 }
