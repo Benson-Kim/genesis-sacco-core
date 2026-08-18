@@ -29,8 +29,8 @@ rate-limited per (route, tenant, client).
 
 | Endpoint | Auth | Notes |
 |---|---|---|
-| `POST /member/auth/otp/request` `{email}` | `x-tenant-id` | Always `202 {"status": "sent"}` — never reveals whether a credential exists. The 6-digit code is delivered out-of-band (outbox → provider), TTL 5 minutes, single use, ≤5 attempts. |
-| `POST /member/auth/otp/verify` `{email, code}` | `x-tenant-id` | `200 TokenResponse` (`access_token` ≤15 min, rotating `refresh_token`, `expires_in`) or `401`. Failed attempts count even though the request fails. |
+| `POST /member/auth/otp/request` `{identifier}` | `x-tenant-id` | Body is the identifier envelope: exactly one of `identifier` (email or Kenya mobile, local or E.164 form) or the deprecated `email` field (accepted one more release). Always `202 {"status": "sent"}` — never reveals whether a credential exists. The 6-digit code is delivered out-of-band (outbox → provider), TTL 5 minutes, single use, ≤5 attempts. |
+| `POST /member/auth/otp/verify` `{identifier, code}` | `x-tenant-id` | Same identifier envelope plus the 6-digit `code`. `200 TokenResponse` (`access_token` ≤15 min, rotating `refresh_token`, `expires_in`) or `401`. Failed attempts count even though the request fails. |
 | `POST /member/auth/refresh` `{refresh_token}` | `x-tenant-id` | Rotates the refresh token. **Reusing a spent token revokes the whole family** — the client must always persist the newest refresh token before using it, and must treat a 401 here as a full logout. |
 | `POST /member/guarantees/{id}/consent` `{version}` | Bearer (member) | Consent to a PLEDGED guarantee where THIS member is the guarantor. The principal IS the consent — there is no field for who consents (a caller-asserted identity is a rejected design). `403` for any wrong-principal shape; `409` on a stale `version`. |
 | `POST /member/guarantees/{id}/release` `{version}` | Bearer (member) | Withdraw the member's OWN still-PLEDGED (unconsented) guarantee. Consented collateral cannot be self-released — staff paths only. |
@@ -72,3 +72,15 @@ and your own retry of the identical request replays safely.
 Trust-boundary and threat rows: `docs/diagrams/dfd.md` (TB1M),
 `docs/diagrams/stride.md` (§1 TB1M rows; the !29 F3/F4 register entry
 is closed).
+
+## 5. Read surface status (P17 — BLOCKING)
+
+The endpoints in §2 are the ENTIRE member surface today. Balances,
+statements, transaction history, loan status, repayments and
+notifications do not exist for the MEMBER principal — the staff routes
+that serve that data require staff permissions and answer a member
+token with 403 by design (FM1). The member read surface is decided in
+`docs/adr/0007-member-self-service-read-surface.md`; the mobile app
+design gates are in `docs/technical/member-mobile-app.md`. P19 payment
+intents (M-Pesa money movement) is tracked separately and does not
+exist in any layer yet.
