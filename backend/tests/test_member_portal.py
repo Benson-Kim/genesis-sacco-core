@@ -487,15 +487,23 @@ def test_loan_detail_serves_schedule_with_derived_installment_status() -> None:
         pid = await _seed_product(tid)
         loan_id = await _seed_loan(tid, mid, pid, balance="300.00")
         await _add_installment(
-            tid, loan_id, installment_no=1, due=date(2026, 1, 31), total_due="100.00",
+            tid,
+            loan_id,
+            installment_no=1,
+            due=date(2026, 1, 31),
+            total_due="100.00",
             paid_amount="100.00",
         )
         await _add_installment(
-            tid, loan_id, installment_no=2, due=date(2026, 2, 28), total_due="100.00",
+            tid,
+            loan_id,
+            installment_no=2,
+            due=date(2026, 2, 28),
+            total_due="100.00",
             paid_amount="40.00",
         )
         await _add_installment(
-            tid, loan_id, installment_no=3, due=date(2026, 3, 31), total_due="100.00",
+            tid, loan_id, installment_no=3, due=date(2026, 3, 31), total_due="100.00"
         )
         async with api_client() as client:
             res = await client.get(f"/member/loans/{loan_id}", headers=_headers(token))
