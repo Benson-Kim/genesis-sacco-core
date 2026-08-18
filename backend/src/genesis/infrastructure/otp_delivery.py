@@ -25,6 +25,11 @@ outbox dispatcher. Layout:
   dispatcher: peels `*.otp_requested` events onto the port and hands
   every other event (and legacy OTP events enqueued before the payload
   carried routing fields) to the wrapped fallback provider unchanged.
+  MALFORMED is not LEGACY (#18): an OTP event with NO routing fields at
+  all is a genuine pre-deploy row (fallback, correct); one with SOME
+  routing fields present but wrong types is an enqueue BUG — it raises
+  loudly so the outbox retries/dead-letters (and the dead letter is
+  redacted, #20) instead of the stub silently “delivering” it.
   An already-expired challenge (payload `expires_at`, mirroring
   OTP_TTL_SECONDS) is dropped WITH AUDIT — marked processed with an
   explicit expired-skip log line, never retried and never silent (#20).
@@ -132,17 +137,35 @@ class OtpDelivery:
             self._seen.discard(self._seen_order.popleft())
 
 
-def _challenge_expired(raw: object) -> bool:
-    """True when a payload expires_at (ISO-8601 str) is in the past."""
+#: Payload keys only the routing-aware enqueue path writes. The
+#: PRESENCE of any of them marks the event as post-deploy: wrong types
+#: are then an enqueue bug, never a legacy row (#18).
+_ROUTING_FIELDS = ("channel", "destination", "expires_at")
+
+
+def _parse_expiry(event_id: str, raw: object) -> datetime | None:
+    """Strictly parse a routed payload's optional expires_at.
+
+    None (absent) is fine — rows enqueued before the TTL field existed.
+    Present but not an ISO-8601 string is an enqueue bug: raise (types
+    only in the message, never payload values — no PII in logs/errors).
+    """
+    if raw is None:
+        return None
     if not isinstance(raw, str):
-        return False
+        msg = (
+            f"malformed OTP routing payload for event {event_id}: "
+            f"expires_at must be an ISO-8601 string, got {type(raw).__name__}"
+        )
+        raise ValueError(msg)
     try:
         parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return False
+    except ValueError as exc:
+        msg = f"malformed OTP routing payload for event {event_id}: unparseable expires_at"
+        raise ValueError(msg) from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
-    return datetime.now(UTC) >= parsed
+    return parsed
 
 
 class OtpRoutingProvider:
@@ -165,25 +188,46 @@ class OtpRoutingProvider:
         self.channel = f"otp+{fallback.channel}"
 
     async def send(self, event_id: str, event_type: str, payload: dict[str, Any]) -> None:
-        if event_type in OTP_EVENT_TYPES:
-            channel = payload.get("channel")
-            destination = payload.get("destination")
-            code = payload.get("code")
-            if isinstance(channel, str) and isinstance(destination, str) and isinstance(code, str):
-                if _challenge_expired(payload.get("expires_at")):
-                    logger.warning(
-                        "otp expired before delivery — skipping event %s "
-                        "(channel %s, destination %s); challenge TTL elapsed",
-                        event_id,
-                        channel,
-                        mask_destination(destination),
-                    )
-                    return
-                await self._delivery.deliver_otp(
-                    event_id=event_id, channel=channel, destination=destination, code=code
-                )
-                return
+        if event_type in OTP_EVENT_TYPES and any(field in payload for field in _ROUTING_FIELDS):
+            await self._deliver_routed(event_id, payload)
+            return
+        # Non-OTP events, and OTP events with NO routing fields at all
+        # (genuine legacy rows enqueued before the payload carried
+        # them), keep the previous fallback behavior unchanged.
         await self._fallback.send(event_id, event_type, payload)
+
+    async def _deliver_routed(self, event_id: str, payload: dict[str, Any]) -> None:
+        channel = payload.get("channel")
+        destination = payload.get("destination")
+        code = payload.get("code")
+        if not (
+            isinstance(channel, str) and isinstance(destination, str) and isinstance(code, str)
+        ):
+            # SOME routing fields are present, so the routing-aware
+            # enqueue path wrote this event — wrong types are an enqueue
+            # BUG, not a legacy row (#18). Raise loudly (types only,
+            # never values: the payload holds the code and destination)
+            # so the outbox retries/dead-letters instead of the stub
+            # silently "delivering" the OTP.
+            msg = (
+                f"malformed OTP routing payload for event {event_id}: routing fields "
+                f"present but not all strings (channel={type(channel).__name__}, "
+                f"destination={type(destination).__name__}, code={type(code).__name__})"
+            )
+            raise ValueError(msg)
+        expires_at = _parse_expiry(event_id, payload.get("expires_at"))
+        if expires_at is not None and datetime.now(UTC) >= expires_at:
+            logger.warning(
+                "otp expired before delivery — skipping event %s "
+                "(channel %s, destination %s); challenge TTL elapsed",
+                event_id,
+                channel,
+                mask_destination(destination),
+            )
+            return
+        await self._delivery.deliver_otp(
+            event_id=event_id, channel=channel, destination=destination, code=code
+        )
 
 
 def default_otp_delivery() -> OtpDelivery:

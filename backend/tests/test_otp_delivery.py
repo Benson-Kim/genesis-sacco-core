@@ -143,7 +143,9 @@ def test_routing_provider_hands_non_otp_events_to_the_fallback() -> None:
 
 def test_routing_provider_falls_back_for_legacy_otp_payloads() -> None:
     """OTP events enqueued BEFORE payloads carried routing fields (rows
-    in flight during a deploy) keep the previous stub behavior."""
+    in flight during a deploy) keep the previous stub behavior. LEGACY
+    means NO routing fields at all — the fallback direction of the
+    malformed-vs-legacy rule (#18); the raise direction is below."""
 
     async def run() -> None:
         port = RecordingPort()
@@ -152,6 +154,57 @@ def test_routing_provider_falls_back_for_legacy_otp_payloads() -> None:
         await provider.send("evt-legacy", "auth.otp_requested", {"user_id": "u", "code": "123456"})
         assert port.deliveries == []
         assert fallback.delivered_event_ids == ["evt-legacy"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("case", "payload"),
+    [
+        ("null channel", {"channel": None, "destination": "m@x.com", "code": "123456"}),
+        ("non-str destination", {"channel": "email", "destination": 7, "code": "123456"}),
+        ("missing code", {"channel": "email", "destination": "m@x.com"}),
+        ("partial fields", {"destination": "m@x.com", "code": "123456"}),
+        (
+            "bad expires_at type",
+            {"channel": "email", "destination": "m@x.com", "code": "123456", "expires_at": 99},
+        ),
+        (
+            "unparseable expires_at",
+            {
+                "channel": "email",
+                "destination": "m@x.com",
+                "code": "123456",
+                "expires_at": "not-a-date",
+            },
+        ),
+    ],
+)
+def test_malformed_routing_payload_raises_instead_of_stub_delivering(
+    case: str, payload: dict[str, object]
+) -> None:
+    """#18: SOME routing fields present but malformed = an enqueue BUG.
+
+    The old behavior silently degraded to the stub — a future bug
+    writing channel: null would be “delivered” by the stub and marked
+    done. Now it raises so the outbox retries/dead-letters (and the
+    dead letter is redacted, #20). Falsifiable both ways: the legacy
+    test above proves no-fields still falls back; this proves
+    some-fields-malformed reaches NEITHER the port NOR the fallback.
+    The error message carries field TYPES only — never the code or
+    destination values (no PII in last_error at rest)."""
+
+    async def run() -> None:
+        port = RecordingPort()
+        fallback = StubProvider(channel="stub")
+        provider = OtpRoutingProvider(port, fallback)
+        with pytest.raises(ValueError, match="malformed OTP routing payload") as excinfo:
+            await provider.send("evt-bug", "auth.otp_requested", dict(payload))
+        assert port.deliveries == []
+        assert fallback.delivered_event_ids == []
+        # Types only, never values: the message must not leak PII.
+        assert "123456" not in str(excinfo.value)
+        assert "m@x.com" not in str(excinfo.value)
 
     asyncio.run(run())
 
