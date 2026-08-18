@@ -118,6 +118,19 @@ def test_member_portal_statements_are_index_served() -> None:
     async def run() -> None:
         tid, _, _ = await seed_actor()
         mid = await _seed_member_with_loans(tid)
+        # Cardinality that discriminates (the tiny-CI-tables
+        # discipline, the test_idnumber_lookup precedent): with only
+        # one member's loans in the book every loans index ties on
+        # cost and the planner may enter through the partial
+        # idx_loans_active_scan (member_id demoted to a Filter — the
+        # exact shape this gate exists to reject). Decoy members with
+        # their own active loans make the tenant-wide entry points
+        # strictly more expensive, and ANALYZE hands the planner the
+        # real row counts, so the winning plan must enter through the
+        # member probe — while dropping idx_loans_member still fails
+        # the asserts below (no surviving plan can name it).
+        for _ in range(8):
+            await _seed_member_with_loans(tid)
 
         count_params: dict[str, object] = {
             "mid": str(mid),
@@ -138,6 +151,7 @@ def test_member_portal_statements_are_index_served() -> None:
         page_params: dict[str, object] = {"tid": str(tid), "mid": str(mid), "limit": 21}
 
         async with tenant_session(factory(), tid) as session:
+            await session.execute(text("ANALYZE loans, members, loan_products"))
             await session.execute(text("SET LOCAL enable_seqscan = off"))
             count_plan = await _explain(session, MEMBER_LOAN_COUNT_SQL, count_params)
             page_plan = await _explain(session, page_sql, page_params)
@@ -147,7 +161,8 @@ def test_member_portal_statements_are_index_served() -> None:
         OUT_PATH.write_text(
             "ADR-0007 member read surface EXPLAIN (ANALYZE, BUFFERS) — captured\n"
             "in CI against the migrated Postgres service under the RLS app\n"
-            "role, enable_seqscan=off (tiny CI tables): both statements enter\n"
+            "role, enable_seqscan=off, decoy members seeded + ANALYZE so the\n"
+            "cardinality discriminates (tiny CI tables): both statements enter\n"
             "loans through idx_loans_member (0001); the loan page's residual\n"
             "top-N orders ONE member's loans only (bounded by lending\n"
             "reality). The member transactions/statement pages reuse the\n"
