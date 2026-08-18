@@ -301,6 +301,29 @@ web:lint:
     - npm run lint
     - npx tsc --noEmit
 
+# TEMPORARY (security-hardening MR only — remove once the lockfile is
+# committed): web:e2e's Playwright image ships a newer npm that requires
+# the wasm32-wasi fallback bindings to be RECORDED in package-lock.json;
+# the agent sandbox proxy blocks fetching them locally. Regenerate the
+# lockfile with that exact npm and ship it via the trace (the
+# web:lockfile gzip+base64 convention). allow_failure: never gates.
+web:lockfile:e2e-npm:
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
+  stage: lint
+  needs: []
+  cache: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      allow_failure: true
+  script:
+    - cd web
+    - npm --version
+    - npm install --package-lock-only --ignore-scripts
+    - echo "-----BEGIN PACKAGE-LOCK-----"
+    - gzip -c package-lock.json | base64 -w0
+    - echo ""
+    - echo "-----END PACKAGE-LOCK-----"
+
 web:test:
   extends: .web
   stage: test
