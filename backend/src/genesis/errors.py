@@ -88,7 +88,16 @@ class UnauthenticatedError(AppError):
 
 
 class RateLimitedError(AppError):
-    """Raised when an auth-sensitive endpoint is called too often (least disclosure)."""
+    """Raised when an auth-sensitive endpoint is called too often (least disclosure).
+
+    ``retry_after`` travels to the client as the standard ``Retry-After``
+    response header (whole seconds until a retry may succeed) — a coarse
+    hint only, never bucket names, counts, or limits.
+    """
 
     status_code = 429
     category = ErrorCategory.RATE_LIMITED
+
+    def __init__(self, message: str = "", retry_after: int = 60) -> None:
+        super().__init__(message)
+        self.retry_after = max(1, int(retry_after))

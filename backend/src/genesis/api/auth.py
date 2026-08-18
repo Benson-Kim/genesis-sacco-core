@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, model_validator
 from genesis.application import auth as auth_service
 from genesis.errors import RateLimitedError, UnauthenticatedError
 from genesis.infrastructure.db import get_sessionmaker
-from genesis.infrastructure.rate_limit import check_rate_limit
+from genesis.infrastructure.rate_limit import consume_rate_limit
 from genesis.infrastructure.tenancy import tenant_session
 from genesis.settings import get_settings
 
@@ -116,6 +116,40 @@ def resolve_client_ip(request: Request) -> str:
     return "invalid-forwarded-for"
 
 
+async def _apply_rate_buckets(request: Request, *, allow_on_outage: bool) -> None:
+    """Spend both auth rate buckets and decide (shared guard core).
+
+    ``allow_on_outage=True`` is the logout carve-out: when EVERY denial is
+    a fail-closed limiter-backend failure (``degraded``) rather than a
+    genuine over-limit, the call proceeds. A genuine over-limit denies
+    regardless of the flag.
+    """
+    client_ip = resolve_client_ip(request)
+    raw_tenant = request.headers.get("x-tenant-id", "")
+    try:
+        tenant = str(uuid.UUID(raw_tenant))
+    except ValueError:
+        tenant = "invalid"
+    settings = get_settings()
+    tenant_key = f"auth:{request.url.path}:{tenant}:{client_ip}"
+    ip_key = f"auth:ip:{client_ip}"
+    decisions = (
+        await consume_rate_limit(tenant_key, settings.auth_rate_limit_per_minute),
+        await consume_rate_limit(ip_key, settings.auth_rate_limit_ip_per_minute),
+    )
+    if all(d.allowed for d in decisions):
+        return
+    genuine = [d for d in decisions if not d.allowed and not d.degraded]
+    if not genuine and allow_on_outage:
+        # Every denial is a limiter-outage artifact, none is over-limit:
+        # token revocation stays available (it only reduces privilege).
+        return
+    denied = genuine or [d for d in decisions if not d.allowed]
+    raise RateLimitedError(
+        "auth rate limit exceeded", retry_after=max(d.retry_after for d in denied)
+    )
+
+
 async def _rate_guard(request: Request) -> None:
     """Two-bucket sliding-window guard for the pre-auth endpoints (the house gates).
 
@@ -127,21 +161,24 @@ async def _rate_guard(request: Request) -> None:
     does not bypass the guard either. Both buckets key on the SAME
     resolved client IP (trusted-proxy aware; resolve_client_ip). Both
     buckets must pass; both are spent on every call so neither can be
-    starved of evidence.
+    starved of evidence. FAIL CLOSED on a limiter outage: these endpoints
+    grant or extend privilege, so a broken limiter denies.
     """
-    client_ip = resolve_client_ip(request)
-    raw_tenant = request.headers.get("x-tenant-id", "")
-    try:
-        tenant = str(uuid.UUID(raw_tenant))
-    except ValueError:
-        tenant = "invalid"
-    settings = get_settings()
-    tenant_key = f"auth:{request.url.path}:{tenant}:{client_ip}"
-    ip_key = f"auth:ip:{client_ip}"
-    tenant_allowed = await check_rate_limit(tenant_key, settings.auth_rate_limit_per_minute)
-    ip_allowed = await check_rate_limit(ip_key, settings.auth_rate_limit_ip_per_minute)
-    if not (tenant_allowed and ip_allowed):
-        raise RateLimitedError("auth rate limit exceeded")
+    await _apply_rate_buckets(request, allow_on_outage=False)
+
+
+async def _logout_rate_guard(request: Request) -> None:
+    """The logout fail-policy (a deliberate decision, not a default).
+
+    Logout is token REVOCATION — the one auth endpoint where fail-closed
+    points the wrong way: blocking it during a Redis outage would keep
+    stolen refresh tokens alive exactly when observability is degraded,
+    and logging out only ever REDUCES privilege. So: normal over-limit
+    denials still apply (logout is not an unmetered endpoint), but a
+    denial caused purely by a limiter-backend failure lets revocation
+    proceed.
+    """
+    await _apply_rate_buckets(request, allow_on_outage=True)
 
 
 @router.post("/otp/request", status_code=202, dependencies=[Depends(_rate_guard)])
@@ -197,7 +234,7 @@ async def refresh(body: RefreshBody, request: Request) -> TokenResponse:
     )
 
 
-@router.post("/logout", status_code=204, dependencies=[Depends(_rate_guard)])
+@router.post("/logout", status_code=204, dependencies=[Depends(_logout_rate_guard)])
 async def logout(body: RefreshBody, request: Request) -> Response:
     tenant_id = tenant_id_from_headers(request)
     factory = get_sessionmaker(get_settings().database_url)

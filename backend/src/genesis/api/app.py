@@ -33,7 +33,7 @@ from genesis.api.tenant_settings import router as tenant_settings_router
 from genesis.api.transactions import router as transactions_router
 from genesis.api.users import router as users_router
 from genesis.application.pagination import assert_cursor_signing_key_configured
-from genesis.errors import AppError, ErrorCategory, PayloadSchemaError
+from genesis.errors import AppError, ErrorCategory, PayloadSchemaError, RateLimitedError
 from genesis.logging import configure_logging, correlation_id_var
 from genesis.settings import (
     assert_dev_otp_display_dev_only,
@@ -123,7 +123,12 @@ def create_app() -> FastAPI:
             # the class contract pins). Every other AppError — including
             # plain UnprocessableError — stays a category-only envelope.
             content["detail"] = str(exc)
-        return JSONResponse(status_code=exc.status_code, content=content)
+        headers: dict[str, str] | None = None
+        if isinstance(exc, RateLimitedError):
+            # Standard retry hint in whole seconds — a coarse signal only,
+            # never bucket names, counts, or limits (least disclosure).
+            headers = {"Retry-After": str(exc.retry_after)}
+        return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception) -> JSONResponse:

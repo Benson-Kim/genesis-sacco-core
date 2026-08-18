@@ -48,6 +48,15 @@ class BrokenRedis(FakeRedis):
         raise RedisError("connection refused")
 
 
+class DroppedConnectionRedis(FakeRedis):
+    """Raises a bare OSError (ConnectionResetError) — the socket-level
+    failure arm of the except clause, distinct from redis-py's own
+    RedisError hierarchy."""
+
+    async def eval(self, script: str, numkeys: int, key: str, *args: str) -> list[int]:
+        raise ConnectionResetError("connection reset by peer")
+
+
 @pytest.fixture()
 def _redis_env(monkeypatch: pytest.MonkeyPatch):
     """Configure a Redis URL and reset the module-level limiter state."""
@@ -108,6 +117,29 @@ def test_redis_errors_fail_closed_and_log_once_per_window(
 
     records = [r for r in caplog.records if r.name == "genesis.infrastructure.rate_limit"]
     # Once per window — five failing calls across two windows log twice.
+    assert len(records) == 2
+
+
+def test_os_errors_fail_closed_and_log_once_per_window(
+    _redis_env,
+    clock: dict[str, float],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The previously untested OSError arm of the except clause: a
+    socket-level ConnectionResetError (not a RedisError) must deny and
+    log once per window — same falsifiability bar as the RedisError test."""
+    monkeypatch.setattr(rate_limit, "_redis_client", DroppedConnectionRedis())
+
+    async def run(calls: int) -> list[bool]:
+        return [await check_rate_limit("unit:os-fail-closed", 100) for _ in range(calls)]
+
+    with caplog.at_level(logging.ERROR, logger="genesis.infrastructure.rate_limit"):
+        assert asyncio.run(run(3)) == [False, False, False]
+        clock["now"] += WINDOW_SECONDS
+        assert asyncio.run(run(2)) == [False, False]
+
+    records = [r for r in caplog.records if r.name == "genesis.infrastructure.rate_limit"]
     assert len(records) == 2
 
 

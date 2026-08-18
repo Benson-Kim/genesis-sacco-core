@@ -19,7 +19,9 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from genesis.api.auth import _rate_guard, resolve_client_ip
+from redis.exceptions import RedisError
+
+from genesis.api.auth import _logout_rate_guard, _rate_guard, resolve_client_ip
 from genesis.errors import RateLimitedError
 from genesis.infrastructure import rate_limit
 from genesis.settings import get_settings
@@ -190,8 +192,50 @@ def test_request_without_client_uses_the_shared_unknown_bucket(_guard_limits) ->
     assert resolve_client_ip(Request(scope)) == "unknown"
 
 
+class _OutageRedis:
+    """Every command fails, as during a Redis outage."""
+
+    async def eval(self, *args: object) -> list[int]:
+        raise RedisError("connection refused")
+
+
+def test_logout_guard_allows_revocation_during_limiter_outage(
+    _guard_limits, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deliberate logout fail-policy: a limiter OUTAGE must not block
+    token revocation (logout only reduces privilege), while every other
+    auth endpoint stays fail-closed during the same outage."""
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    get_settings.cache_clear()
+    monkeypatch.setattr(rate_limit, "_redis_client", _OutageRedis())
+    monkeypatch.setattr(rate_limit, "_last_error_window", None)
+
+    async def run() -> None:
+        # Revocation proceeds through the outage...
+        await _logout_rate_guard(_request(str(uuid.uuid4()), "203.0.113.7"))
+        # ...while the privilege-granting endpoints stay fail-closed.
+        with pytest.raises(RateLimitedError):
+            await _rate_guard(_request(str(uuid.uuid4()), "203.0.113.7"))
+
+    asyncio.run(run())
+
+
+def test_logout_guard_still_denies_a_genuine_over_limit(_guard_limits) -> None:
+    """Logout is NOT unmetered: with a healthy limiter, the outage
+    carve-out never fires and over-limit calls are denied as usual."""
+
+    async def run() -> None:
+        for _ in range(5):
+            await _logout_rate_guard(_request(str(uuid.uuid4()), "203.0.113.8"))
+        with pytest.raises(RateLimitedError):
+            await _logout_rate_guard(_request(str(uuid.uuid4()), "203.0.113.8"))
+
+    asyncio.run(run())
+
+
 def test_guard_is_wired_into_the_auth_routes(_guard_limits, client: TestClient) -> None:
     statuses: list[int] = []
+    res = None
     for i in range(4):
         res = client.post(
             "/auth/otp/request",
@@ -201,3 +245,8 @@ def test_guard_is_wired_into_the_auth_routes(_guard_limits, client: TestClient) 
         statuses.append(res.status_code)
     # Three invalid-header 401s consume the shared bucket; the fourth is 429.
     assert statuses == [401, 401, 401, 429]
+    # The 429 carries a Retry-After hint on the wire: whole seconds only,
+    # never bucket names, counts, or limits (least disclosure).
+    assert res is not None
+    assert res.headers["Retry-After"] == str(rate_limit.WINDOW_SECONDS)
+    assert set(res.json().keys()) == {"category", "correlation_id"}
