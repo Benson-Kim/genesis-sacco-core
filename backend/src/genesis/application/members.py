@@ -45,6 +45,13 @@ from genesis.errors import ConflictError, InvalidInputError, NotFoundError, Unpr
 MEMBERS_LIST_SCOPE = "members.list"
 STATEMENT_SCOPE = "members.statement"
 
+#: Cursor scope id for the MEMBER self-service statement (ADR-0007):
+#: the member surface reuses member_statement verbatim (reuse-first)
+#: but mints cursors under its OWN scope, so a staff statement cursor
+#: is a sanitized 400 on the member route and vice versa (the FM1
+#: audience separation extended to pagination state).
+MEMBER_STATEMENT_SCOPE = "member.statement"
+
 
 def parse_phone(raw: str | None) -> str | None:
     """Normalize a caller-supplied phone to E.164 storage.
@@ -1090,12 +1097,18 @@ async def member_statement(
     *,
     cursor: str | None = None,
     limit: int = 20,
+    cursor_scope: str = STATEMENT_SCOPE,
 ) -> StatementPage:
     """Keyset-paginated member statement, newest first (scalability).
 
     Mirrors the prototype statement columns (date, ref, type, channel,
     amount). The cursor is '<occurred_at ISO>|<txn id>' so every page is
     one index scan on (tenant_id, member_id, occurred_at) at any depth.
+
+    cursor_scope (ADR-0007): the signed-cursor scope this call decodes
+    AND mints under. Defaults to the staff statement scope; the member
+    self-service wrapper passes MEMBER_STATEMENT_SCOPE so cursors never
+    replay across the staff/member boundary.
     """
     # Existence check keeps semantics consistent with GET /members/{id}:
     # unknown ids (including cross-tenant ids hidden by RLS) surface 404
@@ -1113,7 +1126,7 @@ async def member_statement(
         # the inner '<occurred_at ISO>|<txn id>' parse stays as
         # defense-in-depth on the plaintext.
         cursor = decode_cursor(
-            cursor, tenant_id=tenant_id, endpoint=STATEMENT_SCOPE, entity="statement"
+            cursor, tenant_id=tenant_id, endpoint=cursor_scope, entity="statement"
         )
         ts_raw, _, id_raw = cursor.partition("|")
         try:
@@ -1152,6 +1165,6 @@ async def member_statement(
     if len(rows) > limit and page_rows:
         last = page_rows[-1]
         next_cursor = encode_cursor(
-            f"{last[0].isoformat()}|{last[1]}", tenant_id=tenant_id, endpoint=STATEMENT_SCOPE
+            f"{last[0].isoformat()}|{last[1]}", tenant_id=tenant_id, endpoint=cursor_scope
         )
     return StatementPage(items=items, next_cursor=next_cursor)

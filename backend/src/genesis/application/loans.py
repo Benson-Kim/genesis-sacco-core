@@ -78,6 +78,14 @@ _LOAN_LABEL_JOINS = (
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 LOAN_BOOK_SCOPE = "loan_book.list"
 
+#: Cursor scope id for the MEMBER self-service loan listing (ADR-0007):
+#: the member surface reuses this module's list statement with the
+#: principal-derived member filter but mints cursors under its OWN
+#: scope, so a staff loan-book cursor is a sanitized 400 on the member
+#: route and vice versa (the FM1 audience separation extended to
+#: pagination state).
+MEMBER_LOANS_SCOPE = "member.loans.list"
+
 
 @dataclass(frozen=True)
 class LoanRecord:
@@ -178,7 +186,27 @@ def _row_to_loan(row: Any) -> LoanRecord:
     )
 
 
-async def get_loan(session: AsyncSession, tenant_id: uuid.UUID, loan_id: uuid.UUID) -> LoanRecord:
+async def get_loan(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    loan_id: uuid.UUID,
+    *,
+    member_id: uuid.UUID | None = None,
+) -> LoanRecord:
+    """Single-loan read; optionally OWNERSHIP-SCOPED in the query.
+
+    member_id (ADR-0007): when the member self-service detail route
+    passes the principal-derived member id, the ownership predicate is
+    part of the statement itself — never fetch-then-check — so another
+    member's loan is indistinguishable from a nonexistent one (404,
+    least disclosure; no figures on any rejection path).
+    """
+    # The ownership fragment is a static literal chosen in code; the
+    # value is a bound parameter (v1.1 rule 6).
+    ownership = "AND loans.member_id = CAST(:mid AS uuid) " if member_id is not None else ""
+    params: dict[str, object] = {"id": str(loan_id), "tid": str(tenant_id)}
+    if member_id is not None:
+        params["mid"] = str(member_id)
     row = (
         await session.execute(
             # Explicit tenant predicate on top of RLS: defence in depth
@@ -187,9 +215,9 @@ async def get_loan(session: AsyncSession, tenant_id: uuid.UUID, loan_id: uuid.UU
                 f"SELECT {_LOAN_COLS} FROM loans "  # noqa: S608
                 f"{_LOAN_LABEL_JOINS}"
                 "WHERE loans.id = CAST(:id AS uuid) "
-                "AND loans.tenant_id = CAST(:tid AS uuid)"
+                f"AND loans.tenant_id = CAST(:tid AS uuid) {ownership}"
             ),
-            {"id": str(loan_id), "tid": str(tenant_id)},
+            params,
         )
     ).first()
     if row is None:
@@ -205,11 +233,21 @@ async def list_loans(
     classification: LoanClass | None = None,
     cursor: str | None = None,
     limit: int = 20,
+    member_id: uuid.UUID | None = None,
+    cursor_scope: str = LOAN_BOOK_SCOPE,
 ) -> tuple[list[LoanRecord], str | None]:
     """Keyset-paginated loan book, newest first, page cap 100 (scalability).
 
     Backed by idx_loans_created_keyset (tenant_id, created_at DESC,
     id DESC) so page depth never degrades the scan.
+
+    member_id / cursor_scope (ADR-0007): the member self-service list
+    passes the principal-derived member id — ownership is a predicate
+    IN the statement, never a post-fetch check — and its OWN cursor
+    scope (MEMBER_LOANS_SCOPE), so member cursors never replay against
+    the staff loan book. The member-filtered probe rides idx_loans_member
+    (tenant_id, member_id); the residual top-N order runs over one
+    member's loans only — bounded by lending reality, never the book.
     """
     limit = max(1, min(limit, 100))
     # Explicit tenant predicate on top of RLS (defence in depth, gate
@@ -219,6 +257,9 @@ async def list_loans(
     # idx_loans_created_keyset.
     clauses: list[str] = ["loans.tenant_id = CAST(:tid AS uuid)"]
     params: dict[str, object] = {"tid": str(tenant_id), "limit": limit + 1}
+    if member_id is not None:
+        clauses.append("loans.member_id = CAST(:mid AS uuid)")
+        params["mid"] = str(member_id)
     if status is not None:
         clauses.append("loans.status = :status")
         params["status"] = status.value
@@ -228,7 +269,7 @@ async def list_loans(
     if cursor:
         # Opaque signed cursor: verify+unseal first;
         # the plaintext parse stays as defense-in-depth.
-        inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=LOAN_BOOK_SCOPE, entity="loan")
+        inner = decode_cursor(cursor, tenant_id=tenant_id, endpoint=cursor_scope, entity="loan")
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="loan")
         clauses.append("(loans.created_at, loans.id) < (:c_ts, CAST(:c_id AS uuid))")
     where = f"WHERE {' AND '.join(clauses)} " if clauses else ""
@@ -252,7 +293,7 @@ async def list_loans(
         next_cursor = encode_cursor(
             build_created_id_cursor(last[0], last[1]),
             tenant_id=tenant_id,
-            endpoint=LOAN_BOOK_SCOPE,
+            endpoint=cursor_scope,
         )
     return items, next_cursor
 

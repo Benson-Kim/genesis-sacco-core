@@ -77,6 +77,13 @@ TXN_LABEL_JOIN = (
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 TXN_LIST_SCOPE = "transactions.list"
 
+#: Cursor scope id for the MEMBER self-service listing (ADR-0007): the
+#: member surface shares this module's list statement (reuse-first) but
+#: mints cursors under its OWN scope, so a staff transactions cursor is
+#: a sanitized 400 on the member route and vice versa — the FM1
+#: audience separation extended to pagination state (least disclosure).
+MEMBER_TXN_LIST_SCOPE = "member.transactions.list"
+
 
 @dataclass(frozen=True)
 class AccountTxnResult:
@@ -467,12 +474,19 @@ async def list_transactions(
     date_to: date | None = None,
     cursor: str | None = None,
     limit: int = 20,
+    cursor_scope: str = TXN_LIST_SCOPE,
 ) -> tuple[list[TransactionRecord], str | None]:
     """Keyset-paginated ledger listing, newest first, page cap 100 (scalability).
 
     Filters mirror the prototype columns (date, ref, member, type,
     DR/CR, channel). Backed by idx_txns_occurred_keyset and, for the
     member-filtered page, idx_txns_member_keyset.
+
+    cursor_scope (ADR-0007): the signed-cursor scope id this call
+    decodes AND mints under. Defaults to the staff list scope; the
+    member self-service wrapper passes MEMBER_TXN_LIST_SCOPE so member
+    cursors can never replay against the staff list (or vice versa) —
+    the statement, ordering and page walk are byte-identical.
     """
     limit = max(1, min(limit, 100))
     # Explicit tenant predicate on top of RLS (defence in depth, gate
@@ -511,7 +525,7 @@ async def list_transactions(
         # Opaque signed cursor: verify+unseal first;
         # the plaintext parse stays as defense-in-depth.
         inner = decode_cursor(
-            cursor, tenant_id=tenant_id, endpoint=TXN_LIST_SCOPE, entity="transaction"
+            cursor, tenant_id=tenant_id, endpoint=cursor_scope, entity="transaction"
         )
         params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="transaction")
         clauses.append("(occurred_at, transactions.id) < (:c_ts, CAST(:c_id AS uuid))")
@@ -536,7 +550,7 @@ async def list_transactions(
         next_cursor = encode_cursor(
             build_created_id_cursor(last[6], last[0]),
             tenant_id=tenant_id,
-            endpoint=TXN_LIST_SCOPE,
+            endpoint=cursor_scope,
         )
     return items, next_cursor
 
