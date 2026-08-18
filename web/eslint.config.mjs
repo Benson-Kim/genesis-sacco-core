@@ -21,11 +21,6 @@ const eslintConfig = [
       "next-env.d.ts",
       // GENERATED from OpenAPI — never hand-edited (MASTER_PROMPT §2.1).
       "packages/api-client/src/generated/**",
-      // Passenger startup file (cPanel "Setup Node.js App" runs it
-      // directly as CommonJS): require() and server-side console
-      // logging are the point — it is a runtime shim, not part of the
-      // Next.js TypeScript codebase the browser-console gate protects.
-      "server.js",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { Button } from "@genesis/design-system";
+import { Button, Card } from "@genesis/design-system";
 import { usePermissions } from "@/modules/authz/usePermissions";
 import { can } from "@/modules/authz/schemas";
 import styles from "./access-control.module.css";

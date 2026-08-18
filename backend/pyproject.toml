@@ -38,12 +38,6 @@ where = ["src"]
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
-# Dev-only volume-data generator (optional deps: httpx/faker/rich; drives a
-# local API). It landed through a direct merge before develop-branch
-# pipelines existed and has never been lint/format-clean; excluded pending
-# a dedicated cleanup MR so the newly-enforced develop CI gate stays honest
-# for production code. It is never imported by src/ or tests/.
-extend-exclude = ["scripts/generate_dev_data.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "BLE", "S", "T20", "SIM", "RUF"]
