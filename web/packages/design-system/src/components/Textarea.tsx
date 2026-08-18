@@ -1,7 +1,7 @@
 import type { TextareaHTMLAttributes } from "react";
 import styles from "./FormElements.module.css";
 
-export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
+export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {}
 
 /**
  * Styled textarea. Applies `.formControl` from FormElements.module.css;
