@@ -110,6 +110,11 @@ export function FlowsBarChart({ flows }: Readonly<{ flows: FlowsChart }>) {
                     <span className={`${styles.legendSwatch} ${styles.swatchNavy}`} /> Disbursed
                 </span>
             </div>
+            {/* The bars are percentages of the SERVER's axis_max; without
+                this caption the geometry carries no magnitude. Rendered
+                verbatim through fmtKes — never re-derived from the
+                monthly figures. */}
+            <div className={styles.scaleNote}>Bar scale: 0 – {fmtKes(flows.axis_max)}</div>
         </div>
     );
 }

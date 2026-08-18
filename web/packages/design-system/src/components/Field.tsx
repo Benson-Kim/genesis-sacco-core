@@ -23,10 +23,15 @@ export interface FieldProps {
 export function Field({ label, htmlFor, required, children }: FieldProps) {
   return (
     <div className={styles.field}>
-      <label className={styles.label} htmlFor={htmlFor}>
-        {label}
+      {/* The aria-hidden asterisk lives OUTSIDE the <label> element so the
+          label's accessible text stays exactly `label` (testing-library /
+          AT label resolution); the wrapper span keeps the flex visuals. */}
+      <span className={styles.labelRow}>
+        <label className={styles.label} htmlFor={htmlFor}>
+          {label}
+        </label>
         {required === true && <Required />}
-      </label>
+      </span>
       {children}
     </div>
   );
