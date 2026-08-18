@@ -134,6 +134,12 @@ const COLUMNS: Column<MemberDetail>[] = [
         render: (member) => member.aggregates.loans_outstanding,
     },
     {
+        key: "guarantees",
+        header: "Guarantees",
+        align: "right",
+        render: (member) => member.aggregates.guarantees_pledged,
+    },
+    {
         key: "status",
         header: "Status",
         align: "right",
