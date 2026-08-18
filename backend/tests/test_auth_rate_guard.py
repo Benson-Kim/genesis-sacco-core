@@ -50,7 +50,7 @@ def _guard_limits(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("AUTH_RATE_LIMIT_IP_PER_MINUTE", "5")
     monkeypatch.delenv("REDIS_URL", raising=False)
     get_settings.cache_clear()
-    monkeypatch.setattr(rate_limit, "_local_counts", {})
+    monkeypatch.setattr(rate_limit, "_local_events", {})
     monkeypatch.setattr(rate_limit.time, "time", lambda: 1_000_000_000.0)
     yield
     get_settings.cache_clear()

@@ -1,36 +1,50 @@
-"""Fixed-window limiter suite: local fallback, pooled-client reuse,
-fail-closed Redis errors, and window rollover (falsifiable both ways)."""
+"""Sliding-window limiter suite: local fallback, pooled-client reuse,
+fail-closed Redis errors, window expiry, and the boundary-burst falsifier
+that the old fixed-window algorithm fails (falsifiable both ways)."""
 
 import asyncio
 import logging
+import math
 import uuid
 
 import pytest
 from redis.exceptions import RedisError
 
 from genesis.infrastructure import rate_limit
-from genesis.infrastructure.rate_limit import WINDOW_SECONDS, check_rate_limit
+from genesis.infrastructure.rate_limit import (
+    WINDOW_SECONDS,
+    check_rate_limit,
+    consume_rate_limit,
+)
 from genesis.settings import get_settings
 
 
 class FakeRedis:
-    """In-memory stand-in for the pooled async client."""
+    """In-memory stand-in for the pooled async client.
+
+    ``eval`` mirrors the module's Lua sliding-log semantics step for step
+    (prune, count, admit-or-report) — the atomicity itself is Redis's
+    single-threaded script guarantee and is not re-provable here.
+    """
 
     def __init__(self) -> None:
-        self.counts: dict[str, int] = {}
+        self.events: dict[str, list[tuple[float, str]]] = {}
 
-    async def incr(self, key: str) -> int:
-        self.counts[key] = self.counts.get(key, 0) + 1
-        return self.counts[key]
-
-    async def expire(self, key: str, ttl: int) -> bool:
-        return True
+    async def eval(self, script: str, numkeys: int, key: str, *args: str) -> list[int]:
+        now, window, limit, member = float(args[0]), int(args[1]), int(args[2]), args[3]
+        events = [(stamp, m) for (stamp, m) in self.events.get(key, []) if stamp > now - window]
+        if len(events) < limit:
+            events.append((now, member))
+            self.events[key] = events
+            return [1, 0]
+        self.events[key] = events
+        return [0, max(1, math.ceil(events[0][0] + window - now))]
 
 
 class BrokenRedis(FakeRedis):
     """Raises on every command, exactly as an unreachable Redis would."""
 
-    async def incr(self, key: str) -> int:
+    async def eval(self, script: str, numkeys: int, key: str, *args: str) -> list[int]:
         raise RedisError("connection refused")
 
 
@@ -109,6 +123,84 @@ def test_redis_window_rollover_allows_again(
         return [*first, await check_rate_limit(key, 1)]
 
     assert asyncio.run(run()) == [True, False, True]
+
+
+def test_redis_boundary_burst_cannot_double_the_limit(
+    _redis_env, clock: dict[str, float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """THE FALSIFIER for issue #14: the old fixed-window algorithm keyed on
+    ``int(time.time()) // 60``, so a burst spent just before a window edge
+    could be repeated just after it — 2x the limit in seconds. This test
+    FAILS against that algorithm (the second burst would be all-True) and
+    passes against the sliding log."""
+    monkeypatch.setattr(rate_limit, "_redis_client", FakeRedis())
+    key = f"unit:{uuid.uuid4().hex}"
+    # 1_000_000_020 is a multiple of 60: a fixed-window edge. Park the
+    # clock one second before it.
+    clock["now"] = 1_000_000_019.0
+
+    async def run() -> tuple[list[bool], list[bool], bool]:
+        before_edge = [await check_rate_limit(key, 3) for _ in range(3)]
+        clock["now"] += 2.0  # crosses the old fixed-window edge
+        after_edge = [await check_rate_limit(key, 3) for _ in range(3)]
+        clock["now"] += WINDOW_SECONDS  # the original spend has aged out
+        return before_edge, after_edge, await check_rate_limit(key, 3)
+
+    before_edge, after_edge, recovered = asyncio.run(run())
+    assert before_edge == [True, True, True]
+    # The fixed window said [True, True, True] here — the burst doubled.
+    assert after_edge == [False, False, False]
+    assert recovered is True
+
+
+def test_local_boundary_burst_cannot_double_the_limit(
+    clock: dict[str, float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-process fallback carries the same sliding semantics."""
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    get_settings.cache_clear()
+    key = f"unit:{uuid.uuid4().hex}"
+    clock["now"] = 1_000_000_019.0
+
+    async def run() -> tuple[list[bool], list[bool], bool]:
+        before_edge = [await check_rate_limit(key, 3) for _ in range(3)]
+        clock["now"] += 2.0
+        after_edge = [await check_rate_limit(key, 3) for _ in range(3)]
+        clock["now"] += WINDOW_SECONDS
+        return before_edge, after_edge, await check_rate_limit(key, 3)
+
+    try:
+        before_edge, after_edge, recovered = asyncio.run(run())
+    finally:
+        get_settings.cache_clear()
+    assert before_edge == [True, True, True]
+    assert after_edge == [False, False, False]
+    assert recovered is True
+
+
+def test_denied_decisions_carry_a_retry_hint(
+    clock: dict[str, float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``retry_after`` counts down as the oldest event ages, never below 1,
+    and is 0 on an allowed call (no bucket internals beyond the hint)."""
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    get_settings.cache_clear()
+    key = f"unit:{uuid.uuid4().hex}"
+
+    async def run() -> tuple[int, int, int]:
+        first = await consume_rate_limit(key, 1)
+        denied_now = await consume_rate_limit(key, 1)
+        clock["now"] += 45.0
+        denied_later = await consume_rate_limit(key, 1)
+        return first.retry_after, denied_now.retry_after, denied_later.retry_after
+
+    try:
+        allowed_hint, hint_now, hint_later = asyncio.run(run())
+    finally:
+        get_settings.cache_clear()
+    assert allowed_hint == 0
+    assert hint_now == WINDOW_SECONDS
+    assert hint_later == WINDOW_SECONDS - 45
 
 
 def test_local_window_rollover_allows_again(
