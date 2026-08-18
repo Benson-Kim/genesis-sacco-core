@@ -1,0 +1,30 @@
+# Duo Agent Platform execution config for sacco-var.
+#
+# Why: agent sessions could not run pytest / import-linter / tsc locally --
+# PyPI and the npm registry were blocked (HTTP 403) by the sandbox network
+# policy, leaving `python -m py_compile` as the only local check. This file
+# provisions the minimum verification toolchain.
+#
+# SECURITY NOTE: this file is read from the DEFAULT BRANCH only and its
+# setup_script runs with the triggering user's composite-identity
+# credentials in every future flow. Keep the domain list minimal and
+# review changes here like production code.
+#
+# Postgres is deliberately NOT provisioned: DB-backed backend suites need
+# the CI service container (postgres:16-alpine + non-superuser genesis_app
+# role, no BYPASSRLS) and remain CI-verified. Local runs cover the pure
+# suites (rate limiter, OTP seam routing legs, cron-lock registry, etc.).
+
+setup_script:
+  - python3 -m pip install --quiet --upgrade pip || true
+  - python3 -m pip install --quiet -r backend/requirements.txt || echo "backend requirements install failed; CI remains the authority"
+  - python3 -m pip install --quiet -e backend || echo "editable install failed; CI remains the authority"
+  - python3 -m pip install --quiet pytest pytest-asyncio ruff import-linter || true
+  - (cd web && npm ci --no-audit --no-fund) || echo "npm ci failed (known lockfile desync until the baseline MR lands on develop)"
+
+network_policy:
+  include_recommended_allowed: true
+  allowed_domains:
+    - pypi.org
+    - files.pythonhosted.org
+    - registry.npmjs.org
