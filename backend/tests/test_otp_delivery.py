@@ -137,9 +137,7 @@ def test_routing_provider_falls_back_for_legacy_otp_payloads() -> None:
         port = RecordingPort()
         fallback = StubProvider(channel="stub")
         provider = OtpRoutingProvider(port, fallback)
-        await provider.send(
-            "evt-legacy", "auth.otp_requested", {"user_id": "u", "code": "123456"}
-        )
+        await provider.send("evt-legacy", "auth.otp_requested", {"user_id": "u", "code": "123456"})
         assert port.deliveries == []
         assert fallback.delivered_event_ids == ["evt-legacy"]
 

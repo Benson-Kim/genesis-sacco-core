@@ -53,8 +53,19 @@ def mask_destination(destination: str) -> str:
     return f"{destination[:2]}***{destination[-2:]}"
 
 
-class OtpChannelProvider(NotificationProvider.__class__.__mro_entries__ and object):  # type: ignore[misc]
-    """Placeholder — replaced below; see module docstring."""
+class OtpChannelProvider(Protocol):
+    """SMS/email provider adapter contract: one adapter per channel.
+
+    A real gateway implements exactly this and registers itself in
+    default_otp_delivery(). Raising propagates to the outbox dispatcher
+    (retry with backoff, dead-letter after MAX_ATTEMPTS).
+    """
+
+    channel: str
+
+    async def send_otp(self, *, destination: str, code: str) -> None:
+        """Send one OTP code to one destination. NEVER log the code."""
+        ...
 
 
 class LoggingOtpChannelProvider:
