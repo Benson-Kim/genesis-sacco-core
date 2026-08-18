@@ -100,12 +100,20 @@ archival follow-up (see below). New issues created during migration:
 The old remote was re-fetched at the end of the migration and every branch
 re-compared against sacco-var:
 
-- **Result: zero deltas.** No branch in `genesis-sacco-core` gained commits during
-  the migration window; no re-push was required. `develop` and `main` remained at
-  `a2f6a9ac` / `73c34cf4` in both projects.
+- **No branch in `genesis-sacco-core` gained commits during the migration window;
+  no re-push was required.** `develop` and `main` remained at `a2f6a9ac` /
+  `73c34cf4` in both projects.
+- One branch advanced **here** during the window (expected — sacco-var is the
+  source of truth): `duo/feature/adr0007-member-read-surface` moved from
+  `50ccb6f0` to `8899fe09` (a concurrent agent dropped the `0049_merge_heads.py`
+  revision and reset out-of-scope files), so sacco-var is strictly ahead of the
+  old project on that branch; the old copy (`50ccb6f0`) is a full ancestor.
 
 ## Follow-ups
 
 - #12 — disable GitHub pull mirroring (blocking true single-source-of-truth status).
-- Archive `mobto-group/genesis-sacco-core` (and the GitHub origin) after this
-  note's MR merges — tracked in a dedicated follow-up issue.
+- #16 — archive `mobto-group/genesis-sacco-core` and the GitHub origin after this
+  note's MR merges.
+- #17 — close the old project's duplicate issue set (#1–#11 there) before archival.
+- #19 — merge-queue coordination for the conflicting baseline fixes across !1/!3/!7
+  (partially addressed already: 0049 was dropped from !7's branch at `83d951f`).
