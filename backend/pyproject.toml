@@ -38,6 +38,11 @@ where = ["src"]
 target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
+# Dev-only volume data generator (never imported by src, never deployed):
+# deliberately uses random/print/aligned assignments, which trips S311/T201
+# and the formatter. Excluded so `ruff check .` / `ruff format --check .`
+# gate production code, not the local seeding tool.
+extend-exclude = ["scripts/generate_dev_data.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "BLE", "S", "T20", "SIM", "RUF"]
