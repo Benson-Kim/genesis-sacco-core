@@ -31,7 +31,19 @@ without blocking on a real SMS/email provider. This deployment runs with
 boot guard above; grepped, it's the only reference), so this does not
 silently change any other behavior. **This combination must never be used
 for the real production deployment** — that one needs a real delivery
-provider wired in first (new work, not scoped here).
+provider wired in first.
+
+**Update (security-hardening review): the delivery SEAM is now built,
+the transport still is not.** Issued OTPs ride the transactional outbox
+with routing fields (`channel`, `destination`) and the dispatcher hands
+them to the OTP delivery port
+(`backend/src/genesis/application/otp_delivery.py`); the first concrete
+adapter (`backend/src/genesis/infrastructure/otp_delivery.py`) only
+LOGS the dispatch (masked destination, never the code). Wiring a real
+SMS/email gateway is now an infrastructure-only change: implement
+`OtpChannelProvider` and register it in `default_otp_delivery()` —
+after which `DEV_OTP_DISPLAY` should be retired from this deployment
+and `ENVIRONMENT` set honestly (the boot guard then enforces it).
 
 **What "staging with DEV_OTP_DISPLAY=true" actually exposes**: with this
 flag on, `POST /auth/otp/request` returns the plaintext OTP in its JSON

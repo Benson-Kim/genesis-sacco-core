@@ -35,6 +35,7 @@ import jwt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from genesis.application.otp_delivery import OTP_CHANNEL_EMAIL, OTP_CHANNEL_SMS
 from genesis.application.outbox import enqueue_event
 from genesis.domain.members import normalize_kenya_msisdn
 from genesis.domain.otp import (
@@ -292,11 +293,21 @@ async def request_otp(session: AsyncSession, tenant_id: uuid.UUID, identifier: s
             "exp": _now() + timedelta(seconds=OTP_TTL_SECONDS),
         },
     )
+    # Routing fields for the OTP delivery port (application.otp_delivery):
+    # the outbox dispatcher hands this event to the configured SMS/email
+    # channel adapter (infrastructure.otp_delivery). Enqueued in the SAME
+    # transaction as the challenge row (reliability).
     await enqueue_event(
         session,
         tenant_id,
         event_type="auth.otp_requested",
-        payload={"user_id": user_id, "challenge_id": str(challenge_id), "code": code},
+        payload={
+            "user_id": user_id,
+            "challenge_id": str(challenge_id),
+            "code": code,
+            "channel": OTP_CHANNEL_SMS if kind == IDENTIFIER_PHONE else OTP_CHANNEL_EMAIL,
+            "destination": value,
+        },
     )
     return code
 
