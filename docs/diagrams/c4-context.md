@@ -48,9 +48,6 @@
   0042_phone_e164_backfill.py to main — the 0017/0041 precedent)
   ships in that MR (same-commit refresh per v1.2 rule 11 /
   spot-check check 5).
-  Migration head 0048 -> 0049 by the ADR-0007 member-read-surface
-  MR: 0049_merge_heads.py (schema NO-OP Alembic merge of the three
-  parallel-track heads 0046/0047/0048 so `upgrade head` resolves).
   Migration head 0044 -> 0048 by the issue-#35 human-reference MR:
   0048_loan_exit_human_refs.py (expand-only nullable loan/exit
   reference columns + partial UNIQUE nets + deterministic backfill).
@@ -100,7 +97,7 @@ flowchart TB
         IDW["Idempotency purge worker — P13.17c<br/>genesis/infrastructure/idempotency_worker.py run_worker"]
     end
 
-    PG[("PostgreSQL 16 — FORCED RLS on every tenant table<br/>ADR-0002; genesis/infrastructure/tenancy.py<br/>alembic head 0049")]
+    PG[("PostgreSQL 16 — FORCED RLS on every tenant table<br/>ADR-0002; genesis/infrastructure/tenancy.py<br/>alembic head 0048")]
     RD[("Redis<br/>readiness probe + auth rate limiting<br/>genesis/infrastructure/redis_client.py<br/>genesis/infrastructure/rate_limit.py")]
 
     WEB["Web admin — Next.js + TS strict<br/>as-built (P14 scaffold): web/src<br/>feature screens PLANNED (P15)"]
@@ -142,7 +139,7 @@ flowchart TB
 | Export render worker | as-built | `genesis/infrastructure/export_worker.py` (`run_worker` L53, `run_export_cycle` L31) |
 | Dormancy cycle worker | as-built (P13.13 !32; resilience hardened by !37) | `genesis/infrastructure/dormancy_worker.py` (`run_worker` L106, `run_dormancy_cycle` L65) |
 | Idempotency purge worker | as-built (P13.17c !49) | `genesis/infrastructure/idempotency_worker.py` (`run_worker`) → `genesis/application/idempotency_purge.py` (`purge_expired_idempotency_keys`); expiry semantics never depend on it running (the `expires_at > now()` fence in `genesis/api/idempotency.py`) |
-| PostgreSQL 16, forced RLS | as-built | RLS enabled AND forced per ADR-0002 (`docs/adr/`), session scoping `genesis/infrastructure/tenancy.py` (`tenant_session` L12); migration head `0049` (`backend/migrations/versions/0049_merge_heads.py` — schema no-op merge of the 0046/0047/0048 parallel-track heads; the substantive latest revisions stay 0046/0047/0048) |
+| PostgreSQL 16, forced RLS | as-built | RLS enabled AND forced per ADR-0002 (`docs/adr/`), session scoping `genesis/infrastructure/tenancy.py` (`tenant_session` L12); migration head `0048` (`backend/migrations/versions/0048_loan_exit_human_refs.py`; `down_revision = "0044"` at branch time — the human loan/exit reference columns, re-chained after the in-flight 0045/0046/0047 claims merge) |
 | Redis | as-built | `genesis/infrastructure/redis_client.py` (readyz), `genesis/infrastructure/rate_limit.py` (auth rate limiting) |
 | Web admin | as-built with this MR (P14 scaffold, !13): app shell + OTP auth gate + deny-by-default route guards; feature screens PLANNED (P15) | `web/src` (modules `auth`/`authz`/`layout`/`table`), tokens `web/packages/design-system`, GENERATED client `web/packages/api-client` — freshness gated by the `web:spec-drift`/`web:client-drift` CI jobs against `backend/scripts/export_openapi.py` |
 | Admin mobile / Member mobile | PLANNED (P16/P17/P18) | not on main (draft !11 unmerged) |

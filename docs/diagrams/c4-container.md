@@ -49,9 +49,6 @@
   0042_phone_e164_backfill.py to main — the 0017/0041 precedent)
   ships in that MR (same-commit refresh per v1.2 rule 11 /
   spot-check check 5).
-  Migration head 0048 -> 0049 by the ADR-0007 member-read-surface
-  MR: 0049_merge_heads.py (schema NO-OP Alembic merge of the three
-  parallel-track heads 0046/0047/0048 so `upgrade head` resolves).
   Migration head 0044 -> 0048 by the issue-#35 human-reference MR:
   0048_loan_exit_human_refs.py (expand-only nullable loan/exit
   reference columns + partial UNIQUE nets + deterministic backfill).
@@ -107,7 +104,7 @@ flowchart TB
         IDW["idempotency purge — P13.17c<br/>genesis/infrastructure/idempotency_worker.py"]
     end
 
-    MIG["Migration runner — alembic upgrade head<br/>backend/alembic.ini + backend/migrations/<br/>versions 0001..0049 (head 0049 no-op merge of the 0046/0047/0048 parallel heads; 0048 human loan/exit reference columns, shipped by the issue-#35 human-reference MR; 0044 users phone sign-in lookup index; 0043 external txn ref + search prefix index)"]
+    MIG["Migration runner — alembic upgrade head<br/>backend/alembic.ini + backend/migrations/<br/>versions 0001..0048 (head 0048 human loan/exit reference columns, shipped by the issue-#35 human-reference MR; 0044 users phone sign-in lookup index; 0043 external txn ref + search prefix index)"]
 
     PG[("PostgreSQL 16 — FORCED RLS (ADR-0002)<br/>append-only: ledger_entries + transactions (0004 triggers),<br/>audit_log (0001), repayments (0032), loan_recoveries (0030)<br/>write-once: dividend_declarations (0020), loan_write_offs (0025),<br/>repayment_adjustments (0025/0031), portfolio_month_snapshots (0027),<br/>period rollups (0028)<br/>closed-period posting barrier (0012/0014)<br/>advisory-lock tier: lock-order.md §6")]
     RD[("Redis<br/>rate limiting + readyz")]
@@ -143,7 +140,7 @@ flowchart TB
 | export renderer | `genesis/infrastructure/export_worker.py` → `genesis/application/exports.py` (`run_export_job` L381, claim `CLAIM_SQL` L82) |
 | dormancy worker | `genesis/infrastructure/dormancy_worker.py` (`run_dormancy_cycle` L65 — fail-closed per tenant, per-tenant error isolation per !37) → `genesis/application/dormancy.py` (`run_dormancy_for_tenant` L370) |
 | idempotency purge worker | `genesis/infrastructure/idempotency_worker.py` (`run_worker`) → `genesis/application/idempotency_purge.py` (`purge_expired_idempotency_keys` — shared batch runner, `FOR UPDATE SKIP LOCKED` subquery; P13.17c/DSA-3) |
-| migration runner | `backend/alembic.ini`, `backend/migrations/env.py`, `backend/migrations/versions/0001..0049` — head `0049` (`0049_merge_heads.py`, schema no-op merge of the 0046/0047/0048 parallel-track heads, shipped by the ADR-0007 member-read-surface MR in the same commit as this refresh), verified against `versions/` on this tree |
+| migration runner | `backend/alembic.ini`, `backend/migrations/env.py`, `backend/migrations/versions/0001..0048` — head `0048` (`0048_loan_exit_human_refs.py`, `down_revision = "0044"` at branch time; shipped by the issue-#35 human-reference MR in the same commit as this refresh), verified against `versions/` on this tree |
 | PostgreSQL 16 | forced RLS per ADR-0002; store properties below |
 | Redis | `genesis/infrastructure/redis_client.py` (`ping_redis` — `/readyz`), `genesis/infrastructure/rate_limit.py` (auth endpoints) |
 
