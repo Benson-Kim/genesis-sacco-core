@@ -24,8 +24,8 @@ import pytest
 # (stdlib-only DR tooling); import them by path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import backup_db  # noqa: E402
-import verify_restore  # noqa: E402
+import backup_db
+import verify_restore
 
 # --- shared naming/URL helpers (duplicated across both scripts so each
 # --- stays single-file runnable; test BOTH so they cannot drift apart)
@@ -33,9 +33,7 @@ import verify_restore  # noqa: E402
 
 @pytest.mark.parametrize("module", [backup_db, verify_restore])
 def test_libpq_url_strips_sqlalchemy_driver(module) -> None:
-    assert (
-        module.libpq_url("postgresql+psycopg://u:p@h:5432/db") == "postgresql://u:p@h:5432/db"
-    )
+    assert module.libpq_url("postgresql+psycopg://u:p@h:5432/db") == "postgresql://u:p@h:5432/db"
     assert module.libpq_url("postgresql+asyncpg://u@h/db") == "postgresql://u@h/db"
 
 
@@ -245,9 +243,7 @@ def test_drill_config_defaults() -> None:
 
 
 def test_scratch_db_name_default_suffix() -> None:
-    assert (
-        verify_restore.scratch_db_name(_URL, "_restore_check", "") == "genesis_restore_check"
-    )
+    assert verify_restore.scratch_db_name(_URL, "_restore_check", "") == "genesis_restore_check"
 
 
 def test_scratch_db_name_explicit_override() -> None:

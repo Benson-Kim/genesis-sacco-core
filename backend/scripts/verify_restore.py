@@ -79,6 +79,15 @@ _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 _IGNORED_ERRORS_RE = re.compile(r"errors ignored on restore: (\d+)")
 
+#: Code-owned literal queries (never string-built): the sanity row
+#: counts reported in the drill's SUCCESS line.
+_COUNT_QUERIES = {
+    "tenants": "SELECT count(*) FROM tenants",
+    "members": "SELECT count(*) FROM members",
+    "transactions": "SELECT count(*) FROM transactions",
+    "ledger_entries": "SELECT count(*) FROM ledger_entries",
+}
+
 #: The schema forces row-level security on every table
 #: (migrations/versions/0001), so even the restoring owner sees zero
 #: rows without the app's tenant GUC. The scratch DB exists only for
@@ -218,8 +227,7 @@ def load_config(env: Mapping[str, str]) -> Config:
         database_url=database_url,
         backup_dir=Path(env.get("BACKUP_DIR", "").strip() or "~/backups/db").expanduser(),
         scratch_db=scratch,
-        precreated=env.get("RESTORE_CHECK_PRECREATED", "").strip().lower()
-        in {"1", "true", "yes"},
+        precreated=env.get("RESTORE_CHECK_PRECREATED", "").strip().lower() in {"1", "true", "yes"},
         max_ignored_errors=_int_env(env, "RESTORE_CHECK_MAX_IGNORED_ERRORS", 0, 0),
         timeout_seconds=_int_env(env, "BACKUP_TIMEOUT_SECONDS", 3600, 1),
     )
@@ -235,9 +243,9 @@ def _require_binary(name: str) -> str:
 def _run(stage: str, argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     """Run one external command; any failure to execute becomes a DrillError."""
     try:
-        # noqa rationale: argv is built from validated env config,
-        # shutil.which-resolved binaries and identifier-checked DB
-        # names; shell=False throughout.
+        # S603 suppression rationale: argv is built from validated
+        # env config, shutil.which-resolved binaries and
+        # identifier-checked DB names; shell=False throughout.
         return subprocess.run(  # noqa: S603
             argv,
             capture_output=True,
@@ -385,9 +393,8 @@ class _Drill:
         self._psql("sanity", self.scratch_url, _UNFORCE_RLS_SQL)
         alembic = self._psql("sanity", self.scratch_url, "SELECT version_num FROM alembic_version")
         report: dict[str, int | str] = {"alembic": alembic or "MISSING"}
-        for table in ("tenants", "members", "transactions", "ledger_entries"):
-            # Table names are code-owned literals, not user input.
-            report[table] = self.scalar("sanity", f"SELECT count(*) FROM {table}")
+        for table, query in _COUNT_QUERIES.items():
+            report[table] = self.scalar("sanity", query)
         report["imbalanced_tenants"] = self.scalar("sanity", _IMBALANCE_SQL)
         return report
 
@@ -444,7 +451,7 @@ def main() -> int:
     except DrillError as exc:
         logger.error(f"RESTORE_CHECK FAILURE stage={exc.stage} error={exc}")
         return 1
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Blind on purpose: the greppable FAILURE line must always be emitted.
         logger.exception("unexpected error")
         logger.error("RESTORE_CHECK FAILURE stage=unexpected error=see traceback above")

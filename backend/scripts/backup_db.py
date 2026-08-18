@@ -155,7 +155,8 @@ def parse_backup_timestamp(name: str) -> datetime | None:
         return None
     stamp = name[len(BACKUP_PREFIX) : len(name) - len(BACKUP_SUFFIX)]
     try:
-        return datetime.strptime(stamp, TIMESTAMP_FORMAT)  # noqa: DTZ007 (naive-UTC by contract)
+        # Naive-UTC by contract: filenames are always written in UTC.
+        return datetime.strptime(stamp, TIMESTAMP_FORMAT)
     except ValueError:
         return None
 
@@ -197,9 +198,9 @@ def _require_binary(name: str) -> str:
 def _run(stage: str, argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     """Run one external command; any failure becomes a BackupError."""
     try:
-        # noqa rationale: argv is built entirely from validated env
-        # config and shutil.which-resolved absolute binary paths;
-        # shell=False throughout.
+        # S603 suppression rationale: argv is built entirely from
+        # validated env config and shutil.which-resolved absolute
+        # binary paths; shell=False throughout.
         return subprocess.run(  # noqa: S603
             argv,
             capture_output=True,
@@ -304,7 +305,7 @@ def main() -> int:
     except BackupError as exc:
         logger.error(f"BACKUP_DB FAILURE stage={exc.stage} error={exc}")
         return 1
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Blind on purpose: the greppable FAILURE line must always be emitted.
         logger.exception("unexpected error")
         logger.error("BACKUP_DB FAILURE stage=unexpected error=see traceback above")
