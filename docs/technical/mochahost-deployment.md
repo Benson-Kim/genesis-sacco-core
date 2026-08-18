@@ -218,6 +218,23 @@ Create `~/logs/` first (`mkdir -p ~/logs`). Each script exits non-zero on
 a real failure, which is what makes cPanel's cron failure email useful —
 don't redirect stderr to `/dev/null`.
 
+The one-shots guard themselves with per-worker session-level Postgres
+advisory locks (`genesis.infrastructure.cron_lock`): a tick that finds its
+worker's lock held logs a skip and exits 0. Two caveats (#21):
+
+- **Best-effort overlap reduction, not mutual exclusion.** The lock
+  session idles in a transaction for the whole cycle, so
+  `idle_in_transaction_session_timeout`, a DB restart, or a network blip
+  can free the lock mid-cycle and let the next tick overlap the
+  still-running cycle (safe — the workers are SKIP LOCKED and
+  idempotent). A lost lock is logged as a WARNING (`advisory lock … was
+  no longer held at cycle end`) in the worker's cron log — watch for it.
+- **Transaction pooling breaks session advisory locks.** Behind pgbouncer
+  in transaction-pooling mode the lock and unlock land on different
+  backends and the guard silently stops guarding. Fine on today's direct
+  connections; re-check as part of the hosting exit (#11) before fronting
+  the app with a transaction pooler.
+
 ## 4. Frontend: Node app
 
 1. cPanel → Setup Node.js App → Create Application: Node **20.20.2**,

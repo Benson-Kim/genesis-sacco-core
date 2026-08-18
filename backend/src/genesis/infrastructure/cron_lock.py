@@ -26,6 +26,23 @@ a distinct per-worker objid. Advisory locks are cluster-wide per
 database, deliberately NOT tenant-scoped: the guarded resource is the
 worker PROCESS (which itself walks tenants), not tenant data — RLS and
 tenant isolation are untouched.
+
+BEST-EFFORT OVERLAP REDUCTION, NOT MUTUAL EXCLUSION (#21): the lock
+session sits idle in transaction for the WHOLE cycle (the
+``pg_try_advisory_lock`` SELECT opens a transaction that never commits
+until block exit), so ``idle_in_transaction_session_timeout``, a DB
+restart, or a network blip can free the lock while the cycle is still
+running — the next tick then overlaps it. Degradation is safe (the
+workers are SKIP LOCKED and idempotent; overlap is the pre-lock
+behavior), but it is NOT prevented. The one detectable symptom is
+``pg_advisory_unlock`` returning false at cycle end — logged as a
+WARNING naming the worker (the lost-mid-cycle signal).
+
+TRANSACTION-POOLING CAVEAT: session-level advisory locks BREAK behind
+pgbouncer in transaction-pooling mode — the lock and the unlock land on
+different backends, so the guard silently stops guarding. Today's
+cPanel deployment uses direct connections; the hosting exit (#11) must
+re-check this before fronting the app with a transaction pooler.
 """
 
 from __future__ import annotations
@@ -72,6 +89,18 @@ async def try_cron_lock(
     session is held open across the block (the guarded cycle runs its
     own sessions/transactions from the same factory) and released in
     the ``finally`` — or by Postgres itself if the process dies.
+
+    The guard is best-effort (see the module docstring): the unlock in
+    the ``finally`` is wrapped so that
+
+    - an unlock FAILURE (e.g. the cycle raised BECAUSE the DB died, so
+      the unlock dies too) is logged and suppressed — the cycle's own
+      exception always surfaces, never the unlock's (#21); Postgres
+      frees the lock when the dead session's connection closes anyway;
+    - an unlock returning false means the lock was NOT held at cycle
+      end — it was lost mid-cycle (idle-in-transaction timeout, DB
+      restart, network reset) and a concurrent tick may have overlapped
+      this cycle. Logged as a WARNING naming the worker.
     """
     async with factory() as session:
         acquired = bool(
@@ -94,7 +123,36 @@ async def try_cron_lock(
             yield acquired
         finally:
             if acquired:
-                await session.execute(
-                    text("SELECT pg_advisory_unlock(:ns, :key)"),
-                    {"ns": CRON_LOCK_NAMESPACE, "key": key},
-                )
+                try:
+                    released = bool(
+                        (
+                            await session.execute(
+                                text("SELECT pg_advisory_unlock(:ns, :key)"),
+                                {"ns": CRON_LOCK_NAMESPACE, "key": key},
+                            )
+                        ).scalar_one()
+                    )
+                except Exception:
+                    # Never mask the guarded cycle's own exception with
+                    # an unlock failure (the usual cause is the SAME dead
+                    # DB that failed the cycle). Postgres releases the
+                    # lock when this session's connection closes.
+                    logger.exception(
+                        "%s: advisory unlock (%s, %s) failed — suppressed so the "
+                        "cycle's own outcome is not masked; Postgres frees the "
+                        "lock when the session's connection closes",
+                        worker,
+                        CRON_LOCK_NAMESPACE,
+                        key,
+                    )
+                else:
+                    if not released:
+                        logger.warning(
+                            "%s: advisory lock (%s, %s) was no longer held at cycle "
+                            "end — lost mid-cycle (idle-in-transaction timeout, DB "
+                            "restart, or network reset); a concurrent tick may have "
+                            "overlapped this cycle",
+                            worker,
+                            CRON_LOCK_NAMESPACE,
+                            key,
+                        )

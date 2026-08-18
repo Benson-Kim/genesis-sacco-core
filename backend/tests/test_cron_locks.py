@@ -11,7 +11,16 @@ next tick mutually exclusive PER WORKER. Falsifiable both ways:
 - release is guaranteed on block exit — including when the guarded
   cycle raises — so a crashed run never wedges the schedule.
 
-The key-registry checks are pure (no DB) and run on every pipeline.
+#21 hardening legs — the guard is best-effort overlap REDUCTION, not
+mutual exclusion, and its failure modes must be observable:
+
+- an unlock FAILURE (dead DB) never masks the guarded cycle's own
+  exception (pure fake-session leg + real dead-backend leg);
+- an unlock reporting the lock was NOT held (lost mid-cycle) logs a
+  WARNING naming the worker; a clean unlock logs no such warning.
+
+The key-registry checks and the fake-session #21 legs are pure (no DB)
+and run on every pipeline.
 """
 
 import asyncio
@@ -22,6 +31,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from sqlalchemy import text
 
 from db_helpers import factory
 from genesis.infrastructure.cron_lock import (
@@ -85,6 +95,104 @@ def test_every_cron_script_is_registered() -> None:
 
 
 # ---------------------------------------------------------------------------
+# #21 unlock hardening (pure, no DB): scripted fake lock sessions.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResult:
+    def __init__(self, value: bool) -> None:
+        self._value = value
+
+    def scalar_one(self) -> bool:
+        return self._value
+
+
+class _FakeLockSession:
+    """Lock session double: acquisition succeeds; unlock is scripted.
+
+    Duck-types the two calls try_cron_lock makes (async context manager
+    + execute) so the unlock failure modes — which cannot be produced
+    deterministically against a real Postgres — are testable both ways.
+    """
+
+    def __init__(
+        self, *, unlock_result: bool = True, unlock_error: Exception | None = None
+    ) -> None:
+        self._unlock_result = unlock_result
+        self._unlock_error = unlock_error
+
+    async def __aenter__(self) -> "_FakeLockSession":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    async def execute(self, statement: object, params: object = None) -> _FakeResult:
+        if "pg_try_advisory_lock" in str(statement):
+            return _FakeResult(True)
+        assert "pg_advisory_unlock" in str(statement)
+        if self._unlock_error is not None:
+            raise self._unlock_error
+        return _FakeResult(self._unlock_result)
+
+
+def test_unlock_failure_never_masks_the_cycles_exception(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#21(a): the cycle raised BECAUSE the DB died — the unlock in the
+    finally dies too, and must NOT replace the cycle's own traceback.
+    Falsifiable: drop the try/except around the unlock and the
+    ConnectionError surfaces here instead of the RuntimeError."""
+    fake = _FakeLockSession(unlock_error=ConnectionError("connection is closed (simulated)"))
+
+    async def run() -> None:
+        async with try_cron_lock(lambda: fake, CRON_LOCK_EXPORT, worker="export") as acquired:
+            assert acquired is True
+            raise RuntimeError("cycle crash (simulated)")
+
+    with caplog.at_level(logging.ERROR), pytest.raises(RuntimeError, match="cycle crash"):
+        asyncio.run(run())
+    # The unlock failure is logged (observable), never silently eaten.
+    assert "export: advisory unlock" in caplog.text
+    assert "failed" in caplog.text
+
+
+def test_lost_lock_at_cycle_end_logs_a_warning_naming_the_worker(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#21(b): pg_advisory_unlock returning false IS the detectable
+    lost-mid-cycle signal (idle-in-transaction timeout / DB restart /
+    network blip freed the lock while the cycle ran) — WARN, naming the
+    worker. Falsifiable: skip the released check and no warning fires."""
+    fake = _FakeLockSession(unlock_result=False)
+
+    async def run() -> None:
+        async with try_cron_lock(lambda: fake, CRON_LOCK_DORMANCY, worker="dormancy") as acquired:
+            assert acquired is True
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(run())
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "dormancy" in warnings[0].getMessage()
+    assert "no longer held" in warnings[0].getMessage()
+
+
+def test_clean_unlock_logs_no_lost_lock_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """The other direction: a held-to-the-end lock (unlock returns true)
+    must NOT cry wolf — no WARNING, no unlock-failure log."""
+    fake = _FakeLockSession(unlock_result=True)
+
+    async def run() -> None:
+        async with try_cron_lock(lambda: fake, CRON_LOCK_OUTBOX, worker="outbox") as acquired:
+            assert acquired is True
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(run())
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+
+# ---------------------------------------------------------------------------
 # Lock semantics against a real Postgres.
 # ---------------------------------------------------------------------------
 
@@ -135,6 +243,46 @@ def test_lock_is_released_when_the_guarded_cycle_raises() -> None:
                 raise RuntimeError("cycle crash (simulated)")
         async with try_cron_lock(f, CRON_LOCK_DORMANCY, worker="dormancy") as reacquired:
             assert reacquired is True
+
+    asyncio.run(run())
+
+
+@_requires_db
+def test_cycle_exception_survives_a_dead_lock_connection() -> None:
+    """#21(a) against a REAL Postgres: terminate the lock session's
+    backend mid-cycle (pg_terminate_backend on our own-role backend —
+    the DB-restart/network-blip stand-in), then raise from the cycle.
+    The cycle's RuntimeError must surface — not the unlock's connection
+    error — and the killed backend must have freed the lock for the
+    next tick."""
+
+    async def run() -> None:
+        f = factory()
+        with pytest.raises(RuntimeError, match="cycle crash"):
+            async with try_cron_lock(f, CRON_LOCK_EXPORT, worker="export") as acquired:
+                assert acquired is True
+                async with f() as killer:
+                    terminated = (
+                        (
+                            await killer.execute(
+                                text(
+                                    "SELECT pg_terminate_backend(l.pid) FROM pg_locks l "
+                                    "WHERE l.locktype = 'advisory' "
+                                    "AND l.classid = CAST(:ns AS oid) "
+                                    "AND l.objid = CAST(:key AS oid) "
+                                    "AND l.pid <> pg_backend_pid()"
+                                ),
+                                {"ns": CRON_LOCK_NAMESPACE, "key": CRON_LOCK_EXPORT},
+                            )
+                        )
+                        .scalars()
+                        .all()
+                    )
+                    assert terminated == [True]
+                raise RuntimeError("cycle crash (simulated)")
+        # Postgres freed the lock with the killed backend: next tick runs.
+        async with try_cron_lock(f, CRON_LOCK_EXPORT, worker="export") as again:
+            assert again is True
 
     asyncio.run(run())
 
