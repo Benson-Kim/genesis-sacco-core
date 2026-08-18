@@ -133,29 +133,6 @@ _EXIT_LABEL_JOIN = (
     "AND mm.id = member_exits.member_id "
 )
 
-#: Read-path column list: _EXIT_COLS table-qualified plus the member
-#: display labels. ONLY the un-locked reads use it — the settlement's
-#: FOR UPDATE read keeps the join-free _EXIT_COLS (an outer join under
-#: FOR UPDATE is refused by the database, and the lock must stay on
-#: the exit row alone).
-_EXIT_READ_COLS = (
-    "member_exits.id, member_exits.member_id, member_exits.status, "
-    "member_exits.reason, member_exits.shares_amount, "
-    "member_exits.deposits_amount, member_exits.loan_balance, "
-    "member_exits.fees, member_exits.net_payable, "
-    "member_exits.requested_by, member_exits.decided_at, "
-    "member_exits.settled_at, member_exits.settlement_transaction_id, "
-    "member_exits.version, member_exits.created_at, mm.member_no, mm.name"
-)
-
-#: Display-label join for the read statements: rides the members
-#: PRIMARY KEY per page row plus the explicit tenant predicate
-#: (index-served, no new index).
-_EXIT_LABEL_JOIN = (
-    "LEFT JOIN members mm ON mm.tenant_id = member_exits.tenant_id "
-    "AND mm.id = member_exits.member_id "
-)
-
 #: Cursor scope id: signed cursors are bound to this
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 EXITS_LIST_SCOPE = "member_exits.list"

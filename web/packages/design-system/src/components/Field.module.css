@@ -3,11 +3,14 @@
   margin-bottom: var(--space-sm); /* 12px */
 }
 
-.label {
+.labelRow {
   display: flex;
   align-items: baseline;
   gap: 0.25rem;
   margin-bottom: 5px;
+}
+
+.label {
   color: var(--ink);
   font-size: 0.9375rem;
   font-weight: 750;
