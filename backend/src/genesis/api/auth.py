@@ -84,7 +84,7 @@ def _parse_ip(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | Non
 
 
 def resolve_client_ip(request: Request) -> str:
-    """Resolve the client IP that BOTH rate buckets key on (issue #13).
+    """Resolve the client IP that BOTH rate buckets key on (trusted-proxy aware).
 
     Behind Passenger (the MochaHost deployment) ``request.client.host`` is
     the proxy, which collapses the per-IP backstop into one global bucket —
