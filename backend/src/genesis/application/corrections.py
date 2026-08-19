@@ -141,6 +141,11 @@ from genesis.application.pagination import (
     parse_band_register_cursor,
     parse_created_id_cursor,
 )
+from genesis.application.security_events import (
+    AuditedEntity,
+    emit_anomaly_signals,
+    enforce_no_self_dealing,
+)
 from genesis.application.sod import require_distinct_non_assurance_checker
 from genesis.application.tenant_settings import committee_quorum, enforce_authority_band
 
@@ -241,6 +246,20 @@ async def post_misc_fee(
     posting = await post_fee(
         session, tenant_id, member_id, amount, channel, actor_id, fee_type=fee_type.value
     )
+    # Issue #1 telemetry — non-blocking (a fee CHARGES the member; no
+    # self-dealing benefit to block): off-hours / cross-branch signals
+    # only. Skipped for actor-less system postings.
+    if actor_id is not None:
+        await emit_anomaly_signals(
+            session,
+            tenant_id,
+            actor_id,
+            member_id,
+            action="correction.fee_posted",
+            entity=AuditedEntity.TRANSACTIONS,
+            entity_id=str(posting.txn_id),
+            amount=amount,
+        )
     await record_audit(
         session,
         tenant_id,
@@ -881,6 +900,21 @@ async def request_repayment_adjustment(
     """
     ctx = await _lock_adjustment_chain(session, tenant_id, repayment_id)
 
+    # Issue #1 detective layer: an actor identity-linked to the
+    # beneficiary member may not open the reversal channel on that
+    # member's money (403, fail closed); the API layer persists the
+    # refused attempt out-of-band (security_refusals.refusals_audited).
+    probe = await enforce_no_self_dealing(
+        session,
+        tenant_id,
+        actor_id,
+        ctx.member_id,
+        action="correction.adjustment_requested",
+        entity=AuditedEntity.REPAYMENT_ADJUSTMENTS,
+        entity_id=str(repayment_id),
+        amount=ctx.amount,
+    )
+
     if ctx.loan_status is LoanStatus.CLOSED and await _released_guarantees_exist(
         session, tenant_id, ctx.loan_id
     ):
@@ -957,6 +991,19 @@ async def request_repayment_adjustment(
         raise ConflictError(
             f"repayment {repayment_id} has already been adjusted or has a pending adjustment"
         )
+    # Non-blocking anomaly telemetry (off-hours / cross-branch) — the
+    # probe from the blocking check is reused: one evaluation per action.
+    await emit_anomaly_signals(
+        session,
+        tenant_id,
+        actor_id,
+        ctx.member_id,
+        action="correction.adjustment_requested",
+        entity=AuditedEntity.REPAYMENT_ADJUSTMENTS,
+        entity_id=str(adjustment_id),
+        amount=ctx.amount,
+        probe=probe,
+    )
     await record_audit(
         session,
         tenant_id,
@@ -1035,6 +1082,34 @@ async def approve_repayment_adjustment(
     await _require_distinct_non_assurance_checker(session, tenant_id, actor_id, record.maker_id)
 
     ctx = await _lock_adjustment_chain(session, tenant_id, record.repayment_id)
+
+    # Issue #1 detective layer: a checker identity-linked to the
+    # beneficiary member may not ratify the reversal of that member's
+    # money (403, fail closed) — the SoD maker<>checker guard above
+    # cannot see this collusion channel. Refusals are persisted
+    # out-of-band by the API layer; on the clean path the probe feeds
+    # the non-blocking anomaly telemetry (off-hours / cross-branch).
+    probe = await enforce_no_self_dealing(
+        session,
+        tenant_id,
+        actor_id,
+        ctx.member_id,
+        action="correction.adjustment_approved",
+        entity=AuditedEntity.REPAYMENT_ADJUSTMENTS,
+        entity_id=str(adjustment_id),
+        amount=ctx.amount,
+    )
+    await emit_anomaly_signals(
+        session,
+        tenant_id,
+        actor_id,
+        ctx.member_id,
+        action="correction.adjustment_approved",
+        entity=AuditedEntity.REPAYMENT_ADJUSTMENTS,
+        entity_id=str(adjustment_id),
+        amount=ctx.amount,
+        probe=probe,
+    )
 
     # Component-by-component re-verification against the persisted
     # snapshot (never "the current state"): any drift since the request
@@ -1610,6 +1685,23 @@ async def request_write_off(
     total = to_cents(balance + penalty_due)
     if total <= ZERO:
         raise ConflictError(f"loan {loan_id} has nothing to write off")
+    # Issue #1 detective layer: an actor identity-linked to the
+    # borrower may not request the write-off of that member's loan
+    # (403, fail closed) — the insider-clears-own-loan channel. The
+    # committee SoD (requester never votes/posts) cannot see this
+    # linkage; refusals are persisted out-of-band by the API layer.
+    # entity_id is the loan at refusal time: the write-off row does
+    # not exist yet.
+    probe = await enforce_no_self_dealing(
+        session,
+        tenant_id,
+        actor_id,
+        member_id,
+        action="write_off.requested",
+        entity=AuditedEntity.LOAN_WRITE_OFFS,
+        entity_id=str(loan_id),
+        amount=total,
+    )
     write_off_id = uuid.uuid4()
     try:
         await session.execute(
@@ -1639,6 +1731,17 @@ async def request_write_off(
         )
     except IntegrityError as exc:
         raise ConflictError(f"a live write-off already exists for loan {loan_id}") from exc
+    await emit_anomaly_signals(
+        session,
+        tenant_id,
+        actor_id,
+        member_id,
+        action="write_off.requested",
+        entity=AuditedEntity.LOAN_WRITE_OFFS,
+        entity_id=str(write_off_id),
+        amount=total,
+        probe=probe,
+    )
     await record_audit(
         session,
         tenant_id,
@@ -1693,7 +1796,8 @@ async def cast_write_off_vote(
     row = (
         await session.execute(
             text(
-                "SELECT status, requested_by FROM loan_write_offs "
+                "SELECT status, requested_by, member_id, total_written_off "
+                "FROM loan_write_offs "
                 "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
             ),
             {"id": str(write_off_id), "tid": str(tenant_id)},
@@ -1703,10 +1807,37 @@ async def cast_write_off_vote(
         raise NotFoundError(f"loan write-off {write_off_id} not found")
     current = WriteOffStatus(str(row[0]))
     requested_by = uuid.UUID(str(row[1])) if row[1] is not None else None
+    wo_member_id = uuid.UUID(str(row[2]))
+    wo_total = Decimal(str(row[3]))
     if current is not WriteOffStatus.REQUESTED:
         raise ConflictError(f"voting is only open on requested write-offs, not '{current.value}'")
     if requested_by is not None and voter_id == requested_by:
         raise ForbiddenError("the requester of a write-off cannot vote on it")
+    # Issue #1 detective layer: a committee voter identity-linked to
+    # the borrower may not vote their own (or a contact-linked) loan
+    # off the book (403, fail closed); refusals are persisted
+    # out-of-band by the API layer.
+    probe = await enforce_no_self_dealing(
+        session,
+        tenant_id,
+        voter_id,
+        wo_member_id,
+        action="write_off.vote",
+        entity=AuditedEntity.LOAN_WRITE_OFFS,
+        entity_id=str(write_off_id),
+        amount=wo_total,
+    )
+    await emit_anomaly_signals(
+        session,
+        tenant_id,
+        voter_id,
+        wo_member_id,
+        action="write_off.vote",
+        entity=AuditedEntity.LOAN_WRITE_OFFS,
+        entity_id=str(write_off_id),
+        amount=wo_total,
+        probe=probe,
+    )
     try:
         await session.execute(
             text(
@@ -1908,6 +2039,32 @@ async def post_write_off(
     _wo_transition(record.status, WriteOffStatus.POSTED)
     if record.requested_by is not None and actor_id == record.requested_by:
         raise ForbiddenError("the requester of a write-off cannot post it")
+
+    # Issue #1 detective layer: the EXECUTING officer may not be
+    # identity-linked to the borrower whose receivable this posting
+    # derecognises (403, fail closed); refusals are persisted
+    # out-of-band by the API layer.
+    probe = await enforce_no_self_dealing(
+        session,
+        tenant_id,
+        actor_id,
+        record.member_id,
+        action="write_off.posted",
+        entity=AuditedEntity.LOAN_WRITE_OFFS,
+        entity_id=str(write_off_id),
+        amount=record.total_written_off,
+    )
+    await emit_anomaly_signals(
+        session,
+        tenant_id,
+        actor_id,
+        record.member_id,
+        action="write_off.posted",
+        entity=AuditedEntity.LOAN_WRITE_OFFS,
+        entity_id=str(write_off_id),
+        amount=record.total_written_off,
+        probe=probe,
+    )
 
     loan_row = (
         await session.execute(
@@ -2156,6 +2313,22 @@ async def record_recovery_receipt(
     # terminal exit until this receipt commits (the E20 argument, which
     # the exit guard relies on).
     await _require_member(session, tenant_id, record.member_id, operation=MoneyOperation.RECOVERY)
+
+    # Issue #1 telemetry — deliberately NON-blocking here: a receipt
+    # settles the member's own surviving claim (money IN), so blocking
+    # a linked actor would obstruct legitimate settlement; but the
+    # full-recovery branch releases guarantors, so a linked/off-hours/
+    # cross-branch receipt is exactly the anomaly reviewers must see.
+    await emit_anomaly_signals(
+        session,
+        tenant_id,
+        actor_id,
+        record.member_id,
+        action="recovery.receipt_recorded",
+        entity=AuditedEntity.LOAN_RECOVERIES,
+        entity_id=str(write_off_id),
+        amount=amount,
+    )
 
     # T4: the loan row — written_off is re-verified under its own lock,
     # and the full-recovery guarantee release below writes guarantee

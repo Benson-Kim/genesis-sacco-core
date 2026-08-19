@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from genesis.api.authz import RequirePermission
 from genesis.api.params import require_cash_channel
+from genesis.api.security_refusals import refusals_audited
 from genesis.application import corrections as corrections_service
 from genesis.application.auth import AuthContext
 from genesis.domain.committee import Vote
@@ -361,7 +362,10 @@ async def request_repayment_adjustment(
     the persisted approval snapshot — nothing posts until a distinct
     checker approves."""
     factory = get_sessionmaker(get_settings().database_url)
-    async with tenant_session(factory, ctx.tenant_id) as session:
+    async with (
+        refusals_audited(ctx.tenant_id, ctx.user_id),
+        tenant_session(factory, ctx.tenant_id) as session,
+    ):
         record = await corrections_service.request_repayment_adjustment(
             session, ctx.tenant_id, ctx.user_id, body.repayment_id, reason=body.reason
         )
@@ -407,7 +411,10 @@ async def approve_repayment_adjustment(
     lock set (409 on drift, posting nothing), then reverse the
     repayment's complete allocation and restore loan state."""
     factory = get_sessionmaker(get_settings().database_url)
-    async with tenant_session(factory, ctx.tenant_id) as session:
+    async with (
+        refusals_audited(ctx.tenant_id, ctx.user_id),
+        tenant_session(factory, ctx.tenant_id) as session,
+    ):
         result = await corrections_service.approve_repayment_adjustment(
             session, ctx.tenant_id, ctx.user_id, adjustment_id
         )
@@ -473,7 +480,10 @@ async def post_fee(body: FeeBody, ctx: CorrectionsCreateCtx) -> FeeOut:
 async def request_write_off(body: WriteOffRequestBody, ctx: CorrectionsCreateCtx) -> WriteOffOut:
     """Persist the write-once write-off snapshot for committee approval."""
     factory = get_sessionmaker(get_settings().database_url)
-    async with tenant_session(factory, ctx.tenant_id) as session:
+    async with (
+        refusals_audited(ctx.tenant_id, ctx.user_id),
+        tenant_session(factory, ctx.tenant_id) as session,
+    ):
         record = await corrections_service.request_write_off(
             session, ctx.tenant_id, ctx.user_id, body.loan_id, reason=body.reason
         )
@@ -516,7 +526,10 @@ async def cast_write_off_vote(
 ) -> WriteOffVoteResultOut:
     """Committee vote (P9 machinery); quorum resolved at vote time."""
     factory = get_sessionmaker(get_settings().database_url)
-    async with tenant_session(factory, ctx.tenant_id) as session:
+    async with (
+        refusals_audited(ctx.tenant_id, ctx.user_id),
+        tenant_session(factory, ctx.tenant_id) as session,
+    ):
         tally = await corrections_service.cast_write_off_vote(
             session, ctx.tenant_id, ctx.user_id, write_off_id, body.vote
         )
@@ -547,7 +560,10 @@ async def post_write_off(
 ) -> WriteOffPostOut:
     """Execute an approved write-off (snapshot re-verified; 409 on drift)."""
     factory = get_sessionmaker(get_settings().database_url)
-    async with tenant_session(factory, ctx.tenant_id) as session:
+    async with (
+        refusals_audited(ctx.tenant_id, ctx.user_id),
+        tenant_session(factory, ctx.tenant_id) as session,
+    ):
         result = await corrections_service.post_write_off(
             session, ctx.tenant_id, ctx.user_id, write_off_id
         )
