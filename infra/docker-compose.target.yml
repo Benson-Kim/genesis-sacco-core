@@ -1,0 +1,93 @@
+# ILLUSTRATIVE SKELETON — hosting-exit target shape (ADR-0009, issue #11).
+# Not deployed by CI; not the production artifact. See infra/README.md.
+#
+# Absent on purpose:
+#   - Postgres: provider-managed service with PITR (ADR-0009 part 1),
+#     reached over the private network via the two DSNs below.
+#   - The DDoS-absorbing edge (part 4): sits in front of `proxy`, outside
+#     this compose file, at the DNS layer.
+#
+# Every ${VAR} is injected from the secrets manager at start (part 6).
+# No defaults on purpose: a missing secret must fail loudly, not fall back.
+
+services:
+  proxy:
+    # Reverse proxy + WAF (ADR-0009 part 3): the ONLY public listener.
+    # Caddy shown for shape; nginx+Coraza/OWASP-CRS is the WAF-included
+    # self-hosted alternative if the edge tier's managed WAF is not bought.
+    image: caddy:2-alpine
+    ports:
+      - "443:443"
+      - "80:80" # redirect-to-HTTPS only
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [edge, internal]
+    depends_on: [api]
+    restart: unless-stopped
+
+  api:
+    # Native ASGI — the Passenger/a2wsgi adapter is deleted, not migrated.
+    image: ${REGISTRY_IMAGE}/backend:${RELEASE_TAG}
+    command: uvicorn genesis.api.app:create_app --factory --host 0.0.0.0 --port 8000
+    environment:
+      ENVIRONMENT: production
+      # API DSN — MAY be transaction-pooled (see infra/README.md).
+      DATABASE_URL: ${DATABASE_URL_API}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      OTP_PEPPER: ${OTP_PEPPER}
+      CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY}
+      CURSOR_KEY_VERSION: ${CURSOR_KEY_VERSION}
+      CURSOR_SIGNING_KEY_PREVIOUS: ${CURSOR_SIGNING_KEY_PREVIOUS}
+      CURSOR_KEY_VERSION_PREVIOUS: ${CURSOR_KEY_VERSION_PREVIOUS}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      # MANDATORY at cutover (runbook §2b): the proxy's internal address,
+      # so rate limiting keys on real client IPs (MR !3).
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS}
+    networks: [internal]
+    restart: unless-stopped
+
+  # The four workers (outbox, export, idempotency purge, dormancy).
+  # On owned infrastructure the persistent run_worker() loops are viable
+  # again (the cron one-shots were the shared-hosting adaptation); either
+  # form runs identically in a container. One service shown per worker so
+  # a slow export never shares a restart fate with the outbox.
+  worker-outbox: &worker
+    image: ${REGISTRY_IMAGE}/backend:${RELEASE_TAG}
+    command: python -m genesis.infrastructure.outbox_worker
+    environment:
+      ENVIRONMENT: production
+      # Worker DSN — MUST be direct or SESSION-pooled, never
+      # transaction-pooled: session advisory locks in cron_lock.py break
+      # under transaction pooling (#21; runbook checklist §2a).
+      DATABASE_URL: ${DATABASE_URL_WORKER}
+      REDIS_URL: ${REDIS_URL}
+    networks: [internal]
+    restart: unless-stopped
+
+  worker-export:
+    <<: *worker
+    command: sh -c 'while true; do python scripts/cron_export.py; sleep 120; done'
+
+  worker-idempotency:
+    <<: *worker
+    command: sh -c 'while true; do python scripts/cron_idempotency_purge.py; sleep 3600; done'
+
+  worker-dormancy:
+    <<: *worker
+    command: sh -c 'while true; do python scripts/cron_dormancy.py; sleep 86400; done'
+
+  redis:
+    # Rate-limiter backend — fails closed; production boot refuses an
+    # empty REDIS_URL (MR !3's assert_redis_configured_outside_dev).
+    image: redis:7-alpine
+    networks: [internal]
+    restart: unless-stopped
+
+networks:
+  # Publicly reachable side of the proxy (fronted by the edge).
+  edge: {}
+  # Private tier network (ADR-0009 part 5): API, workers, Redis, and the
+  # managed-Postgres private endpoint. Never publishes a port.
+  internal:
+    internal: true
