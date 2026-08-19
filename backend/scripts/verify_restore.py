@@ -7,18 +7,28 @@ actually restorable:
   1. decrypts the latest ``genesis-*.dump.enc`` in BACKUP_DIR,
   2. verifies ``pg_restore --list`` can read it,
   3. restores it into a scratch database (default ``<dbname>_restore_check``),
-  4. runs sanity queries — row counts on tenants / members /
-     transactions / ledger_entries, the alembic head, and the
-     double-entry invariant (per tenant, SUM of debit amounts equals
-     SUM of credit amounts on ledger_entries),
+  4. runs sanity assertions — the alembic head is present, row-count
+     floors on tenants / members / transactions / ledger_entries
+     (a hollow restore must NOT pass — RESTORE_CHECK_MIN_ROWS below),
+     and the double-entry invariant (per tenant, SUM of debit amounts
+     equals SUM of credit amounts on ledger_entries),
   5. drops the scratch database again,
 
 and emits exactly one machine-greppable ``RESTORE_CHECK
 SUCCESS``/``RESTORE_CHECK FAILURE`` line. Alert on the *absence* of
 SUCCESS in the weekly log window, which also covers crashes.
 
+The drill can never aim destructive work at the live database: the
+scratch name is validated against the live name at config time AND
+re-asserted before any DROP/CREATE/restore runs (the fail-closed
+refusal-guard posture of issue #34). The database password never
+reaches argv or logs — password-free URLs go into argv, the password
+rides in PGPASSWORD (see backup_common).
+
 Like backup_db.py this is deliberately stdlib-only (no ``genesis``
-import): DR tooling must keep working when the app venv is broken.
+import) and runs under any python3 >= 3.8: DR tooling must keep
+working when the app venv is broken. Shared plumbing lives in the
+sibling module scripts/backup_common.py, deployed alongside this file.
 External requirements: ``pg_restore``, ``psql``, ``openssl``.
 
 Environment (see docs/technical/backup-and-restore.md):
@@ -32,12 +42,18 @@ Environment (see docs/technical/backup-and-restore.md):
                                     (cPanel → PostgreSQL Databases) and the
                                     drill will reset its public schema
                                     instead of CREATE/DROP DATABASE
+  RESTORE_CHECK_MIN_ROWS            default 1: minimum row count the
+                                    restored members / transactions /
+                                    ledger_entries tables must each have
+                                    for the drill to pass. Set to 0 only
+                                    for a pre-launch database that has
+                                    genuinely never posted a transaction.
   RESTORE_CHECK_MAX_IGNORED_ERRORS  default 0; raise only for known-benign
                                     restore noise (e.g. a CREATE EXTENSION
                                     privilege refusal on shared hosting)
   BACKUP_TIMEOUT_SECONDS            default 3600 (per external command)
 
-Example cron line (weekly, Monday 03:15 — after Sunday's weekly dump):
+Example cron line (weekly, Monday 03:15 — drills the newest dump):
   15 3 * * 1 . /home/USER/.genesis_backup_env && \
     /home/USER/virtualenv/api/3.12/bin/python \
     /home/USER/api/scripts/verify_restore.py >> /home/USER/logs/verify_restore.log 2>&1
@@ -45,48 +61,60 @@ Example cron line (weekly, Monday 03:15 — after Sunday's weekly dump):
 
 from __future__ import annotations
 
-import logging
 import os
 import re
-import shutil
-import subprocess
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-#: Timestamped so a cron log answers "did this cycle actually
-#: fire, and when?" — bare stdout prints cannot.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+from backup_common import (
+    BACKUP_PREFIX,
+    BACKUP_SUFFIX,
+    DECRYPT_ARGS,
+    ConfigError,
+    StageError,
+    check,
+    child_env,
+    connection_args,
+    int_env,
+    libpq_url,
+    parse_backup_timestamp,
+    pre_create_private,
+    redact_url,
+    require_binary,
+    require_encryption_key,
+    run,
+    script_logger,
 )
-logger = logging.getLogger(Path(__file__).stem)
 
-BACKUP_PREFIX = "genesis-"
-BACKUP_SUFFIX = ".dump.enc"
-TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
-MIN_KEY_LENGTH = 32
+logger = script_logger(__file__)
 
-#: Must mirror ENCRYPT_ARGS in scripts/backup_db.py (plus ``-d``).
-DECRYPT_ARGS = ["-d", "-aes-256-cbc", "-md", "sha256", "-pbkdf2", "-iter", "600000"]
+DrillError = StageError
 
 #: Scratch DB names are interpolated into SQL as identifiers; restrict
 #: them to characters that need no quoting games.
 _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
+#: pg_restore's summary line; LC_ALL=C in the child env (backup_common.
+#: child_env) pins the message to English so this match is deterministic.
 _IGNORED_ERRORS_RE = re.compile(r"errors ignored on restore: (\d+)")
 
 #: Code-owned literal queries (never string-built): the sanity row
-#: counts reported in the drill's SUCCESS line.
+#: counts asserted/reported in the drill's SUCCESS line.
 _COUNT_QUERIES = {
     "tenants": "SELECT count(*) FROM tenants",
     "members": "SELECT count(*) FROM members",
     "transactions": "SELECT count(*) FROM transactions",
     "ledger_entries": "SELECT count(*) FROM ledger_entries",
 }
+
+#: Tables whose restored row counts must clear the configured floor —
+#: a restore that silently lost the financial rows must fail the drill
+#: (MR !5 finding M2), because for a ledger a restore that "succeeds"
+#: with wrong data is worse than one that fails.
+_FLOORED_TABLES = ("members", "transactions", "ledger_entries")
 
 #: The schema forces row-level security on every table
 #: (migrations/versions/0001), so even the restoring owner sees zero
@@ -111,41 +139,28 @@ SELECT count(*) FROM (
 """.strip()
 
 
-class ConfigError(ValueError):
-    """Environment/configuration is unusable; refuse to run."""
-
-
-class DrillError(RuntimeError):
-    """A drill stage failed; carries the stage name for the FAILURE line."""
-
-    def __init__(self, stage: str, message: str) -> None:
-        super().__init__(message)
-        self.stage = stage
-
-
 @dataclass(frozen=True)
 class Config:
     database_url: str
     backup_dir: Path
     scratch_db: str
     precreated: bool
+    min_rows: int
     max_ignored_errors: int
     timeout_seconds: int
 
 
-def libpq_url(url: str) -> str:
-    """Strip a SQLAlchemy driver marker (`postgresql+psycopg://`) for libpq tools."""
-    scheme, sep, rest = url.partition("://")
-    if not sep:
-        return url
-    return scheme.partition("+")[0] + sep + rest
-
-
 def database_name(url: str) -> str:
-    """Extract the database name from a connection URL."""
+    """Extract the database name from a connection URL.
+
+    The error message redacts the URL: a cron log line must never
+    carry the embedded password (MR !5 finding B2).
+    """
     name = urlsplit(libpq_url(url)).path.lstrip("/")
     if not name:
-        raise ConfigError(f"DATABASE_URL has no database name: cannot derive one from {url!r}")
+        raise ConfigError(
+            f"DATABASE_URL has no database name: cannot derive one from {redact_url(url)!r}"
+        )
     return name
 
 
@@ -172,18 +187,6 @@ def scratch_db_name(database_url: str, suffix: str, override: str) -> str:
     return name
 
 
-def parse_backup_timestamp(name: str) -> datetime | None:
-    """Return the timestamp encoded in a backup filename, or None if foreign."""
-    if not (name.startswith(BACKUP_PREFIX) and name.endswith(BACKUP_SUFFIX)):
-        return None
-    stamp = name[len(BACKUP_PREFIX) : len(name) - len(BACKUP_SUFFIX)]
-    try:
-        # Naive-UTC by contract: filenames are always written in UTC.
-        return datetime.strptime(stamp, TIMESTAMP_FORMAT)
-    except ValueError:
-        return None
-
-
 def latest_backup(names: Iterable[str]) -> str | None:
     """Pick the newest backup by encoded timestamp; foreign files are ignored."""
     dated = [(ts, name) for name in names if (ts := parse_backup_timestamp(name)) is not None]
@@ -192,32 +195,16 @@ def latest_backup(names: Iterable[str]) -> str | None:
     return max(dated)[1]
 
 
-def _int_env(env: Mapping[str, str], name: str, default: int, minimum: int) -> int:
-    raw = env.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
-    if value < minimum:
-        raise ConfigError(f"{name} must be >= {minimum}, got {value}")
-    return value
-
-
 def load_config(env: Mapping[str, str]) -> Config:
     """Validate the environment; raise ConfigError on anything unusable."""
     database_url = env.get("DATABASE_URL", "").strip()
     if not database_url:
         raise ConfigError("DATABASE_URL is not configured")
-    key = env.get("BACKUP_ENCRYPTION_KEY", "")
-    if not key:
-        raise ConfigError("BACKUP_ENCRYPTION_KEY is not set — cannot decrypt any backup")
-    if len(key) < MIN_KEY_LENGTH:
-        raise ConfigError(
-            f"BACKUP_ENCRYPTION_KEY is shorter than {MIN_KEY_LENGTH} characters — "
-            "this cannot be the key the backups were written with"
-        )
+    require_encryption_key(
+        env,
+        missing="cannot decrypt any backup",
+        short="this cannot be the key the backups were written with",
+    )
     scratch = scratch_db_name(
         database_url,
         env.get("RESTORE_CHECK_DB_SUFFIX", "").strip() or "_restore_check",
@@ -228,60 +215,49 @@ def load_config(env: Mapping[str, str]) -> Config:
         backup_dir=Path(env.get("BACKUP_DIR", "").strip() or "~/backups/db").expanduser(),
         scratch_db=scratch,
         precreated=env.get("RESTORE_CHECK_PRECREATED", "").strip().lower() in {"1", "true", "yes"},
-        max_ignored_errors=_int_env(env, "RESTORE_CHECK_MAX_IGNORED_ERRORS", 0, 0),
-        timeout_seconds=_int_env(env, "BACKUP_TIMEOUT_SECONDS", 3600, 1),
+        min_rows=int_env(env, "RESTORE_CHECK_MIN_ROWS", 1, 0),
+        max_ignored_errors=int_env(env, "RESTORE_CHECK_MAX_IGNORED_ERRORS", 0, 0),
+        timeout_seconds=int_env(env, "BACKUP_TIMEOUT_SECONDS", 3600, 1),
     )
-
-
-def _require_binary(name: str) -> str:
-    path = shutil.which(name)
-    if path is None:
-        raise DrillError("tooling", f"required binary {name!r} not found on PATH")
-    return path
-
-
-def _run(stage: str, argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
-    """Run one external command; any failure to execute becomes a DrillError."""
-    try:
-        # S603 suppression rationale: argv is built from validated
-        # env config, shutil.which-resolved binaries and
-        # identifier-checked DB names; shell=False throughout.
-        return subprocess.run(  # noqa: S603
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise DrillError(stage, f"{argv[0]} timed out after {timeout}s") from exc
-    except OSError as exc:
-        raise DrillError(stage, f"failed to execute {argv[0]}: {exc}") from exc
-
-
-def _check(stage: str, result: subprocess.CompletedProcess[str]) -> None:
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip().splitlines()
-        tail = "; ".join(detail[-5:]) if detail else "no output"
-        raise DrillError(stage, f"exit code {result.returncode}: {tail}")
 
 
 class _Drill:
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
-        self.psql = _require_binary("psql")
-        self.pg_restore = _require_binary("pg_restore")
-        self.openssl = _require_binary("openssl")
-        self.admin_url = libpq_url(cfg.database_url)
-        self.scratch_url = replace_database(cfg.database_url, cfg.scratch_db)
+        self.psql = require_binary("psql")
+        self.pg_restore = require_binary("pg_restore")
+        self.openssl = require_binary("openssl")
+        # Password-free URLs for argv; password rides in PGPASSWORD (B3).
+        self.admin_url, password = connection_args(cfg.database_url)
+        self.env = child_env(password)
+        self.scratch_url = replace_database(self.admin_url, cfg.scratch_db)
+        # Defense in depth (issue #34 fail-closed posture): load_config
+        # already refused a scratch name equal to the live DB, but this
+        # class runs DROP DATABASE — re-assert here so no future caller
+        # can construct a _Drill that aims at the live database.
+        if database_name(self.admin_url) == cfg.scratch_db:
+            raise DrillError(
+                "config",
+                f"refusing to run: scratch database {cfg.scratch_db!r} equals the live database",
+            )
+
+    def _assert_scratch_target(self, stage: str, url: str) -> None:
+        """Refuse any destructive statement not aimed at the scratch DB."""
+        if database_name(url) != self.cfg.scratch_db:
+            raise DrillError(
+                stage,
+                f"refusing destructive operation: target {redact_url(url)!r} is not "
+                f"the scratch database {self.cfg.scratch_db!r}",
+            )
 
     def _psql(self, stage: str, url: str, sql: str) -> str:
-        result = _run(
+        result = run(
             stage,
-            [self.psql, url, "-X", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", sql],
+            [self.psql, url, "-X", "-A", "-t", "--no-password", "-v", "ON_ERROR_STOP=1", "-c", sql],
             self.cfg.timeout_seconds,
+            env=self.env,
         )
-        _check(stage, result)
+        check(stage, result)
         return result.stdout.strip()
 
     def scalar(self, stage: str, sql: str) -> int:
@@ -295,6 +271,7 @@ class _Drill:
         if self.cfg.precreated:
             # No CREATEDB privilege: reset the pre-created scratch DB's
             # schema instead. Identifier safety enforced by load_config.
+            self._assert_scratch_target("create_scratch", self.scratch_url)
             self._psql(
                 "create_scratch",
                 self.scratch_url,
@@ -306,11 +283,18 @@ class _Drill:
             self.admin_url,
             f'DROP DATABASE IF EXISTS "{self.cfg.scratch_db}" WITH (FORCE)',
         )
-        self._psql("create_scratch", self.admin_url, f'CREATE DATABASE "{self.cfg.scratch_db}"')
+        # TEMPLATE template0: template1 may carry site-local objects
+        # that collide with the restore (MR !5 review, minor finding).
+        self._psql(
+            "create_scratch",
+            self.admin_url,
+            f'CREATE DATABASE "{self.cfg.scratch_db}" TEMPLATE template0',
+        )
 
     def drop_scratch(self) -> None:
         if self.cfg.precreated:
             # Leave no restored financial data at rest in the scratch DB.
+            self._assert_scratch_target("drop_scratch", self.scratch_url)
             self._psql(
                 "drop_scratch",
                 self.scratch_url,
@@ -324,9 +308,12 @@ class _Drill:
         )
 
     def decrypt(self, encrypted: Path, plaintext: Path) -> None:
-        _check(
+        # Pre-create 0600: during the drill the entire plaintext
+        # financial DB sits in this file; never readable via cron umask.
+        pre_create_private(plaintext)
+        check(
             "decrypt",
-            _run(
+            run(
                 "decrypt",
                 [
                     self.openssl,
@@ -347,23 +334,29 @@ class _Drill:
 
     def restore(self, plaintext: Path) -> int:
         """Restore into the scratch DB; returns the ignored-error count."""
-        listing = _run(
-            "verify_dump", [self.pg_restore, "--list", str(plaintext)], self.cfg.timeout_seconds
+        listing = run(
+            "verify_dump",
+            [self.pg_restore, "--list", str(plaintext)],
+            self.cfg.timeout_seconds,
+            env=self.env,
         )
-        _check("verify_dump", listing)
+        check("verify_dump", listing)
         if not listing.stdout.strip():
             raise DrillError("verify_dump", "pg_restore --list returned an empty table of contents")
 
-        result = _run(
+        self._assert_scratch_target("restore", self.scratch_url)
+        result = run(
             "restore",
             [
                 self.pg_restore,
                 "--no-owner",
                 "--no-privileges",
+                "--no-password",
                 f"--dbname={self.scratch_url}",
                 str(plaintext),
             ],
             self.cfg.timeout_seconds,
+            env=self.env,
         )
         if result.returncode == 0:
             return 0
@@ -386,8 +379,8 @@ class _Drill:
                 f"{self.cfg.max_ignored_errors} (RESTORE_CHECK_MAX_IGNORED_ERRORS); "
                 "stderr tail: " + "; ".join((result.stderr or "").strip().splitlines()[-5:]),
             )
-        _check("restore", result)
-        return 0  # unreachable: _check raised
+        check("restore", result)
+        return 0  # unreachable: check raised
 
     def sanity_report(self) -> dict[str, int | str]:
         self._psql("sanity", self.scratch_url, _UNFORCE_RLS_SQL)
@@ -397,6 +390,34 @@ class _Drill:
             report[table] = self.scalar("sanity", query)
         report["imbalanced_tenants"] = self.scalar("sanity", _IMBALANCE_SQL)
         return report
+
+
+def evaluate_report(report: Mapping[str, int | str], min_rows: int) -> None:
+    """Assert the restored copy is sane; raise DrillError otherwise.
+
+    Pure decision logic, unit-tested directly: this is the gate that
+    decides whether a restore drill passes, and for a financial ledger
+    a drill that passes on a hollow or imbalanced restore is worse
+    than one that fails (MR !5 finding M2).
+    """
+    if report["alembic"] == "MISSING":
+        raise DrillError("sanity", "restored database has no alembic_version row")
+    if report["tenants"] == 0:
+        raise DrillError("sanity", "restored database contains zero tenants")
+    for table in _FLOORED_TABLES:
+        count = report[table]
+        if isinstance(count, int) and count < min_rows:
+            raise DrillError(
+                "sanity",
+                f"restored {table} has {count} row(s), below the floor of {min_rows} "
+                "(RESTORE_CHECK_MIN_ROWS) — refusing to certify a hollow restore",
+            )
+    if report["imbalanced_tenants"] != 0:
+        raise DrillError(
+            "sanity",
+            f"ledger invariant violated: {report['imbalanced_tenants']} tenant(s) "
+            "where SUM(debits) <> SUM(credits) in the restored copy",
+        )
 
 
 def run_drill(cfg: Config) -> tuple[str, dict[str, int | str], int]:
@@ -427,16 +448,7 @@ def run_drill(cfg: Config) -> tuple[str, dict[str, int | str], int]:
                 # is loud in the log and cleaned up by the next drill.
                 logger.error(f"cleanup failed (scratch DB may linger): {exc}")
 
-    if report["alembic"] == "MISSING":
-        raise DrillError("sanity", "restored database has no alembic_version row")
-    if report["tenants"] == 0:
-        raise DrillError("sanity", "restored database contains zero tenants")
-    if report["imbalanced_tenants"] != 0:
-        raise DrillError(
-            "sanity",
-            f"ledger invariant violated: {report['imbalanced_tenants']} tenant(s) "
-            "where SUM(debits) <> SUM(credits) in the restored copy",
-        )
+    evaluate_report(report, cfg.min_rows)
     return name, report, ignored
 
 

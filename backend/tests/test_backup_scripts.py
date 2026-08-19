@@ -1,12 +1,22 @@
 """Unit tests for the backup/restore-drill scripts (no live DB needed).
 
 scripts/backup_db.py and scripts/verify_restore.py are stdlib-only
-one-shot cron entrypoints (see their module docstrings); everything
-here exercises the pure decision logic — retention selection, filename
-rotation, URL handling, scratch-DB naming guards and fail-closed env
-validation. The subprocess paths (pg_dump/pg_restore/psql/openssl) are
-exercised operationally by the weekly restore drill itself and are
-deliberately not mocked here: a mocked pg_dump proves nothing.
+one-shot cron entrypoints sharing scripts/backup_common.py (see their
+module docstrings); everything here exercises the pure decision logic —
+retention selection, filename rotation, URL/credential handling,
+scratch-DB naming guards, sanity-gate evaluation, ignored-error budget
+parsing and fail-closed env validation.
+
+Mocking policy (MR !5 review): PostgreSQL SEMANTICS are never mocked —
+a mocked pg_dump proves nothing about whether a dump restores, and the
+weekly drill exercises that operationally. What the "sweep" tests DO
+fake is the subprocess boundary itself (backup_common.run), in order
+to assert the argv/env CONTRACT this code hands to the OS: the
+database password must appear in no argv (world-readable via
+/proc/<pid>/cmdline on shared hosting) and must travel only via
+PGPASSWORD; the encryption key must appear only as an env: reference.
+That contract is our decision logic, and findings B2/B3 were exactly
+a wrong decision there.
 
 Boundary oracles are hand-computed in comments, never captured from
 the implementation (MASTER_PROMPT section 4).
@@ -14,6 +24,7 @@ the implementation (MASTER_PROMPT section 4).
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -24,40 +35,147 @@ import pytest
 # (stdlib-only DR tooling); import them by path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import backup_common
 import backup_db
 import verify_restore
 
-# --- shared naming/URL helpers (duplicated across both scripts so each
-# --- stays single-file runnable; test BOTH so they cannot drift apart)
+_KEY = "k" * 64  # what secrets.token_hex(32) produces: 64 hex chars
+_URL = "postgresql+psycopg://genesis@localhost:5432/genesis"
+# A URL carrying a credential, for the no-password-in-argv sweeps.
+_LEAKABLE = "s3kr3t-drill-pw"
+_PW_URL = f"postgresql+psycopg://genesis:{_LEAKABLE}@localhost:5432/genesis"
 
 
-@pytest.mark.parametrize("module", [backup_db, verify_restore])
-def test_libpq_url_strips_sqlalchemy_driver(module) -> None:
-    assert module.libpq_url("postgresql+psycopg://u:p@h:5432/db") == "postgresql://u:p@h:5432/db"
-    assert module.libpq_url("postgresql+asyncpg://u@h/db") == "postgresql://u@h/db"
+# --- shared constants and crypto-parameter derivation ---------------------
 
 
-@pytest.mark.parametrize("module", [backup_db, verify_restore])
-def test_libpq_url_passthrough(module) -> None:
-    # Already-plain URLs and non-URL strings come back untouched.
-    assert module.libpq_url("postgresql://u:p@h:5432/db") == "postgresql://u:p@h:5432/db"
-    assert module.libpq_url("not-a-url") == "not-a-url"
-
-
-@pytest.mark.parametrize("module", [backup_db, verify_restore])
-def test_filename_constants_identical(module) -> None:
+def test_filename_constants() -> None:
     # The drill locates files the backup script wrote; the naming
-    # contract must be byte-identical in both.
-    assert module.BACKUP_PREFIX == "genesis-"
-    assert module.BACKUP_SUFFIX == ".dump.enc"
-    assert module.TIMESTAMP_FORMAT == "%Y%m%dT%H%M%SZ"
+    # contract lives in exactly one module now.
+    assert backup_common.BACKUP_PREFIX == "genesis-"
+    assert backup_common.BACKUP_SUFFIX == ".dump.enc"
+    assert backup_common.TIMESTAMP_FORMAT == "%Y%m%dT%H%M%SZ"
+
+
+def test_decrypt_args_derived_from_encrypt_args() -> None:
+    # Hand-written oracle: decrypt = -d + encrypt minus -salt (openssl
+    # reads the salt from the file header). The lists live in ONE
+    # module and DECRYPT_ARGS is computed, so they cannot drift — this
+    # pins the computed result against the documented manual command.
+    assert backup_common.ENCRYPT_ARGS == [
+        "-aes-256-cbc",
+        "-md",
+        "sha256",
+        "-pbkdf2",
+        "-iter",
+        "600000",
+        "-salt",
+    ]
+    assert backup_common.DECRYPT_ARGS == [
+        "-d",
+        "-aes-256-cbc",
+        "-md",
+        "sha256",
+        "-pbkdf2",
+        "-iter",
+        "600000",
+    ]
+    assert "-salt" not in backup_common.DECRYPT_ARGS
+
+
+def test_scripts_do_not_require_python_311() -> None:
+    # Finding B4: the DR claim is "any python3 >= 3.8 can run these".
+    # datetime.UTC is 3.11-only; keep it out of the DR scripts forever.
+    scripts_dir = Path(backup_common.__file__).resolve().parent
+    for name in ("backup_common.py", "backup_db.py", "verify_restore.py"):
+        source = (scripts_dir / name).read_text()
+        assert "from datetime import UTC" not in source, name
+        assert "datetime.UTC" not in source, name
+
+
+# --- URL / credential handling (findings B2 and B3) ------------------------
+
+
+def test_libpq_url_strips_sqlalchemy_driver() -> None:
+    assert (
+        backup_common.libpq_url("postgresql+psycopg://user@h:5432/db")
+        == "postgresql://user@h:5432/db"
+    )
+    assert backup_common.libpq_url("postgresql+asyncpg://u@h/db") == "postgresql://u@h/db"
+
+
+def test_libpq_url_passthrough() -> None:
+    # Already-plain URLs and non-URL strings come back untouched.
+    assert backup_common.libpq_url("postgresql://user@h:5432/db") == "postgresql://user@h:5432/db"
+    assert backup_common.libpq_url("not-a-url") == "not-a-url"
+
+
+def test_connection_args_splits_password_out_of_the_url() -> None:
+    safe, password = backup_common.connection_args(_PW_URL)
+    # Hand-written expectation: driver marker stripped AND password gone.
+    assert safe == "postgresql://genesis@localhost:5432/genesis"
+    assert password == _LEAKABLE
+    assert _LEAKABLE not in safe
+
+
+def test_connection_args_without_password() -> None:
+    safe, password = backup_common.connection_args(_URL)
+    assert safe == "postgresql://genesis@localhost:5432/genesis"
+    assert password is None
+
+
+def test_connection_args_decodes_percent_encoded_password() -> None:
+    # PGPASSWORD expects the raw password, not the URL encoding.
+    result = backup_common.connection_args("postgresql://u:p%40ss%21@h:5/db")
+    assert result == ("postgresql://u@h:5/db", "p@ss!")
+
+
+def test_child_env_carries_password_and_pins_locale() -> None:
+    env = backup_common.child_env("pw")
+    assert env["PGPASSWORD"] == "pw"
+    # LC_ALL=C keeps pg_restore's "errors ignored on restore:" line
+    # English so the drill's budget regex is deterministic.
+    assert env["LC_ALL"] == "C"
+    assert "PGPASSWORD" not in backup_common.child_env(None)
+
+
+def test_redact_url_masks_the_password() -> None:
+    redacted = backup_common.redact_url(_PW_URL)
+    assert _LEAKABLE not in redacted
+    assert "***" in redacted
+    assert "genesis" in redacted  # host/db stay useful for debugging
+    # No password → nothing to mask, URL stays informative.
+    assert "localhost" in backup_common.redact_url(_URL)
+
+
+def test_database_name_error_never_leaks_the_password() -> None:
+    # Finding B2: this exact ConfigError ends up verbatim in the cron
+    # log's RESTORE_CHECK FAILURE line.
+    with pytest.raises(verify_restore.ConfigError, match="no database name") as excinfo:
+        verify_restore.database_name(f"postgresql://genesis:{_LEAKABLE}@localhost:5432/")
+    assert _LEAKABLE not in str(excinfo.value)
+    assert "***" in str(excinfo.value)
+
+
+def test_database_name_extraction() -> None:
+    assert verify_restore.database_name(_URL) == "genesis"
+
+
+def test_replace_database_swaps_only_the_path() -> None:
+    url = verify_restore.replace_database(_URL, "genesis_restore_check")
+    assert url == "postgresql://genesis@localhost:5432/genesis_restore_check"
+
+
+# --- filename round-trip ---------------------------------------------------
 
 
 def test_backup_filename_roundtrip() -> None:
     # 2026-08-18 01:30:00 UTC → hand-written expected name.
     ts = datetime(2026, 8, 18, 1, 30, 0)
-    name = backup_db.backup_filename(ts)
+    name = backup_common.backup_filename(ts)
     assert name == "genesis-20260818T013000Z.dump.enc"
+    assert backup_common.parse_backup_timestamp(name) == ts
+    # Both scripts re-export the shared parser (import surface pinned).
     assert backup_db.parse_backup_timestamp(name) == ts
     assert verify_restore.parse_backup_timestamp(name) == ts
 
@@ -75,15 +193,14 @@ def test_backup_filename_roundtrip() -> None:
     ],
 )
 def test_parse_backup_timestamp_rejects_foreign_names(name: str) -> None:
-    assert backup_db.parse_backup_timestamp(name) is None
-    assert verify_restore.parse_backup_timestamp(name) is None
+    assert backup_common.parse_backup_timestamp(name) is None
 
 
-# --- retention selection -------------------------------------------------
+# --- retention selection (ISO-week tier — finding M1) ----------------------
 
 
 def _daily_names(start: datetime, days: int) -> list[str]:
-    return [backup_db.backup_filename(start + timedelta(days=i)) for i in range(days)]
+    return [backup_common.backup_filename(start + timedelta(days=i)) for i in range(days)]
 
 
 def test_select_prunable_keeps_everything_when_under_budget() -> None:
@@ -91,26 +208,70 @@ def test_select_prunable_keeps_everything_when_under_budget() -> None:
     assert backup_db.select_prunable(names, daily_keep=7, weekly_keep=4) == []
 
 
-def test_select_prunable_daily_and_weekly_tiers() -> None:
-    # 30 nightly dumps 2026-07-20 .. 2026-08-18 (01:30 each).
-    # Hand-computed: with daily_keep=7 the newest 7 (Aug 12..18) stay.
-    # Sundays in range: Jul 26, Aug 2, Aug 9, Aug 16 — with
-    # weekly_keep=4 all four stay (Aug 16 already inside the daily 7).
-    # Everything else goes.
+def test_select_prunable_daily_and_iso_week_tiers() -> None:
+    # 30 nightly dumps 2026-07-20 .. 2026-08-18 (01:30 UTC each).
+    # Hand-computed: daily_keep=7 keeps Aug 12..18. The dumps span ISO
+    # weeks starting Mon Jul 20, Jul 27, Aug 3, Aug 10, Aug 17;
+    # weekly_keep=4 keeps the newest dump of the 4 newest weeks:
+    # Aug 18 (week of Aug 17), Aug 16 (week of Aug 10), Aug 9 (week of
+    # Aug 3), Aug 2 (week of Jul 27) — the first two already sit in the
+    # daily tier. Survivors: Aug 12..18 + Aug 9 + Aug 2 = 9 → 21 pruned.
     start = datetime(2026, 7, 20, 1, 30)
     names = _daily_names(start, 30)
     doomed = backup_db.select_prunable(names, daily_keep=7, weekly_keep=4)
 
     expected_kept = {
-        backup_db.backup_filename(datetime(2026, 8, d, 1, 30)) for d in range(12, 19)
+        backup_common.backup_filename(datetime(2026, 8, d, 1, 30)) for d in range(12, 19)
     } | {
-        backup_db.backup_filename(datetime(2026, 7, 26, 1, 30)),
-        backup_db.backup_filename(datetime(2026, 8, 2, 1, 30)),
-        backup_db.backup_filename(datetime(2026, 8, 9, 1, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 2, 1, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 9, 1, 30)),
     }
     assert set(names) - set(doomed) == expected_kept
-    # 30 files, 10 survivors (7 daily + 3 extra Sundays) → 20 pruned.
-    assert len(doomed) == 20
+    assert len(doomed) == 21
+
+
+def test_weekly_tier_survives_nairobi_cron_utc_stamp_shift() -> None:
+    # Finding M1, the falsifying scenario: a weekly cron at 01:30
+    # Sunday NAIROBI time (UTC+3) stamps files at 22:30 SATURDAY UTC.
+    # A "kept if taken on Sunday" classifier (the old rule) matches
+    # none of these files and silently never populates the weekly tier.
+    # ISO-week bucketing must keep one dump per calendar week anyway.
+    # Ten Saturday-UTC stamps, hand-picked: 2026-06-13 .. 2026-08-15.
+    saturdays = [datetime(2026, 6, 13, 22, 30) + timedelta(days=7 * i) for i in range(10)]
+    assert all(ts.isoweekday() == 6 for ts in saturdays)  # NOT Sunday
+    names = [backup_common.backup_filename(ts) for ts in saturdays]
+
+    doomed = backup_db.select_prunable(names, daily_keep=2, weekly_keep=4)
+
+    # Hand-computed: daily tier keeps Aug 15 + Aug 8; weekly tier keeps
+    # the newest dump of the 4 newest ISO weeks → Aug 15, Aug 8, Aug 1,
+    # Jul 25. Union = 4 survivors, 6 pruned (Jun 13..Jul 18).
+    survivors = set(names) - set(doomed)
+    assert survivors == {
+        backup_common.backup_filename(datetime(2026, 8, 15, 22, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 8, 22, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 1, 22, 30)),
+        backup_common.backup_filename(datetime(2026, 7, 25, 22, 30)),
+    }
+    assert len(doomed) == 6
+
+
+def test_weekly_tier_keeps_only_newest_dump_within_a_week() -> None:
+    # Three dumps inside one ISO week (Mon Aug 10 .. Wed Aug 12) plus
+    # one the week before: weekly_keep=2 must keep Aug 12 (newest of
+    # its week) and Aug 5 — never two dumps from the same week.
+    names = [
+        backup_common.backup_filename(datetime(2026, 8, 10, 1, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 11, 1, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 12, 1, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 5, 1, 30)),
+    ]
+    doomed = backup_db.select_prunable(names, daily_keep=1, weekly_keep=2)
+    survivors = set(names) - set(doomed)
+    assert survivors == {
+        backup_common.backup_filename(datetime(2026, 8, 12, 1, 30)),
+        backup_common.backup_filename(datetime(2026, 8, 5, 1, 30)),
+    }
 
 
 def test_select_prunable_weekly_zero_keeps_only_daily_tier() -> None:
@@ -133,7 +294,8 @@ def test_select_prunable_never_touches_foreign_files() -> None:
 
 def test_prune_backups_deletes_on_disk(tmp_path: Path) -> None:
     for i in range(10):
-        (tmp_path / backup_db.backup_filename(datetime(2026, 8, 1 + i, 1, 30))).write_bytes(b"x")
+        name = backup_common.backup_filename(datetime(2026, 8, 1 + i, 1, 30))
+        (tmp_path / name).write_bytes(b"x")
     (tmp_path / "keepme.txt").write_bytes(b"x")
     doomed = backup_db.prune_backups(tmp_path, daily_keep=3, weekly_keep=0)
     survivors = {p.name for p in tmp_path.iterdir()}
@@ -162,9 +324,6 @@ def test_latest_backup_picks_newest_and_ignores_junk() -> None:
 
 
 # --- env validation: both scripts must fail loudly, never default ---------
-
-_KEY = "k" * 64  # what secrets.token_hex(32) produces: 64 hex chars
-_URL = "postgresql+psycopg://u:p@localhost:5432/genesis"
 
 
 def test_backup_config_requires_database_url() -> None:
@@ -237,6 +396,20 @@ def test_drill_config_defaults() -> None:
     assert cfg.scratch_db == "genesis_restore_check"
     assert cfg.precreated is False
     assert cfg.max_ignored_errors == 0
+    # Fail-closed by default: a hollow restore (0 financial rows) must
+    # not pass the drill unless an operator explicitly opts out.
+    assert cfg.min_rows == 1
+
+
+def test_drill_config_min_rows_zero_is_explicit_opt_in() -> None:
+    cfg = verify_restore.load_config(
+        {"DATABASE_URL": _URL, "BACKUP_ENCRYPTION_KEY": _KEY, "RESTORE_CHECK_MIN_ROWS": "0"}
+    )
+    assert cfg.min_rows == 0
+    with pytest.raises(verify_restore.ConfigError, match="RESTORE_CHECK_MIN_ROWS"):
+        verify_restore.load_config(
+            {"DATABASE_URL": _URL, "BACKUP_ENCRYPTION_KEY": _KEY, "RESTORE_CHECK_MIN_ROWS": "-1"}
+        )
 
 
 # --- scratch DB naming: the drill must never aim at the live database -----
@@ -269,12 +442,374 @@ def test_scratch_db_name_refuses_empty_suffix_collision() -> None:
         verify_restore.scratch_db_name(_URL, "", "")
 
 
-def test_replace_database_swaps_only_the_path() -> None:
-    url = verify_restore.replace_database(_URL, "genesis_restore_check")
-    assert url == "postgresql://u:p@localhost:5432/genesis_restore_check"
+def _drill_cfg(**overrides: object) -> verify_restore.Config:
+    defaults = {
+        "database_url": _PW_URL,
+        "backup_dir": Path("/nonexistent"),
+        "scratch_db": "genesis_restore_check",
+        "precreated": False,
+        "min_rows": 1,
+        "max_ignored_errors": 0,
+        "timeout_seconds": 60,
+    }
+    defaults.update(overrides)
+    return verify_restore.Config(**defaults)  # type: ignore[arg-type]
 
 
-def test_database_name_extraction() -> None:
-    assert verify_restore.database_name(_URL) == "genesis"
-    with pytest.raises(verify_restore.ConfigError, match="no database name"):
-        verify_restore.database_name("postgresql://u:p@localhost:5432/")
+def _fake_binaries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(verify_restore, "require_binary", lambda name: f"/fake/{name}")
+
+
+def test_drill_reasserts_scratch_guard_at_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Issue #34 posture: even if load_config were bypassed, a _Drill
+    # aimed at the live DB must refuse to exist.
+    _fake_binaries(monkeypatch)
+    with pytest.raises(verify_restore.DrillError, match="equals the live database"):
+        verify_restore._Drill(_drill_cfg(scratch_db="genesis"))
+
+
+def test_drill_refuses_destructive_op_on_non_scratch_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_binaries(monkeypatch)
+    drill = verify_restore._Drill(_drill_cfg())
+    with pytest.raises(verify_restore.DrillError, match="not the scratch database"):
+        drill._assert_scratch_target("restore", "postgresql://genesis@localhost:5432/genesis")
+
+
+# --- sanity-gate evaluation (finding M2: hollow restores must fail) --------
+
+
+def _report(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "alembic": "0048_head",
+        "tenants": 2,
+        "members": 10,
+        "transactions": 40,
+        "ledger_entries": 80,
+        "imbalanced_tenants": 0,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_evaluate_report_accepts_a_sane_restore() -> None:
+    verify_restore.evaluate_report(_report(), min_rows=1)  # must not raise
+
+
+def test_evaluate_report_rejects_missing_alembic() -> None:
+    with pytest.raises(verify_restore.DrillError, match="alembic_version"):
+        verify_restore.evaluate_report(_report(alembic="MISSING"), min_rows=1)
+
+
+def test_evaluate_report_rejects_zero_tenants() -> None:
+    with pytest.raises(verify_restore.DrillError, match="zero tenants"):
+        verify_restore.evaluate_report(_report(tenants=0), min_rows=1)
+
+
+@pytest.mark.parametrize("table", ["members", "transactions", "ledger_entries"])
+def test_evaluate_report_rejects_hollow_restore(table: str) -> None:
+    # Finding M2: a dump that lost all financial rows used to produce
+    # RESTORE_CHECK SUCCESS. Now every floored table must clear
+    # RESTORE_CHECK_MIN_ROWS.
+    with pytest.raises(verify_restore.DrillError, match=table):
+        verify_restore.evaluate_report(_report(**{table: 0}), min_rows=1)
+
+
+def test_evaluate_report_min_rows_zero_allows_prelaunch_db() -> None:
+    report = _report(members=0, transactions=0, ledger_entries=0)
+    verify_restore.evaluate_report(report, min_rows=0)  # must not raise
+
+
+def test_evaluate_report_rejects_imbalanced_ledger() -> None:
+    with pytest.raises(verify_restore.DrillError, match="invariant violated"):
+        verify_restore.evaluate_report(_report(imbalanced_tenants=3), min_rows=1)
+
+
+# --- ignored-error budget parsing (pure decision logic on stderr) ----------
+
+
+def _completed(argv: list[str], rc: int, stdout: str = "", stderr: str = "") -> object:
+    return subprocess.CompletedProcess(argv, rc, stdout, stderr)
+
+
+def _budget_run_fake(restore_rc: int, restore_stderr: str):
+    def fake(stage: str, argv: list[str], timeout: int, env: dict | None = None) -> object:
+        if stage == "verify_dump":
+            return _completed(argv, 0, stdout="1; 0 TABLE public tenants")
+        if stage == "restore":
+            return _completed(argv, restore_rc, stderr=restore_stderr)
+        raise AssertionError(f"unexpected stage {stage}")
+
+    return fake
+
+
+def test_restore_budget_tolerates_ignored_errors_within_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake_binaries(monkeypatch)
+    drill = verify_restore._Drill(_drill_cfg(max_ignored_errors=1))
+    stderr = "pg_restore: warning: errors ignored on restore: 1"
+    monkeypatch.setattr(verify_restore, "run", _budget_run_fake(1, stderr))
+    assert drill.restore(tmp_path / "x.dump") == 1
+
+
+def test_restore_budget_rejects_ignored_errors_over_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake_binaries(monkeypatch)
+    drill = verify_restore._Drill(_drill_cfg(max_ignored_errors=0))
+    stderr = "pg_restore: warning: errors ignored on restore: 2"
+    monkeypatch.setattr(verify_restore, "run", _budget_run_fake(1, stderr))
+    with pytest.raises(verify_restore.DrillError, match="exceeds the budget"):
+        drill.restore(tmp_path / "x.dump")
+
+
+def test_restore_hard_failure_without_summary_line_is_fatal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake_binaries(monkeypatch)
+    drill = verify_restore._Drill(_drill_cfg(max_ignored_errors=5))
+    monkeypatch.setattr(
+        verify_restore, "run", _budget_run_fake(1, "pg_restore: error: out of memory")
+    )
+    with pytest.raises(verify_restore.DrillError, match="exit code 1"):
+        drill.restore(tmp_path / "x.dump")
+
+
+def test_check_reports_last_five_stderr_lines() -> None:
+    result = _completed([], 3, stderr="l1\nl2\nl3\nl4\nl5\nl6\nl7")
+    with pytest.raises(backup_common.StageError, match="exit code 3") as excinfo:
+        backup_common.check("stage", result)
+    message = str(excinfo.value)
+    assert "l3; l4; l5; l6; l7" in message
+    assert "l2" not in message
+
+
+# --- private temp files -----------------------------------------------------
+
+
+def test_pre_create_private_pins_mode_0600_and_truncates(tmp_path: Path) -> None:
+    target = tmp_path / "plain.tmp"
+    target.write_bytes(b"leftover")
+    target.chmod(0o644)
+    backup_common.pre_create_private(target)
+    assert target.stat().st_size == 0
+    assert (target.stat().st_mode & 0o777) == 0o600
+
+
+# --- argv/env sweeps: the password must never reach argv (B3) --------------
+
+
+class _BackupRunRecorder:
+    """Fakes backup_common.run for backup_db: records every argv/env,
+    simulates file side effects, and captures the plaintext file mode
+    at encryption time (when the whole DB sits in it)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], dict | None]] = []
+        self.plaintext_mode: int | None = None
+
+    def __call__(
+        self, stage: str, argv: list[str], timeout: int, env: dict | None = None
+    ) -> object:
+        self.calls.append((stage, list(argv), env))
+        stdout = ""
+        if stage == "preflight":
+            stdout = "t"
+        elif stage == "pg_dump":
+            for arg in argv:
+                if arg.startswith("--file="):
+                    Path(arg[len("--file=") :]).write_bytes(b"PGDMP-fake")
+        elif stage == "verify_dump":
+            stdout = "1; 0 TABLE public tenants"
+        elif stage == "encrypt":
+            source = Path(argv[argv.index("-in") + 1])
+            self.plaintext_mode = source.stat().st_mode & 0o777
+            Path(argv[argv.index("-out") + 1]).write_bytes(b"enc-fake")
+        return _completed(argv, 0, stdout=stdout)
+
+
+def test_run_backup_sweep_password_never_in_argv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recorder = _BackupRunRecorder()
+    monkeypatch.setattr(backup_db, "require_binary", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(backup_db, "run", recorder)
+    cfg = backup_db.load_config(
+        {
+            "DATABASE_URL": _PW_URL,
+            "BACKUP_ENCRYPTION_KEY": _KEY,
+            "BACKUP_DIR": str(tmp_path / "bk"),
+        }
+    )
+
+    encrypted, size, pruned = backup_db.run_backup(cfg)
+
+    stages = [stage for stage, _, _ in recorder.calls]
+    assert stages == ["preflight", "pg_dump", "verify_dump", "encrypt"]
+    for stage, argv, _env in recorder.calls:
+        # The credential sweep, finding B3: nothing that reaches argv
+        # (ps-visible on shared hosting) may carry the DB password —
+        # and the encryption key may appear only as an env: reference.
+        assert all(_LEAKABLE not in arg for arg in argv), stage
+        assert all(_KEY not in arg for arg in argv), stage
+    for stage in ("preflight", "pg_dump"):
+        env = next(e for s, _, e in recorder.calls if s == stage)
+        assert env is not None and env["PGPASSWORD"] == _LEAKABLE, stage
+    encrypt_argv = next(a for s, a, _ in recorder.calls if s == "encrypt")
+    assert "env:BACKUP_ENCRYPTION_KEY" in encrypt_argv
+
+    # Plaintext was 0600 while it held the dump, and is gone afterwards.
+    assert recorder.plaintext_mode == 0o600
+    assert not list(tmp_path.glob("**/*.plain.tmp"))
+    assert encrypted.exists()
+    assert (encrypted.stat().st_mode & 0o777) == 0o600
+    assert size > 0
+    assert pruned == []
+
+
+def test_run_backup_preflight_fails_closed_without_bypassrls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Finding B1: FORCE RLS + a role without BYPASSRLS means pg_dump
+    # cannot produce a complete dump. The preflight must refuse with an
+    # actionable message instead of letting pg_dump fail obscurely (or
+    # worse, letting someone "fix" it with --enable-row-security).
+    def fake_run(stage: str, argv: list[str], timeout: int, env: dict | None = None) -> object:
+        assert stage == "preflight"
+        return _completed(argv, 0, stdout="f")
+
+    monkeypatch.setattr(backup_db, "require_binary", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(backup_db, "run", fake_run)
+    cfg = backup_db.load_config(
+        {
+            "DATABASE_URL": _PW_URL,
+            "BACKUP_ENCRYPTION_KEY": _KEY,
+            "BACKUP_DIR": str(tmp_path / "bk"),
+        }
+    )
+    with pytest.raises(backup_db.BackupError, match="BYPASSRLS") as excinfo:
+        backup_db.run_backup(cfg)
+    assert excinfo.value.stage == "preflight"
+
+
+class _DrillRunRecorder:
+    """Fakes backup_common.run for verify_restore: canned pg outputs
+    keyed off the SQL text, plus openssl/pg_restore side effects."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], dict | None]] = []
+
+    def __call__(
+        self, stage: str, argv: list[str], timeout: int, env: dict | None = None
+    ) -> object:
+        self.calls.append((stage, list(argv), env))
+        stdout = ""
+        if stage == "decrypt":
+            Path(argv[argv.index("-out") + 1]).write_bytes(b"PGDMP-fake")
+        elif stage == "verify_dump":
+            stdout = "1; 0 TABLE public tenants"
+        elif stage == "sanity":
+            sql = argv[-1]
+            if "version_num" in sql:
+                stdout = "0048_head"
+            elif sql.startswith("SELECT count(*) FROM ("):
+                stdout = "0"  # imbalanced tenants
+            elif "count(*)" in sql:
+                stdout = "7"
+        return _completed(argv, 0, stdout=stdout)
+
+
+def test_run_drill_sweep_password_never_in_argv_and_only_scratch_dropped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    backup_name = backup_common.backup_filename(datetime(2026, 8, 16, 1, 30))
+    (tmp_path / backup_name).write_bytes(b"enc-fake")
+    recorder = _DrillRunRecorder()
+    monkeypatch.setattr(verify_restore, "require_binary", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(verify_restore, "run", recorder)
+    cfg = verify_restore.load_config(
+        {
+            "DATABASE_URL": _PW_URL,
+            "BACKUP_ENCRYPTION_KEY": _KEY,
+            "BACKUP_DIR": str(tmp_path),
+        }
+    )
+
+    name, report, ignored = verify_restore.run_drill(cfg)
+
+    assert name == backup_name
+    assert ignored == 0
+    assert report["alembic"] == "0048_head"
+    assert report["tenants"] == 7
+    assert report["imbalanced_tenants"] == 0
+
+    for stage, argv, env in recorder.calls:
+        assert all(_LEAKABLE not in arg for arg in argv), stage
+        assert all(_KEY not in arg for arg in argv), stage
+        if stage != "decrypt":  # pg tools get PGPASSWORD; openssl inherits
+            assert env is not None and env["PGPASSWORD"] == _LEAKABLE, stage
+    # Every destructive statement names ONLY the scratch database.
+    for _stage, argv, _ in recorder.calls:
+        sql = argv[-1]
+        if "DROP DATABASE" in sql or "CREATE DATABASE" in sql:
+            assert '"genesis_restore_check"' in sql
+            assert '"genesis"' not in sql
+    restore_argv = next(a for s, a, _ in recorder.calls if s == "restore")
+    dbname = next(a for a in restore_argv if a.startswith("--dbname="))
+    assert dbname.endswith("/genesis_restore_check")
+    # The decrypted plaintext temp file is cleaned up.
+    assert not list(tmp_path.glob("*.drill.tmp"))
+
+
+# --- main() exit codes: the cron contract -----------------------------------
+
+
+def test_backup_main_exit_codes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def boom(env: object) -> object:
+        raise backup_db.ConfigError("nope")
+
+    monkeypatch.setattr(backup_db, "load_config", boom)
+    assert backup_db.main() == 1
+
+    cfg = backup_db.Config(
+        database_url=_URL,
+        backup_dir=tmp_path,
+        retention_daily=7,
+        retention_weekly=4,
+        timeout_seconds=60,
+    )
+    monkeypatch.setattr(backup_db, "load_config", lambda env: cfg)
+    monkeypatch.setattr(backup_db, "run_backup", lambda cfg: (tmp_path / "f.dump.enc", 123, []))
+    assert backup_db.main() == 0
+
+    def stage_fail(cfg: object) -> object:
+        raise backup_db.BackupError("pg_dump", "exit code 1: boom")
+
+    monkeypatch.setattr(backup_db, "run_backup", stage_fail)
+    assert backup_db.main() == 1
+
+
+def test_drill_main_exit_codes(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(env: object) -> object:
+        raise verify_restore.ConfigError("nope")
+
+    monkeypatch.setattr(verify_restore, "load_config", boom)
+    assert verify_restore.main() == 1
+
+    monkeypatch.setattr(verify_restore, "load_config", lambda env: _drill_cfg())
+    monkeypatch.setattr(
+        verify_restore,
+        "run_drill",
+        lambda cfg: ("genesis-20260816T013000Z.dump.enc", _report(), 0),
+    )
+    assert verify_restore.main() == 0
+
+    def stage_fail(cfg: object) -> object:
+        raise verify_restore.DrillError("sanity", "hollow")
+
+    monkeypatch.setattr(verify_restore, "run_drill", stage_fail)
+    assert verify_restore.main() == 1
