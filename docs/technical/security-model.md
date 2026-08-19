@@ -17,7 +17,7 @@ Implemented in `backend/src/genesis/api/auth.py` and
 1. The client sends `POST /auth/otp/request` with a sign-in identifier and
    the `X-Tenant-ID` header (pre-auth endpoints scope the tenant from this
    explicit header). Rate limiting applies to all auth endpoints via two
-   fixed-window buckets (`api/auth.py:_rate_guard`): a per-tenant bucket
+   atomic sliding-window buckets (`api/auth.py:_rate_guard`): a per-tenant bucket
    keyed on the *validated* tenant UUID (every unparseable header value
    shares one `invalid` bucket) and a pure-IP backstop bucket that applies
    regardless of the header. Both must pass. The limiter
