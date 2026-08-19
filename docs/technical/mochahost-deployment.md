@@ -93,7 +93,7 @@ reachable over the open cPanel/WHM ports:
 | Need | SSH command | cPanel equivalent |
 |---|---|---|
 | Get code onto the server | `git clone` / `scp` | **Git Version Control** (cPanel Files section — clones a repo directly), or **File Manager** upload |
-| Install Python deps | `pip install -e ".[dev]"` | **Setup Python App → Run Pip Install** (uses the app's own venv) |
+| Install Python deps | `pip install --require-hashes -r requirements.txt` then `pip install --no-deps --no-build-isolation -e .` | **Setup Python App → Run Pip Install** (uses the app's own venv) |
 | Install Node deps | `npm ci` | **Setup Node.js App → Run NPM Install** |
 | Run migrations | `alembic upgrade head` | **Cron Jobs** — a cron entry is arbitrary shell execution; schedule it a minute out, redirect output to a log, read the log in File Manager (§3.5a) |
 | Run arbitrary SQL | `psql -f file.sql` | **phpPgAdmin** (paste and execute) |

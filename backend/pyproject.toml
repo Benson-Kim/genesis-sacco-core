@@ -29,6 +29,9 @@ dev = [
     "mypy>=1.11",
     "import-linter>=2.0",
     "hypothesis>=6.100",
+    # Build backend, declared here so the hash-pinned lock covers it and the
+    # editable install can run with --no-build-isolation (issue #5).
+    "setuptools>=69",
 ]
 
 [tool.setuptools.packages.find]
