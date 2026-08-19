@@ -80,7 +80,8 @@ are the evidence of recoverability an examiner will ask for.
    UTC, and in any zone east of UTC+1 a "Sunday" run stamps a Saturday
    file; ISO-week bucketing cannot silently starve the weekly tier.
    Pruning only ever touches files matching the script's own naming
-   scheme (`genesis-<UTC-stamp>.dump.enc`).
+   scheme (`genesis-<UTC-stamp>.k<key-id>.dump.enc`; pre-key-id files
+   without the `.k` segment are equally recognised).
 6. Emits exactly one greppable line:
    `BACKUP_DB SUCCESS file=... bytes=... pruned=...` or
    `BACKUP_DB FAILURE stage=... error=...`.
@@ -236,6 +237,13 @@ offsite (not from the host) and restore it.
 
 - **Generate:** `python -c "import secrets; print(secrets.token_hex(32))"`
   (64 hex chars; the scripts refuse keys shorter than 32 chars).
+- **Key id (issue #28):** every key is identified by the first 8 hex
+  chars of `SHA-256(key)` — the scripts embed it in each backup
+  filename (`genesis-<stamp>.k<key-id>.dump.enc`) and the drill
+  refuses, *before decrypting*, an artifact whose key id does not
+  match the configured key, naming the escrowed key to fetch instead
+  of surfacing an opaque openssl "bad decrypt". Compute it any time:
+  `python -c "import hashlib,os; print(hashlib.sha256(os.environ['BACKUP_ENCRYPTION_KEY'].encode()).hexdigest()[:8])"`.
 - **Store on the host** only in `~/.genesis_backup_env`, `chmod 600`.
 - **Escrow off the host — this is the rule that matters:** a backup
   encrypted with a key that only lived on the dead host is a shredder,
@@ -243,15 +251,24 @@ offsite (not from the host) and restore it.
   fate with the host: the organisation's password manager (a vault
   entry named `genesis BACKUP_ENCRYPTION_KEY`, access limited to the
   operators on the DR rota) and a sealed printed copy with whoever
-  holds the SACCO's other statutory records. **Never** in the repo, CI
-  variables visible to the pipeline, or the same bucket as the dumps.
-- **Rotate** on operator departure or suspected exposure: generate a
-  new key, update env file + escrow, take an immediate manual backup
-  with the new key, and keep the old key in escrow (marked retired)
-  until every dump encrypted with it has aged out of retention —
-  including offsite copies. Nothing yet binds a dump file to the key
-  that encrypted it — restore-day key ambiguity after a rotation is
-  tracked in issue #28 (key-id in the filename).
+  holds the SACCO's other statutory records — **each escrow entry
+  labelled with the key id** so restore day is a lookup, not a hunt.
+  **Never** in the repo, CI variables visible to the pipeline, or the
+  same bucket as the dumps.
+- **Rotate** on operator departure or suspected exposure — checklist,
+  in order, rotation is complete only when every box is ticked:
+  1. generate the new key; compute and record its key id;
+  2. add the new key to **both** escrow locations, labelled with its
+     key id, before it is used anywhere;
+  3. update `~/.genesis_backup_env` on the host;
+  4. take an immediate manual backup with the new key
+     (`backup_db.py` by hand) — its filename must carry the new id;
+  5. run the restore drill against that new dump
+     (`verify_restore.py` by hand) and see `RESTORE_CHECK SUCCESS`;
+  6. mark the old key *retired* (never delete) in escrow; it stays
+     retrievable until every dump encrypted with it has aged out of
+     retention — **including offsite copies and year-end archival
+     dumps**, which for archives means indefinitely.
 - **Year-end archival dump:** the rolling retention caps history at a
   few weeks, which satisfies DR but not audit. Take one manual dump at
   each financial year-end, copy it offsite (§4), and retain it for as

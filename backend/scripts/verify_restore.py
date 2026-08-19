@@ -84,8 +84,10 @@ from backup_common import (
     child_env,
     connection_args,
     int_env,
+    key_id,
     latest_backup,
     libpq_url,
+    parse_backup_name,
     parse_backup_timestamp,  # noqa: F401 — re-exported: shared naming contract
     pre_create_private,
     redact_url,
@@ -155,6 +157,11 @@ class Config:
     min_rows: int
     max_ignored_errors: int
     timeout_seconds: int
+    #: 8-hex id of the current BACKUP_ENCRYPTION_KEY (issue #28);
+    #: checked against the id embedded in the backup filename BEFORE
+    #: decryption so a post-rotation drill fails with a which-key
+    #: message instead of an opaque openssl "bad decrypt".
+    key_id: str = ""
 
 
 def database_name(url: str) -> str:
@@ -217,6 +224,7 @@ def load_config(env: Mapping[str, str]) -> Config:
         min_rows=int_env(env, "RESTORE_CHECK_MIN_ROWS", 1, 0),
         max_ignored_errors=int_env(env, "RESTORE_CHECK_MAX_IGNORED_ERRORS", 0, 0),
         timeout_seconds=int_env(env, "BACKUP_TIMEOUT_SECONDS", 3600, 1),
+        key_id=key_id(env["BACKUP_ENCRYPTION_KEY"]),
     )
 
 
@@ -419,6 +427,30 @@ def evaluate_report(report: Mapping[str, int | str], min_rows: int) -> None:
         )
 
 
+def check_key_binding(name: str, current_key_id: str) -> None:
+    """Fail BEFORE decryption if the backup names a different key (#28).
+
+    Turns the post-rotation failure mode from an opaque openssl "bad
+    decrypt" into an actionable which-key message. Legacy filenames
+    without a key id are accepted (pre-#28 artifacts must stay
+    drillable) — the mismatch guard only bites once key ids exist.
+    """
+    parsed = parse_backup_name(name)
+    if parsed is None:  # unreachable for names chosen by latest_backup
+        return
+    _, embedded = parsed
+    if embedded is None:
+        logger.info(f"{name} carries no key id (pre-rotation-binding artifact); proceeding")
+        return
+    if current_key_id and embedded != current_key_id:
+        raise DrillError(
+            "keyid",
+            f"backup {name} was encrypted with key id k{embedded}, but the current "
+            f"BACKUP_ENCRYPTION_KEY has id k{current_key_id} — fetch the escrowed key "
+            f"labelled k{embedded} (runbook §5) instead of guessing at decrypt errors",
+        )
+
+
 def run_drill(cfg: Config) -> tuple[str, dict[str, int | str], int]:
     """Full drill. Returns (backup filename, sanity report, ignored errors)."""
     if not cfg.backup_dir.is_dir():
@@ -426,6 +458,7 @@ def run_drill(cfg: Config) -> tuple[str, dict[str, int | str], int]:
     name = latest_backup(p.name for p in cfg.backup_dir.iterdir() if p.is_file())
     if name is None:
         raise DrillError("locate", f"no {BACKUP_PREFIX}*{BACKUP_SUFFIX} files in {cfg.backup_dir}")
+    check_key_binding(name, cfg.key_id)
     logger.info(f"drilling restore of {name} into scratch database {cfg.scratch_db!r}")
 
     drill = _Drill(cfg)

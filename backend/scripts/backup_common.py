@@ -31,8 +31,10 @@ Security posture shared by both scripts (MR !5 findings B2/B3):
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -45,6 +47,15 @@ BACKUP_PREFIX = "genesis-"
 BACKUP_SUFFIX = ".dump.enc"
 TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 MIN_KEY_LENGTH = 32
+
+#: Key-id segment inside a backup filename (issue #28):
+#: ``genesis-<UTC-stamp>.k<8-hex>.dump.enc``. The id binds the artifact
+#: to the BACKUP_ENCRYPTION_KEY that wrote it, so restore day after a
+#: rotation is a lookup ("fetch the escrowed key labelled k3f9a2c81"),
+#: never a guessing game over opaque openssl "bad decrypt" errors.
+#: Filenames without the segment are the pre-#28 legacy form and stay
+#: fully supported (retention, drill, offsite copy).
+_KEY_ID_RE = re.compile(r"^k([0-9a-f]{8})$")
 
 #: Symmetric-encryption parameters. `openssl enc` offers no AEAD mode;
 #: integrity is instead proven end-to-end by scripts/verify_restore.py
@@ -173,20 +184,50 @@ def child_env(password: str | None) -> dict[str, str]:
     return env
 
 
-def backup_filename(ts: datetime) -> str:
-    return BACKUP_PREFIX + ts.strftime(TIMESTAMP_FORMAT) + BACKUP_SUFFIX
+def key_id(key: str) -> str:
+    """8-hex-char identifier of an encryption key (issue #28).
+
+    A SHA-256 prefix identifies the key without revealing usable key
+    material; escrow entries must be labelled with the same id
+    (runbook §5).
+    """
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:8]
+
+
+def backup_filename(ts: datetime, key_id_hex: str | None = None) -> str:
+    """Backup filename; embeds the key id when one is supplied (#28)."""
+    stamp = ts.strftime(TIMESTAMP_FORMAT)
+    middle = f"{stamp}.k{key_id_hex}" if key_id_hex else stamp
+    return BACKUP_PREFIX + middle + BACKUP_SUFFIX
+
+
+def parse_backup_name(name: str) -> tuple[datetime, str | None] | None:
+    """Split a backup filename into (timestamp, key id or None).
+
+    Returns None for foreign names — anything unparseable is untouchable
+    for retention and invisible to the drill/offsite scripts.
+    """
+    if not (name.startswith(BACKUP_PREFIX) and name.endswith(BACKUP_SUFFIX)):
+        return None
+    middle = name[len(BACKUP_PREFIX) : len(name) - len(BACKUP_SUFFIX)]
+    stamp, _, key_part = middle.partition(".")
+    kid: str | None = None
+    if key_part:
+        match = _KEY_ID_RE.fullmatch(key_part)
+        if match is None:
+            return None
+        kid = match.group(1)
+    try:
+        # Naive-UTC by contract: filenames are always written in UTC.
+        return datetime.strptime(stamp, TIMESTAMP_FORMAT), kid
+    except ValueError:
+        return None
 
 
 def parse_backup_timestamp(name: str) -> datetime | None:
     """Return the timestamp encoded in a backup filename, or None if foreign."""
-    if not (name.startswith(BACKUP_PREFIX) and name.endswith(BACKUP_SUFFIX)):
-        return None
-    stamp = name[len(BACKUP_PREFIX) : len(name) - len(BACKUP_SUFFIX)]
-    try:
-        # Naive-UTC by contract: filenames are always written in UTC.
-        return datetime.strptime(stamp, TIMESTAMP_FORMAT)
-    except ValueError:
-        return None
+    parsed = parse_backup_name(name)
+    return None if parsed is None else parsed[0]
 
 
 def latest_backup(names: Iterable[str]) -> str | None:

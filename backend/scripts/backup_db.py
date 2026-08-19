@@ -78,6 +78,7 @@ from backup_common import (
     child_env,
     connection_args,
     int_env,
+    key_id,
     parse_backup_timestamp,
     pre_create_private,
     require_binary,
@@ -103,6 +104,10 @@ class Config:
     retention_daily: int
     retention_weekly: int
     timeout_seconds: int
+    #: 8-hex id of BACKUP_ENCRYPTION_KEY (issue #28) — embedded in the
+    #: filename so restore day knows which escrowed key opens the file.
+    #: Not secret material: a SHA-256 prefix identifies without revealing.
+    key_id: str = ""
 
 
 def load_config(env: Mapping[str, str]) -> Config:
@@ -132,6 +137,7 @@ def load_config(env: Mapping[str, str]) -> Config:
         retention_daily=int_env(env, "BACKUP_RETENTION_DAILY", 7, 1),
         retention_weekly=int_env(env, "BACKUP_RETENTION_WEEKLY", 4, 0),
         timeout_seconds=int_env(env, "BACKUP_TIMEOUT_SECONDS", 3600, 1),
+        key_id=key_id(env["BACKUP_ENCRYPTION_KEY"]),
     )
 
 
@@ -223,7 +229,7 @@ def run_backup(cfg: Config) -> tuple[Path, int, list[str]]:
 
     # UP017 suppressed: the UTC alias is 3.11-only; DR scripts must
     # run under the host system python (>= 3.8) — finding B4.
-    name = backup_filename(datetime.now(timezone.utc))  # noqa: UP017
+    name = backup_filename(datetime.now(timezone.utc), cfg.key_id or None)  # noqa: UP017
     encrypted = cfg.backup_dir / name
     # ".plain.tmp" never matches BACKUP_SUFFIX, so a leftover plaintext
     # temp file can never be mistaken for (or pruned as) a real backup.

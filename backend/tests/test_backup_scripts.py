@@ -1123,3 +1123,110 @@ def test_offsite_main_exit_codes_and_heartbeat(
     assert offsite_backup.main() == 1
 
     assert pings == [False, True, False]
+
+
+# --- key-id binding (#28): rotation must never make restore-day a guess ----
+
+
+def test_key_id_is_a_stable_8_hex_prefix() -> None:
+    kid = backup_common.key_id(_KEY)
+    assert len(kid) == 8
+    assert kid == backup_common.key_id(_KEY)  # deterministic
+    assert all(c in "0123456789abcdef" for c in kid)
+    assert kid != backup_common.key_id("different-key-material-" + "x" * 40)
+    # Identifies without revealing: the id is not a substring of the key.
+    assert kid not in _KEY
+
+
+def test_backup_filename_roundtrip_with_key_id() -> None:
+    ts = datetime(2026, 8, 18, 1, 30, 0)
+    name = backup_common.backup_filename(ts, "a1b2c3d4")
+    assert name == "genesis-20260818T013000Z.ka1b2c3d4.dump.enc"
+    assert backup_common.parse_backup_name(name) == (ts, "a1b2c3d4")
+    assert backup_common.parse_backup_timestamp(name) == ts
+    # Legacy names parse with no key id — pre-#28 artifacts stay usable.
+    legacy = backup_common.backup_filename(ts)
+    assert backup_common.parse_backup_name(legacy) == (ts, None)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "genesis-20260818T013000Z.kZZZZZZZZ.dump.enc",  # non-hex id
+        "genesis-20260818T013000Z.ka1b2c3.dump.enc",  # 6 chars
+        "genesis-20260818T013000Z.kA1B2C3D4.dump.enc",  # uppercase
+        "genesis-20260818T013000Z.x12345678.dump.enc",  # wrong marker
+    ],
+)
+def test_parse_backup_name_rejects_malformed_key_ids(name: str) -> None:
+    assert backup_common.parse_backup_name(name) is None
+
+
+def test_retention_and_latest_handle_mixed_legacy_and_key_id_names() -> None:
+    legacy = backup_common.backup_filename(datetime(2026, 8, 10, 1, 30))
+    keyed_old = backup_common.backup_filename(datetime(2026, 8, 14, 1, 30), "a1b2c3d4")
+    keyed_new = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30), "a1b2c3d4")
+    names = [legacy, keyed_new, keyed_old]
+    assert backup_common.latest_backup(names) == keyed_new
+    doomed = backup_db.select_prunable(names, daily_keep=1, weekly_keep=0)
+    assert set(doomed) == {legacy, keyed_old}  # both forms prunable
+
+
+def test_backup_config_carries_the_key_id() -> None:
+    cfg = backup_db.load_config({"DATABASE_URL": _URL, "BACKUP_ENCRYPTION_KEY": _KEY})
+    assert cfg.key_id == backup_common.key_id(_KEY)
+    drill_cfg = verify_restore.load_config({"DATABASE_URL": _URL, "BACKUP_ENCRYPTION_KEY": _KEY})
+    assert drill_cfg.key_id == cfg.key_id
+
+
+def test_run_backup_embeds_key_id_in_filename(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recorder = _BackupRunRecorder()
+    monkeypatch.setattr(backup_db, "require_binary", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(backup_db, "run", recorder)
+    cfg = backup_db.load_config(
+        {
+            "DATABASE_URL": _PW_URL,
+            "BACKUP_ENCRYPTION_KEY": _KEY,
+            "BACKUP_DIR": str(tmp_path / "bk"),
+        }
+    )
+    encrypted, _, _ = backup_db.run_backup(cfg)
+    parsed = backup_common.parse_backup_name(encrypted.name)
+    assert parsed is not None
+    assert parsed[1] == backup_common.key_id(_KEY)
+
+
+def test_drill_refuses_mismatched_key_id_before_decrypting() -> None:
+    # The whole point of #28: fail with a WHICH-KEY message, never an
+    # opaque openssl "bad decrypt", and fail before any work happens.
+    name = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30), "0badc0de")
+    with pytest.raises(verify_restore.DrillError, match="k0badc0de") as excinfo:
+        verify_restore.check_key_binding(name, "a1b2c3d4")
+    assert excinfo.value.stage == "keyid"
+    assert "escrowed key" in str(excinfo.value)
+    # Matching id and legacy (no id) both proceed.
+    verify_restore.check_key_binding(name, "0badc0de")
+    legacy = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30))
+    verify_restore.check_key_binding(legacy, "a1b2c3d4")
+
+
+def test_run_drill_stops_at_keyid_stage_on_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    wrong = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30), "0badc0de")
+    (tmp_path / wrong).write_bytes(b"enc")
+    recorder = _DrillRunRecorder()
+    monkeypatch.setattr(verify_restore, "require_binary", lambda name: f"/fake/{name}")
+    monkeypatch.setattr(verify_restore, "run", recorder)
+    cfg = verify_restore.load_config(
+        {
+            "DATABASE_URL": _PW_URL,
+            "BACKUP_ENCRYPTION_KEY": _KEY,
+            "BACKUP_DIR": str(tmp_path),
+        }
+    )
+    with pytest.raises(verify_restore.DrillError, match="k0badc0de"):
+        verify_restore.run_drill(cfg)
+    assert recorder.calls == []  # nothing decrypted, nothing touched
