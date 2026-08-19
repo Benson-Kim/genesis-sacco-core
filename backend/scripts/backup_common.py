@@ -36,7 +36,7 @@ import os
 import shutil
 import subprocess
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import SplitResult, quote, unquote, urlsplit, urlunsplit
@@ -187,6 +187,14 @@ def parse_backup_timestamp(name: str) -> datetime | None:
         return datetime.strptime(stamp, TIMESTAMP_FORMAT)
     except ValueError:
         return None
+
+
+def latest_backup(names: Iterable[str]) -> str | None:
+    """Pick the newest backup by encoded timestamp; foreign files are ignored."""
+    dated = [(ts, name) for name in names if (ts := parse_backup_timestamp(name)) is not None]
+    if not dated:
+        return None
+    return max(dated)[1]
 
 
 def require_binary(name: str) -> str:

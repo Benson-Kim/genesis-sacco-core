@@ -934,3 +934,192 @@ def test_drill_main_pings_heartbeat_on_both_paths(
     assert verify_restore.main() == 0
 
     assert pings == [False, True]
+
+
+# --- offsite copy (#25): SigV4, URL building, fail-closed config -----------
+
+import hashlib  # noqa: E402
+import io  # noqa: E402
+import urllib.error  # noqa: E402
+
+import offsite_backup  # noqa: E402
+
+_S3_ENV = {
+    "OFFSITE_S3_ENDPOINT": "https://s3.example.com",
+    "OFFSITE_S3_BUCKET": "genesis-dr",
+    "OFFSITE_S3_ACCESS_KEY_ID": "AKIDEXAMPLE",
+    "OFFSITE_S3_SECRET_ACCESS_KEY": "x" * 40,
+}
+
+
+def test_sigv4_matches_the_documented_aws_example() -> None:
+    # Oracle: the worked example in the AWS Signature Version 4
+    # documentation (GET iam.amazonaws.com ListUsers, 2015-08-30).
+    # Expected signature is copied from the docs, NOT captured from
+    # this implementation.
+    headers = offsite_backup.sigv4_headers(
+        method="GET",
+        url="https://iam.amazonaws.com/?Action=ListUsers&Version=2010-05-08",
+        region="us-east-1",
+        service="iam",
+        access_key_id="AKIDEXAMPLE",
+        secret_access_key="wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",  # noqa: S106 — documented AWS example value
+        payload_hash=("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+        now=datetime(2015, 8, 30, 12, 36, 0),
+        extra_headers={"content-type": "application/x-www-form-urlencoded; charset=utf-8"},
+    )
+    assert headers["Authorization"] == (
+        "AWS4-HMAC-SHA256 "
+        "Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, "
+        "SignedHeaders=content-type;host;x-amz-date, "
+        "Signature=5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7"
+    )
+    assert headers["x-amz-date"] == "20150830T123600Z"
+    assert "host" not in headers  # urllib must set Host itself
+
+
+def test_offsite_config_fail_closed() -> None:
+    with pytest.raises(offsite_backup.ConfigError, match="OFFSITE_S3_ENDPOINT"):
+        offsite_backup.load_config({})
+    http_env = dict(_S3_ENV, OFFSITE_S3_ENDPOINT="http://s3.example.com")
+    with pytest.raises(offsite_backup.ConfigError, match="https"):
+        offsite_backup.load_config(http_env)
+    for missing in ("OFFSITE_S3_BUCKET", "OFFSITE_S3_ACCESS_KEY_ID"):
+        env = {k: v for k, v in _S3_ENV.items() if k != missing}
+        with pytest.raises(offsite_backup.ConfigError, match=missing):
+            offsite_backup.load_config(env)
+    no_secret = {k: v for k, v in _S3_ENV.items() if k != "OFFSITE_S3_SECRET_ACCESS_KEY"}
+    with pytest.raises(offsite_backup.ConfigError, match="SECRET_ACCESS_KEY"):
+        offsite_backup.load_config(no_secret)
+
+
+def test_offsite_config_defaults_and_secret_not_stored() -> None:
+    cfg = offsite_backup.load_config(_S3_ENV)
+    assert cfg.region == "us-east-1"
+    assert cfg.prefix == "db/"
+    assert cfg.timeout_seconds == 3600
+    # The secret must never sit on the Config object (same discipline
+    # as BACKUP_ENCRYPTION_KEY): only presence is validated.
+    assert "x" * 40 not in repr(cfg)
+
+
+def test_offsite_object_url_path_style() -> None:
+    cfg = offsite_backup.load_config(_S3_ENV)
+    url = offsite_backup.object_url(cfg, "genesis-20260818T013000Z.dump.enc")
+    assert url == ("https://s3.example.com/genesis-dr/db/genesis-20260818T013000Z.dump.enc")
+
+
+class _UploadRecorder:
+    def __init__(self, status: int = 200, error: Exception | None = None) -> None:
+        self.status = status
+        self.error = error
+        self.requests: list[object] = []
+
+    def __call__(self, request: object, timeout: int = 0) -> object:
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        status = self.status
+
+        class _Resp:
+            def __enter__(self) -> object:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        _Resp.status = status
+        return _Resp()
+
+
+def test_offsite_upload_sweep_secret_never_in_url_or_headers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    leakable_key = "s3kr3t-offsite-key-material-1234567890"
+    name = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30))
+    (tmp_path / name).write_bytes(b"encrypted-bytes")
+    recorder = _UploadRecorder()
+    monkeypatch.setattr(offsite_backup.urllib.request, "urlopen", recorder)
+    env = dict(_S3_ENV, OFFSITE_S3_SECRET_ACCESS_KEY=leakable_key, BACKUP_DIR=str(tmp_path))
+    cfg = offsite_backup.load_config(env)
+
+    uploaded, size = offsite_backup.run_offsite(cfg, env)
+
+    assert uploaded == name
+    assert size == len(b"encrypted-bytes")
+    (request,) = recorder.requests
+    assert request.get_method() == "PUT"
+    assert request.full_url == offsite_backup.object_url(cfg, name)
+    header_blob = " ".join(f"{k}={v}" for k, v in request.header_items())
+    assert leakable_key not in request.full_url
+    assert leakable_key not in header_blob
+    # Payload integrity is bound into the signature.
+    expected_hash = hashlib.sha256(b"encrypted-bytes").hexdigest()
+    assert request.get_header("X-amz-content-sha256") == expected_hash
+    assert "AWS4-HMAC-SHA256" in request.get_header("Authorization")
+
+
+def test_offsite_upload_http_error_is_loud(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    name = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30))
+    (tmp_path / name).write_bytes(b"encrypted-bytes")
+    error = urllib.error.HTTPError(
+        "https://s3.example.com/x", 403, "Forbidden", None, io.BytesIO(b"denied")
+    )
+    monkeypatch.setattr(offsite_backup.urllib.request, "urlopen", _UploadRecorder(error=error))
+    env = dict(_S3_ENV, BACKUP_DIR=str(tmp_path))
+    cfg = offsite_backup.load_config(env)
+    with pytest.raises(offsite_backup.OffsiteError, match="HTTP 403") as excinfo:
+        offsite_backup.run_offsite(cfg, env)
+    assert excinfo.value.stage == "upload"
+
+
+def test_offsite_refuses_empty_artifact_and_missing_dir(tmp_path: Path) -> None:
+    env = dict(_S3_ENV, BACKUP_DIR=str(tmp_path / "missing"))
+    cfg = offsite_backup.load_config(env)
+    with pytest.raises(offsite_backup.OffsiteError, match="does not exist"):
+        offsite_backup.run_offsite(cfg, env)
+
+    env = dict(_S3_ENV, BACKUP_DIR=str(tmp_path))
+    cfg = offsite_backup.load_config(env)
+    with pytest.raises(offsite_backup.OffsiteError, match="no genesis-"):
+        offsite_backup.run_offsite(cfg, env)
+
+    name = backup_common.backup_filename(datetime(2026, 8, 18, 1, 30))
+    (tmp_path / name).write_bytes(b"")
+    with pytest.raises(offsite_backup.OffsiteError, match="refusing to upload"):
+        offsite_backup.run_offsite(cfg, env)
+
+
+def test_offsite_main_exit_codes_and_heartbeat(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pings, spy = _heartbeat_spy()
+    monkeypatch.setattr(offsite_backup, "send_heartbeat", spy)
+    monkeypatch.setenv("OFFSITE_HEARTBEAT_URL", "https://hc-ping.com/ghi")
+
+    def boom(env: object) -> object:
+        raise offsite_backup.ConfigError("nope")
+
+    monkeypatch.setattr(offsite_backup, "load_config", boom)
+    assert offsite_backup.main() == 1  # config failure still pings /fail
+
+    cfg = offsite_backup.Config(
+        backup_dir=tmp_path,
+        endpoint="https://s3.example.com",
+        bucket="genesis-dr",
+        region="us-east-1",
+        access_key_id="AKIDEXAMPLE",
+        prefix="db/",
+        timeout_seconds=60,
+    )
+    monkeypatch.setattr(offsite_backup, "load_config", lambda env: cfg)
+    monkeypatch.setattr(offsite_backup, "run_offsite", lambda cfg, env: ("f.dump.enc", 5))
+    assert offsite_backup.main() == 0
+
+    def stage_fail(cfg: object, env: object) -> object:
+        raise offsite_backup.OffsiteError("upload", "HTTP 403")
+
+    monkeypatch.setattr(offsite_backup, "run_offsite", stage_fail)
+    assert offsite_backup.main() == 1
+
+    assert pings == [False, True, False]

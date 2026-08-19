@@ -165,7 +165,7 @@ crash, dead cron, broken python — trips the same alarm. Setup, once:
    outbound HTTPS (Healthchecks.io works from this host, §4):
    - *nightly dump*: period 1 day, grace 2 h (cron fires 01:30);
    - *weekly drill*: period 7 days, grace 6 h (cron fires Mon 03:15);
-   - (once the offsite upload of #25 exists, a third check for it).
+   - *offsite upload*: period 1 day, grace 2 h (cron fires 01:45; §4).
 2. Put each check's ping URL in `~/.genesis_backup_env`
    (`BACKUP_HEARTBEAT_URL=...`, `RESTORE_CHECK_HEARTBEAT_URL=...`).
 3. Route the service's alerts to **every operator on the DR rota**
@@ -195,18 +195,28 @@ cPanel Git clones over HTTPS).
 Two workable strategies, in order of preference:
 
 1. **Push from the host over HTTPS (preferred — no new inbound
-   surface).** Object-storage uploads are plain HTTPS. Any
-   S3-compatible bucket works with a presigned-URL `curl -T` upload
-   or a small stdlib uploader; Backblaze B2 / Cloudflare R2 / AWS S3 are
-   all fine choices. Schedule it right after the dump:
+   surface, and now implemented — issue #25).**
+   `backend/scripts/offsite_backup.py` uploads the newest
+   `genesis-*.dump.enc` to any S3-compatible bucket (Backblaze B2 /
+   Cloudflare R2 / AWS S3) with a stdlib-only AWS SigV4 `PUT` — no
+   boto3, no venv, same DR constraints as its siblings. Configure in
+   `~/.genesis_backup_env`: `OFFSITE_S3_ENDPOINT` (https:// enforced),
+   `OFFSITE_S3_BUCKET`, `OFFSITE_S3_REGION`,
+   `OFFSITE_S3_ACCESS_KEY_ID`, `OFFSITE_S3_SECRET_ACCESS_KEY` (env
+   only — used in-process for signing, never argv or logs), optional
+   `OFFSITE_S3_PREFIX` and `OFFSITE_HEARTBEAT_URL`. It emits one
+   greppable `BACKUP_OFFSITE SUCCESS/FAILURE` line and pings its
+   heartbeat, same dead-man semantics as the dump (§3). Schedule it
+   right after the dump:
 
    ```
-   45 1 * * * . /home/USER/.genesis_backup_env && <upload newest ~/backups/db/genesis-*.dump.enc over HTTPS> >> /home/USER/logs/backup_offsite.log 2>&1
+   45 1 * * * . /home/USER/.genesis_backup_env && /home/USER/virtualenv/api/3.12/bin/python /home/USER/api/scripts/offsite_backup.py >> /home/USER/logs/backup_offsite.log 2>&1
    ```
 
-   Give the upload credential **write-only** access to the bucket (no
-   list/read/delete) so a compromised host cannot destroy history, and
-   set the bucket's own lifecycle/retention (e.g. 90 days, versioned).
+   Give the upload credential **write-only** access to the bucket
+   (PutObject only — no list/read/delete) so a compromised host cannot
+   destroy history, and set the bucket's own lifecycle/retention
+   (e.g. 90 days, versioned).
 
 2. **Fetch from outside over HTTPS.** cPanel exposes the filesystem
    over the open cPanel ports; an external machine you control can
@@ -349,6 +359,12 @@ Scenario: the live database is lost or corrupted beyond repair.
 | `BACKUP_TIMEOUT_SECONDS` | both | `3600` | per external command |
 | `BACKUP_HEARTBEAT_URL` | backup | — (required in prod) | https:// check URL; pinged on success, `/fail` on failure (§3) |
 | `RESTORE_CHECK_HEARTBEAT_URL` | drill | — (required in prod) | https:// check URL; same semantics (§3) |
+| `OFFSITE_S3_ENDPOINT` | offsite | — (required) | https:// S3-compatible endpoint; plaintext transports refused (§4) |
+| `OFFSITE_S3_BUCKET` / `OFFSITE_S3_REGION` | offsite | — / `us-east-1` | bucket name; region for SigV4 |
+| `OFFSITE_S3_ACCESS_KEY_ID` / `OFFSITE_S3_SECRET_ACCESS_KEY` | offsite | — (required) | write-only credential; secret env-only, never argv/logs |
+| `OFFSITE_S3_PREFIX` | offsite | `db/` | object key prefix |
+| `OFFSITE_TIMEOUT_SECONDS` | offsite | `3600` | whole upload |
+| `OFFSITE_HEARTBEAT_URL` | offsite | — (required in prod) | https:// check URL; same semantics (§3) |
 | `RESTORE_CHECK_DB` | drill | `<dbname>_restore_check` | explicit scratch DB name; live-DB collision refused |
 | `RESTORE_CHECK_DB_SUFFIX` | drill | `_restore_check` | used when `RESTORE_CHECK_DB` unset |
 | `RESTORE_CHECK_PRECREATED` | drill | `false` | for roles without `CREATEDB` (§6) |

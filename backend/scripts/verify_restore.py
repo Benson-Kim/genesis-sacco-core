@@ -69,7 +69,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -84,8 +84,9 @@ from backup_common import (
     child_env,
     connection_args,
     int_env,
+    latest_backup,
     libpq_url,
-    parse_backup_timestamp,
+    parse_backup_timestamp,  # noqa: F401 — re-exported: shared naming contract
     pre_create_private,
     redact_url,
     require_binary,
@@ -191,14 +192,6 @@ def scratch_db_name(database_url: str, suffix: str, override: str) -> str:
             "the drill drops/recreates the scratch database"
         )
     return name
-
-
-def latest_backup(names: Iterable[str]) -> str | None:
-    """Pick the newest backup by encoded timestamp; foreign files are ignored."""
-    dated = [(ts, name) for name in names if (ts := parse_backup_timestamp(name)) is not None]
-    if not dated:
-        return None
-    return max(dated)[1]
 
 
 def load_config(env: Mapping[str, str]) -> Config:
