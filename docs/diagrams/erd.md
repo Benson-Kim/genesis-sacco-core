@@ -59,6 +59,14 @@
   deterministic (created_at, id) backfill + counter seeding — no new
   table, no RLS change);
   diagrams 2.C/2.D and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0049 by the issue-#9 EOD reconciliation MR, IN THE
+  SAME COMMIT as the migration: alembic head 0048 -> 0049
+  (0049_external_reconciliation.py, down_revision = "0048";
+  expand-only: creates recon_statements / recon_statement_lines /
+  recon_breaks — three FORCED-RLS tables — plus idx_txns_channel_time
+  on transactions, the ledger-only sweep's range probe);
+  new diagram 2.H, §3, §4 and §5 updated accordingly (v1.2 rules
+  11/14).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -69,11 +77,12 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0048**: **47 tables** (0035
-creates `member_credentials`; 0033/0034/0036/0037/0040/0043/0048 alter
+The entire schema at alembic head **0049**: **50 tables** (0035
+creates `member_credentials`; 0049 creates the three `recon_*`
+reconciliation tables; 0033/0034/0036/0037/0040/0043/0048 alter
 existing tables and create none; 0038/0041/0044 add indexes only;
 0042 is a data-only backfill touching no schema object), drawn as
-seven subject-area `erDiagram`s (one diagram would not render readably;
+eight subject-area `erDiagram`s (one diagram would not render readably;
 the split follows the module boundaries in the §3 traceability table).
 An entity appearing in more than one diagram (e.g. `members`,
 `transactions`, `users`) is the SAME table, repeated without its
@@ -622,6 +631,54 @@ erDiagram
     members ||--o{ member_period_balances : "composite (tenant_id, member_id) FK (0028)"
 ```
 
+### 2.H External reconciliation (issue #9, G3)
+
+```mermaid
+erDiagram
+    %% issue-#9 EOD reconciliation MR — alembic head 0049
+    %% (0049_external_reconciliation.py; matching key is the 0043
+    %% transactions.external_ref)
+    recon_statements {
+        uuid id PK
+        uuid tenant_id FK "tenant spine (0049)"
+        text channel "mpesa or bank CHECK (0049)"
+        date statement_date UK "UNIQUE (tenant_id, channel, statement_date, checksum) — the atomic duplicate-upload claim (0049)"
+        text checksum "sha256 hex, length-64 CHECK (0049)"
+        text status "ingested to matched to signed_off CHECK; signed_off iff signed_off_by and signed_off_at (0049)"
+        uuid created_by FK "users.id — ingester (0049)"
+        uuid signed_off_by FK "nullable users.id — four-eyes signer, never the ingester (application/sod.py) (0049)"
+    }
+    recon_statement_lines {
+        uuid id PK
+        uuid tenant_id FK "tenant spine (0049)"
+        uuid statement_id FK "recon_statements.id (0049)"
+        int line_no UK "UNIQUE (tenant_id, statement_id, line_no) (0049)"
+        text external_ref UK "UNIQUE (tenant_id, statement_id, external_ref) — mirrors the 0043 matching-key bounds (0049)"
+        text match_status "pending, matched, amount_mismatch or statement_only CHECK; a (mis)match iff matched_transaction_id (0049)"
+        uuid matched_transaction_id FK "nullable transactions.id — the one-shot match fill (0049)"
+    }
+    recon_breaks {
+        uuid id PK
+        uuid tenant_id FK "tenant spine (0049)"
+        uuid statement_id FK "recon_statements.id (0049)"
+        text kind "ledger_only, statement_only or amount_mismatch CHECK + kind-shape CHECK ties line/transaction presence to kind (0049)"
+        uuid statement_line_id FK "nullable recon_statement_lines.id; partial UNIQUE uq_recon_breaks_line WHERE NOT NULL (0049)"
+        uuid transaction_id FK "nullable transactions.id; partial UNIQUE uq_recon_breaks_ledger_only_txn WHERE kind = ledger_only (0049)"
+        text status "open or resolved CHECK; resolved iff resolved_by, resolved_at, resolution_reference and resolution_note (0049)"
+        uuid resolved_by FK "nullable users.id (0049)"
+    }
+    transactions
+    users
+
+    recon_statements ||--o{ recon_statement_lines : "statement_id (0049)"
+    recon_statements ||--o{ recon_breaks : "statement_id (0049)"
+    recon_statement_lines |o--o| recon_breaks : "statement_line_id, partial UNIQUE uq_recon_breaks_line (0049)"
+    transactions |o--o{ recon_statement_lines : "matched_transaction_id (0049)"
+    transactions |o--o{ recon_breaks : "transaction_id, partial UNIQUE uq_recon_breaks_ledger_only_txn (0049)"
+    users ||--o{ recon_statements : "created_by / signed_off_by (0049)"
+    users |o--o{ recon_breaks : "resolved_by (0049)"
+```
+
 ## 3. Traceability: table → migrations → owning module
 
 Every table at head 0037, its creating migration, every later
@@ -654,7 +711,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `repayments` | 0001 | 0014 (transaction-FK idx), 0025 (amount CHECK widened to `<> 0` for negative-linked correction rows), 0032 (append-only triggers `repayments_no_update`/`_no_delete` — issue #24 N4) | `application/ledger.py` (disburse-time rows), `application/loans.py` (repayment rows), `application/corrections.py` (negative correction rows) |
 | `guarantees` | 0001 | 0011 (loan-linkage data backfill), 0035 (consent-principal columns `consented_by_credential_id`/`consent_attested_by`/`consent_reference`, `ck_guarantees_attested_reference`, `guarantees_consent_principal` constraint trigger, consent idxs) | `application/guarantees.py` |
 | `penalty_accruals` | 0019 | — | `application/arrears.py` |
-| `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3), 0043 (`external_ref` nullable CHECK-bounded + partial UNIQUE dedupe + `idx_txns_ref_prefix` text_pattern_ops search index — #35 items 6/13) | `application/ledger.py` (every posting) |
+| `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3), 0043 (`external_ref` nullable CHECK-bounded + partial UNIQUE dedupe + `idx_txns_ref_prefix` text_pattern_ops search index — #35 items 6/13), 0049 (`idx_txns_channel_time` — the issue-#9 ledger-only sweep's range probe) | `application/ledger.py` (every posting) |
 | `ledger_entries` | 0001 | 0004 (append-only triggers, balanced deferred constraint trigger), 0014 (balance check also pins totals = `transactions.amount`) | `application/ledger.py` |
 | `txn_ref_sequences` | 0004 | — | `application/ledger.py` (`_next_ref`, `allocate_sequence` — 0048 loan/exit reference keys), `application/members.py` (member numbering) |
 | `accounting_periods` | 0012 | 0028 (`rollup_at` marker + write-once marker trigger, composite-FK target for the rollup tables) | `application/accounting_periods.py` (+ `period_rollups.py` marker) |
@@ -680,6 +737,9 @@ Both directions of the table↔migration mapping are machine-checked by
 | `portfolio_month_snapshots` | 0027 (incl. write-once + no-future triggers) | — | `application/portfolio_snapshots.py` |
 | `account_period_balances` | 0028 (incl. write-once + late-insert-fence triggers) | — | `application/period_rollups.py` |
 | `member_period_balances` | 0028 (incl. write-once + late-insert-fence triggers) | — | `application/period_rollups.py` |
+| `recon_statements` | 0049 (incl. `uq_recon_statements_batch` duplicate-upload claim, sign-off who/when CHECKs) | — | `application/reconciliation.py` |
+| `recon_statement_lines` | 0049 (incl. `uq_recon_lines_position`/`uq_recon_lines_ref`, `ck_recon_lines_match_txn`) | — | `application/reconciliation.py` |
+| `recon_breaks` | 0049 (incl. kind-shape + resolution-evidence CHECKs, partial UNIQUEs `uq_recon_breaks_ledger_only_txn`/`uq_recon_breaks_line`) | — | `application/reconciliation.py` |
 
 Nothing in this file is `PLANNED`: every entity above exists at head
 0037. The formerly in-flight !53 claim (0033, issue #23 — the
@@ -701,9 +761,10 @@ Owned elsewhere; cited, never restated:
   `tenant_self`), per **ADR-0002** — see
   [`c4-container.md`](c4-container.md) **§3** (P-DIAG.1) for the
   boundary. Leakage-suite membership (`TENANT_TABLES`,
-  `backend/tests/test_tenancy_leakage.py`) covers 41 of the 46
-  tenant-owned tables plus `tenants` (the 0025/0026/0027/0028/0030/0035
-  tables joined the suite in their own MRs); `committee_votes`,
+  `backend/tests/test_tenancy_leakage.py`) covers 44 of the 49
+  tenant-owned tables plus `tenants` (the
+  0025/0026/0027/0028/0030/0035/0049 tables joined the suite in their
+  own MRs); `committee_votes`,
   `txn_ref_sequences`, `accounting_periods`, `exports` and
   `export_artifacts` carry the same forced policies from their
   creating migrations (0005/0004/0012/0013) but are not enumerated in
@@ -817,6 +878,25 @@ that creates a table adds it to the matching §2 subject-area diagram
 carries a claim key; a migration that alters a table appends itself to
 that table's §3 "Altered by" cell (and updates §4 if it adds/changes a
 trigger or RLS posture). Then run the gate:
+
+```sh
+python3 docs/diagrams/erd-spot-check.py
+```
+
+[`erd-spot-check.py`](erd-spot-check.py) (stdlib only, run from the
+repo root) fails unless, **both ways**:
+
+1. every entity drawn in a §2 `erDiagram` block and every table named
+   in the §3 first column is a table actually created by
+   `CREATE TABLE` in `backend/migrations/versions/*.py`, and
+2. every `CREATE TABLE` table in the migrations appears both as a §2
+   entity and as a §3 row.
+
+An invented table, a dropped table left drawn, or a new migration
+table missing here is a FAIL — and a rejected MR. The CI
+`docs:diagrams` render job is the syntax gate; this script is the
+semantics gate (the P-DIAG.1 `c4-spot-check.py` pattern).
+posture). Then run the gate:
 
 ```sh
 python3 docs/diagrams/erd-spot-check.py
