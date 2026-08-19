@@ -31,7 +31,19 @@ without blocking on a real SMS/email provider. This deployment runs with
 boot guard above; grepped, it's the only reference), so this does not
 silently change any other behavior. **This combination must never be used
 for the real production deployment** — that one needs a real delivery
-provider wired in first (new work, not scoped here).
+provider wired in first.
+
+**Update (security-hardening review): the delivery SEAM is now built,
+the transport still is not.** Issued OTPs ride the transactional outbox
+with routing fields (`channel`, `destination`) and the dispatcher hands
+them to the OTP delivery port
+(`backend/src/genesis/application/otp_delivery.py`); the first concrete
+adapter (`backend/src/genesis/infrastructure/otp_delivery.py`) only
+LOGS the dispatch (masked destination, never the code). Wiring a real
+SMS/email gateway is now an infrastructure-only change: implement
+`OtpChannelProvider` and register it in `default_otp_delivery()` —
+after which `DEV_OTP_DISPLAY` should be retired from this deployment
+and `ENVIRONMENT` set honestly (the boot guard then enforces it).
 
 **What "staging with DEV_OTP_DISPLAY=true" actually exposes**: with this
 flag on, `POST /auth/otp/request` returns the plaintext OTP in its JSON
@@ -205,6 +217,23 @@ root path to match step 1:
 Create `~/logs/` first (`mkdir -p ~/logs`). Each script exits non-zero on
 a real failure, which is what makes cPanel's cron failure email useful —
 don't redirect stderr to `/dev/null`.
+
+The one-shots guard themselves with per-worker session-level Postgres
+advisory locks (`genesis.infrastructure.cron_lock`): a tick that finds its
+worker's lock held logs a skip and exits 0. Two caveats (#21):
+
+- **Best-effort overlap reduction, not mutual exclusion.** The lock
+  session idles in a transaction for the whole cycle, so
+  `idle_in_transaction_session_timeout`, a DB restart, or a network blip
+  can free the lock mid-cycle and let the next tick overlap the
+  still-running cycle (safe — the workers are SKIP LOCKED and
+  idempotent). A lost lock is logged as a WARNING (`advisory lock … was
+  no longer held at cycle end`) in the worker's cron log — watch for it.
+- **Transaction pooling breaks session advisory locks.** Behind pgbouncer
+  in transaction-pooling mode the lock and unlock land on different
+  backends and the guard silently stops guarding. Fine on today's direct
+  connections; re-check as part of the hosting exit (#11) before fronting
+  the app with a transaction pooler.
 
 ## 4. Frontend: Node app
 

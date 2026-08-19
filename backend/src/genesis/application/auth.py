@@ -35,6 +35,7 @@ import jwt
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from genesis.application.otp_delivery import OTP_CHANNEL_EMAIL, OTP_CHANNEL_SMS
 from genesis.application.outbox import enqueue_event
 from genesis.domain.members import normalize_kenya_msisdn
 from genesis.domain.otp import (
@@ -279,6 +280,7 @@ async def request_otp(session: AsyncSession, tenant_id: uuid.UUID, identifier: s
     user_id = str(row[0])
     challenge_id = uuid.uuid4()
     code = f"{secrets.randbelow(10**OTP_LENGTH):0{OTP_LENGTH}d}"
+    expires_at = _now() + timedelta(seconds=OTP_TTL_SECONDS)
     await session.execute(
         text(
             "INSERT INTO otp_challenges (id, tenant_id, user_id, code_hash, expires_at) "
@@ -289,14 +291,27 @@ async def request_otp(session: AsyncSession, tenant_id: uuid.UUID, identifier: s
             "tid": str(tenant_id),
             "uid": user_id,
             "ch": hash_code(code, salt=str(challenge_id), pepper=_otp_pepper()),
-            "exp": _now() + timedelta(seconds=OTP_TTL_SECONDS),
+            "exp": expires_at,
         },
     )
+    # Routing fields for the OTP delivery port (application.otp_delivery):
+    # the outbox dispatcher hands this event to the configured SMS/email
+    # channel adapter (infrastructure.otp_delivery). Enqueued in the SAME
+    # transaction as the challenge row (reliability). expires_at mirrors
+    # the challenge TTL so the dispatcher can drop-with-audit an already
+    # expired code instead of retrying worthless deliveries (#20).
     await enqueue_event(
         session,
         tenant_id,
         event_type="auth.otp_requested",
-        payload={"user_id": user_id, "challenge_id": str(challenge_id), "code": code},
+        payload={
+            "user_id": user_id,
+            "challenge_id": str(challenge_id),
+            "code": code,
+            "channel": OTP_CHANNEL_SMS if kind == IDENTIFIER_PHONE else OTP_CHANNEL_EMAIL,
+            "destination": value,
+            "expires_at": expires_at.isoformat(),
+        },
     )
     return code
 
