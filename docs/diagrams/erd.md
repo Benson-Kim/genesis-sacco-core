@@ -59,6 +59,15 @@
   deterministic (created_at, id) backfill + counter seeding — no new
   table, no RLS change);
   diagrams 2.C/2.D and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0049 by the issue-#8 approval-engine MR (ADR-0008), IN
+  THE SAME COMMIT as the migration: alembic head 0048 -> 0049
+  (0049_approval_engine.py, down_revision = "0048" at branch time —
+  re-chains per issue-#22 governance if a sibling 0049 claim merges
+  first; creates approval_band_sets (append-only, effective-dated)
+  and pending_approvals (write-once maker-checker workflow), both
+  forced-RLS, and adds nullable transactions.checked_by beside the
+  0036 created_by);
+  diagram 2.E, §3 and §5 updated accordingly (v1.2 rules 11/14).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -69,9 +78,11 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0048**: **47 tables** (0035
-creates `member_credentials`; 0033/0034/0036/0037/0040/0043/0048 alter
-existing tables and create none; 0038/0041/0044 add indexes only;
+The entire schema at alembic head **0049**: **49 tables** (0035
+creates `member_credentials`; 0049 creates `approval_band_sets` and
+`pending_approvals`; 0033/0034/0036/0037/0040/0043/0048 alter
+existing tables and create none — 0049 also alters `transactions`
+(`checked_by`); 0038/0041/0044 add indexes only;
 0042 is a data-only backfill touching no schema object), drawn as
 seven subject-area `erDiagram`s (one diagram would not render readably;
 the split follows the module boundaries in the §3 traceability table).
@@ -476,6 +487,20 @@ erDiagram
         text csv_token UK "UNIQUE download token (0013)"
         text pdf_token UK "UNIQUE download token (0013)"
     }
+    approval_band_sets {
+        uuid id PK
+        uuid tenant_id FK "tenant spine (0049)"
+        date effective_from UK "UNIQUE (tenant_id, effective_from) append-only claim (0049)"
+        uuid created_by FK "-> users.id (0049)"
+    }
+    pending_approvals {
+        uuid id PK
+        uuid tenant_id FK "tenant spine (0049)"
+        text status "pending|ratified|declined; write-once/status-machine trigger (0049)"
+        uuid maker_id FK "-> users.id; ck_pending_approvals_sod checker <> maker (0049)"
+        uuid checker_id FK "nullable -> users.id, one-shot fill (0049)"
+        uuid branch_id FK "nullable -> branches.id (0049)"
+    }
     branches
     member_credentials
 
@@ -489,6 +514,10 @@ erDiagram
     member_credentials |o--o{ otp_challenges : "otp_challenges.member_credential_id, nullable (0035)"
     member_credentials |o--o{ refresh_tokens : "refresh_tokens.member_credential_id, nullable (0035)"
     users ||--o{ exports : "exports.requested_by (0013)"
+    users ||--o{ approval_band_sets : "approval_band_sets.created_by (0049)"
+    users ||--o{ pending_approvals : "pending_approvals.maker_id (0049)"
+    users |o--o{ pending_approvals : "pending_approvals.checker_id, nullable (0049)"
+    branches |o--o{ pending_approvals : "pending_approvals.branch_id, nullable (0049)"
     exports ||--o| export_artifacts : "export_artifacts.export_id UNIQUE (0013)"
 ```
 
@@ -654,7 +683,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `repayments` | 0001 | 0014 (transaction-FK idx), 0025 (amount CHECK widened to `<> 0` for negative-linked correction rows), 0032 (append-only triggers `repayments_no_update`/`_no_delete` — issue #24 N4) | `application/ledger.py` (disburse-time rows), `application/loans.py` (repayment rows), `application/corrections.py` (negative correction rows) |
 | `guarantees` | 0001 | 0011 (loan-linkage data backfill), 0035 (consent-principal columns `consented_by_credential_id`/`consent_attested_by`/`consent_reference`, `ck_guarantees_attested_reference`, `guarantees_consent_principal` constraint trigger, consent idxs) | `application/guarantees.py` |
 | `penalty_accruals` | 0019 | — | `application/arrears.py` |
-| `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3), 0043 (`external_ref` nullable CHECK-bounded + partial UNIQUE dedupe + `idx_txns_ref_prefix` text_pattern_ops search index — #35 items 6/13) | `application/ledger.py` (every posting) |
+| `transactions` | 0001 | 0004 (`reversal_of_id`, append-only triggers, one-reversal partial UNIQUE), 0008 (keyset idxs), 0012 (closed-period trigger), 0013 (type idx), 0014 (tenant-safe reversal FK, `UNIQUE (tenant_id, id)`, advisory-locked trigger body), 0020 (type CHECK widened), 0025 (type CHECK: `fee`, `loan_write_off`), 0030 (type CHECK: `loan_recovery`), 0036 (`created_by` + audit-log backfill via in-transaction append-only trigger toggle — issue #30 R3), 0043 (`external_ref` nullable CHECK-bounded + partial UNIQUE dedupe + `idx_txns_ref_prefix` text_pattern_ops search index — #35 items 6/13), 0049 (`checked_by` — the second principal beside 0036 `created_by`; ADR-0008) | `application/ledger.py` (every posting) |
 | `ledger_entries` | 0001 | 0004 (append-only triggers, balanced deferred constraint trigger), 0014 (balance check also pins totals = `transactions.amount`) | `application/ledger.py` |
 | `txn_ref_sequences` | 0004 | — | `application/ledger.py` (`_next_ref`, `allocate_sequence` — 0048 loan/exit reference keys), `application/members.py` (member numbering) |
 | `accounting_periods` | 0012 | 0028 (`rollup_at` marker + write-once marker trigger, composite-FK target for the rollup tables) | `application/accounting_periods.py` (+ `period_rollups.py` marker) |
@@ -680,6 +709,8 @@ Both directions of the table↔migration mapping are machine-checked by
 | `portfolio_month_snapshots` | 0027 (incl. write-once + no-future triggers) | — | `application/portfolio_snapshots.py` |
 | `account_period_balances` | 0028 (incl. write-once + late-insert-fence triggers) | — | `application/period_rollups.py` |
 | `member_period_balances` | 0028 (incl. write-once + late-insert-fence triggers) | — | `application/period_rollups.py` |
+| `approval_band_sets` | 0049 (incl. append-only trigger, `uq_approval_band_sets_effective`) | — | `application/approvals.py` (effective-dated band schedules; ADR-0008) |
+| `pending_approvals` | 0049 (incl. `ck_pending_approvals_sod`, write-once/status-machine trigger, `idx_pending_approvals_open`) | — | `application/approvals.py` (maker-checker engine; ADR-0008) |
 
 Nothing in this file is `PLANNED`: every entity above exists at head
 0037. The formerly in-flight !53 claim (0033, issue #23 — the
@@ -793,6 +824,7 @@ constraint, v1.1 rule 5):
 | `(tenant_id, month_end)` | `portfolio_month_snapshots` | 0027 | one write-once portfolio snapshot per month |
 | `(tenant_id, period_start, account)` | `account_period_balances` | 0028 | one rollup row per account per closed period |
 | `(tenant_id, period_start, member_id)` | `member_period_balances` | 0028 | one rollup row per member per closed period |
+| `(tenant_id, effective_from)` | `approval_band_sets` | 0049 | one band matrix per effective date — the append-only configuration claim (a correction is a LATER date, never a rewrite) |
 
 ## 6. Derivation, regeneration & the falsifiable gate
 
