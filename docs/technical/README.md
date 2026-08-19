@@ -15,6 +15,7 @@ The plain-language guide for SACCO staff lives in
 | [api-guide.md](api-guide.md) | Reading the OpenAPI snapshot, auth headers, pagination and filter conventions, error taxonomy, contract evolution policy |
 | [operations.md](operations.md) | CI pipeline stages and jobs, migration workflow, environment flags, development constraints |
 | [contributing.md](contributing.md) | The house engineering doctrine distilled: merge gates, review expectations, evidence honesty, editing discipline |
+| [aml-cft-program-design.md](aml-cft-program-design.md) | **Design, not as-built** — the AML/CFT program build contract (ADR-0009, issue #10): sanctions screening, threshold monitoring, detection rules, STR workflow, tipping-off wall, KYC refresh |
 
 ## Related authoritative sources
 
