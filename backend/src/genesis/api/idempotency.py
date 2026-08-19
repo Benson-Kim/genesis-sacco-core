@@ -48,6 +48,7 @@ from genesis.application.auth import MemberAuthContext, decode_principal
 from genesis.errors import ForbiddenError, UnauthenticatedError
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.tenancy import tenant_session
+from genesis.logging import correlation_id_var
 from genesis.settings import get_settings
 
 _MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -247,7 +248,11 @@ class IdempotencyMiddleware:
                 409,
                 {
                     "category": "conflict",
-                    "correlation_id": _header(scope, b"x-request-id") or "",
+                    # The SERVER-resolved request id (set by the
+                    # correlation middleware wrapping this one) — never
+                    # the raw inbound header, which is untrusted by
+                    # default (issue #4; api.app._REQUEST_ID_RE).
+                    "correlation_id": correlation_id_var.get(),
                 },
                 replayed=False,
             )

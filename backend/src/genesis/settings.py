@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     # Previous rotation pair: EMPTY key = single-key mode (no window).
     cursor_signing_key_previous: str = ""
     cursor_key_version_previous: int = 0
+    # Inbound X-Request-ID trust (issue #4): FAIL-CLOSED default. The
+    # request-id middleware honors a caller-supplied X-Request-ID ONLY
+    # when this flag says the header is set by a trusted hop (the
+    # fronting reverse proxy strips/sets it); otherwise every request
+    # gets a fresh server-generated id, so an anonymous caller can
+    # never inject or collide correlation ids in the logs. Even when
+    # trusted, the value must match a strict charset/length pattern
+    # (api.app) — a malformed header falls back to a generated id.
+    trust_request_id_header: bool = False
     # DEV-ONLY OTP display: SMS/email delivery is not
     # built yet, so testers need the OTP on screen. FAIL-CLOSED: off
     # by default; enabling requires an explicit DEV_OTP_DISPLAY env

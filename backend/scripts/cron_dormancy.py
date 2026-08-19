@@ -19,18 +19,22 @@ from pathlib import Path
 from genesis.infrastructure.cron_lock import CRON_LOCK_DORMANCY, try_cron_lock
 from genesis.infrastructure.db import get_sessionmaker
 from genesis.infrastructure.dormancy_worker import run_dormancy_cycle
+from genesis.infrastructure.worker_heartbeat import (
+    record_worker_lock_skip,
+    record_worker_success,
+)
+from genesis.logging import configure_logging, correlation_id_var, new_run_id
 from genesis.settings import get_settings
 
-#: Timestamped so a cron log answers "did this cycle actually
-#: fire, and when?" — bare stdout prints cannot.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+#: Structured JSON logs (issue #4), same as the API: the ts field still
+#: answers "did this cycle actually fire, and when?"; the per-cycle run
+#: id set in main() correlates every record one cycle emits.
+configure_logging()
 logger = logging.getLogger(Path(__file__).stem)
 
 
 async def main() -> int:
+    correlation_id_var.set(new_run_id())
     settings = get_settings()
     if not settings.database_url:
         logger.error("DATABASE_URL is not configured")
@@ -40,9 +44,14 @@ async def main() -> int:
     # still running (genesis.infrastructure.cron_lock).
     async with try_cron_lock(factory, CRON_LOCK_DORMANCY, worker="dormancy") as acquired:
         if not acquired:
-            logger.info("dormancy: skipped — previous cycle still running")
+            skips = await record_worker_lock_skip(factory, "dormancy")
+            logger.info(
+                "dormancy: skipped — previous cycle still running (consecutive skips: %s)",
+                skips,
+            )
             return 0
         summary = await run_dormancy_cycle(factory)
+        await record_worker_success(factory, "dormancy")
     logger.info(
         f"dormancy: tenants={summary.tenants} transitioned={summary.transitioned} "
         f"refused={summary.refused} errored={summary.errored}"
