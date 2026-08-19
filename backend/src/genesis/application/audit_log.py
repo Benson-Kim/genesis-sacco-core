@@ -105,6 +105,11 @@ ENTITY_MODULES: dict[str, Module] = {
     "exports": Module.REPORTS,
     "permissions": Module.ACCESS_CONTROL,
     "users": Module.ACCESS_CONTROL,
+    # Issue #9: reconciliation rows carry external money references
+    # and per-posting figures — transactions money, disclosed per the
+    # transactions entitlement (their future routes gate there too).
+    "recon_statements": Module.TRANSACTIONS,
+    "recon_breaks": Module.TRANSACTIONS,
 }
 
 

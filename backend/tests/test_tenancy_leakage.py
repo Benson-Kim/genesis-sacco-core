@@ -59,6 +59,11 @@ TENANT_TABLES = [
     # Issue #21: recovery receipts are money history against the
     # surviving write-off claim — RLS posture is release-blocking.
     "loan_recoveries",
+    # Issue #9: reconciliation staging/breaks carry external money
+    # references and figures — RLS posture is release-blocking.
+    "recon_statements",
+    "recon_statement_lines",
+    "recon_breaks",
     # P13.16: recovery workflow rows carry loan/staff workflow state
     # and collections notes — tenant-owned, RLS forced per ADR-0002.
     "recovery_cases",
