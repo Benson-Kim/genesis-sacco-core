@@ -15,7 +15,10 @@ name: backend
 
 on:
   push:
-    branches: [main]
+    # develop mirrors the GitLab workflow rule: merge commits can land on
+    # the integration branch outside a PR, so the post-merge result itself
+    # must pass the backend gates.
+    branches: [main, develop]
     tags: ['**']
   pull_request:
 
