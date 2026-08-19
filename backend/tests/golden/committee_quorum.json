@@ -1,0 +1,130 @@
+{
+  "quorum": 2,
+  "table": [
+    {
+      "approvals": 0,
+      "rejections": 0,
+      "decision": null
+    },
+    {
+      "approvals": 0,
+      "rejections": 1,
+      "decision": null
+    },
+    {
+      "approvals": 0,
+      "rejections": 2,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 0,
+      "rejections": 3,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 0,
+      "rejections": 4,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 1,
+      "rejections": 0,
+      "decision": null
+    },
+    {
+      "approvals": 1,
+      "rejections": 1,
+      "decision": null
+    },
+    {
+      "approvals": 1,
+      "rejections": 2,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 1,
+      "rejections": 3,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 1,
+      "rejections": 4,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 2,
+      "rejections": 0,
+      "decision": "approved"
+    },
+    {
+      "approvals": 2,
+      "rejections": 1,
+      "decision": "approved"
+    },
+    {
+      "approvals": 2,
+      "rejections": 2,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 2,
+      "rejections": 3,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 2,
+      "rejections": 4,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 3,
+      "rejections": 0,
+      "decision": "approved"
+    },
+    {
+      "approvals": 3,
+      "rejections": 1,
+      "decision": "approved"
+    },
+    {
+      "approvals": 3,
+      "rejections": 2,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 3,
+      "rejections": 3,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 3,
+      "rejections": 4,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 4,
+      "rejections": 0,
+      "decision": "approved"
+    },
+    {
+      "approvals": 4,
+      "rejections": 1,
+      "decision": "approved"
+    },
+    {
+      "approvals": 4,
+      "rejections": 2,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 4,
+      "rejections": 3,
+      "decision": "rejected"
+    },
+    {
+      "approvals": 4,
+      "rejections": 4,
+      "decision": "rejected"
+    }
+  ]
+}
