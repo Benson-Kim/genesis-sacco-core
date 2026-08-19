@@ -55,6 +55,8 @@ from sqlalchemy import text
 
 from db_helpers import factory, seed_user, unique_email
 from genesis.application import reconciliation as recon
+from genesis.application.audit_log import AUDIT_LIST_SCOPE
+from genesis.application.pagination import encode_cursor
 from genesis.application.rbac import seed_permissions
 from genesis.domain.ledger import Channel
 from genesis.errors import ConflictError, InvalidInputError, NotFoundError
@@ -533,5 +535,30 @@ def test_fm9_open_breaks_aging_queue_keyset() -> None:
         # Oldest-first within the walk.
         ordered = [*first.items, *second.items]
         assert ordered == sorted(ordered, key=lambda b: (b.created_at, str(b.id)))
+
+    asyncio.run(run())
+
+
+@requires_db
+def test_fm9_forged_break_cursor_is_refused() -> None:
+    """FM9 tamper leg (the test_cursor_tamper.py DELEGATED entry for
+    BREAKS_SCOPE): the breaks queue routes its cursor through the
+    strict decode, so garbage, a token validly signed for a scope no
+    endpoint uses, and a token validly signed for a DIFFERENT real
+    scope in the SAME tenant are all refused with the sanitized
+    InvalidInputError — never a silent empty page. Service-level by
+    design: this MR ships no router (the delivery surface is the
+    deferred follow-up), so the decode seam IS the boundary here; the
+    thin router follow-up joins the URL matrix in ENDPOINTS."""
+
+    async def run() -> None:
+        tid, _actor = await _seed_actor()
+        payload = f"2026-01-01T00:00:00+00:00|{uuid.uuid4()}"
+        cross_scope = encode_cursor(payload, tenant_id=tid, endpoint="tamper.test")
+        cross_real = encode_cursor(payload, tenant_id=tid, endpoint=AUDIT_LIST_SCOPE)
+        for forged in ("not-a-cursor", cross_scope, cross_real):
+            with pytest.raises(InvalidInputError, match="invalid break cursor"):
+                async with tenant_session(factory(), tid) as session:
+                    await recon.list_open_breaks(session, tid, cursor=forged)
 
     asyncio.run(run())

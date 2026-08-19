@@ -101,6 +101,12 @@ DELEGATED = {
     WO_RECOVERIES_SCOPE: (
         "test_loan_recoveries.py::test_receipts_listing_pages_by_keyset_with_reconstructed_totals"
     ),
+    # Issue #9 ships the reconciliation application layer WITHOUT a
+    # router (api/app.py is owned by open !3), so its tamper leg is
+    # service-level at the decode seam; the thin router follow-up
+    # joins the URL matrix in ENDPOINTS when the delivery surface
+    # lands.
+    BREAKS_SCOPE: "test_reconciliation.py::test_fm9_forged_break_cursor_is_refused",
 }
 
 #: Seeded once, shared across the parametrized legs (ids and the JWT
