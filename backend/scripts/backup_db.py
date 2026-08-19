@@ -120,7 +120,7 @@ def load_config(env: Mapping[str, str]) -> Config:
         raise ConfigError(
             "BACKUP_ENCRYPTION_KEY is not set — refusing to write an unencrypted "
             "backup. Generate one with: "
-            "python -c \"import secrets; print(secrets.token_hex(32))\""
+            'python -c "import secrets; print(secrets.token_hex(32))"'
         )
     if len(key) < MIN_KEY_LENGTH:
         raise ConfigError(
