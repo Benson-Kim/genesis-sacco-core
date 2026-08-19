@@ -79,6 +79,11 @@ TENANT_TABLES = [
     # authorization substrate for member-visible money actions — so
     # its RLS posture is release-blocking (ADR-0002; migration 0035).
     "member_credentials",
+    # Issue #8 (G2, ADR-0008): the approval engine's tables carry the
+    # limits matrix and per-operation money figures — tenant-owned,
+    # RLS forced per ADR-0002 (migration 0049).
+    "approval_band_sets",
+    "pending_approvals",
 ]
 
 

@@ -94,6 +94,13 @@ ENTITY_MODULES: dict[str, Module] = {
     # who can authenticate as a member.
     "member_credentials": Module.MEMBER_IDENTITY,
     "loan_products": Module.SETTINGS,
+    # ADR-0008 approval engine (issue #8 G2): band-schedule config is
+    # a settings act (its payload is the limits matrix), disclosed per
+    # settings entitlement like tenant_settings; pending-approval
+    # decisions gate posting-capable operations and carry the exact
+    # amounts, so their payloads follow the transactions entitlement.
+    "approval_band_sets": Module.SETTINGS,
+    "pending_approvals": Module.TRANSACTIONS,
     # The tenant settings row is maintained under settings:*
     # routes; mapped here so its before/after payloads are released per
     # settings entitlement (review F4 completeness scan).
