@@ -174,9 +174,10 @@ backend:lock-drift:
     - pip install --upgrade pip
     - pip install uv==0.12.5
     - cd backend
+    - cp requirements.txt /tmp/requirements.committed.txt
     - uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes -o requirements.txt
     - |
-      if ! git diff --exit-code -- requirements.txt; then
+      if ! diff -u /tmp/requirements.committed.txt requirements.txt; then
         echo "ERROR: backend/requirements.txt is OUT OF SYNC with backend/pyproject.toml." >&2
         echo "Regenerate with uv==0.12.5:" >&2
         echo "  cd backend && uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes -o requirements.txt" >&2
