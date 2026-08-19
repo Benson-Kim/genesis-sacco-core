@@ -19,11 +19,12 @@ application or API change. Falsifiable both ways:
   oldest — both directions tested), an unconfigured channel fails
   LOUDLY (retry/dead-letter, never a silent drop), and the logging
   adapter NEVER logs the code or the full destination (gate 1.6);
-- #20 hardening: a dead-lettered OTP event is REDACTED in the same
-  transaction (no plaintext code, no full destination at rest; non-OTP
-  dead letters untouched), and an already-expired challenge is dropped
-  with an explicit audit line — marked processed, never retried,
-  never silent.
+- #20 hardening: a PROCESSED OTP event — dead-lettered OR dispatched
+  (including the expired drop-with-audit, which marks processed) — is
+  REDACTED in the same statement as the status mark (no plaintext code,
+  no full destination at rest; non-OTP rows untouched), while an
+  UNPROCESSED (pending) row keeps its full payload so at-least-once
+  redelivery still carries the real code.
 
 The unit legs are pure (no DB) and run on every pipeline.
 """
@@ -525,6 +526,139 @@ def test_dead_lettered_non_otp_event_payload_is_untouched() -> None:
     asyncio.run(run())
 
 
+async def _enqueue_otp(
+    tid: uuid.UUID, *, destination: str, expires_in_seconds: int = 300
+) -> uuid.UUID:
+    """Enqueue one routed OTP event through the real enqueue path."""
+    async with tenant_session(factory(), tid) as session:
+        return await enqueue_event(
+            session,
+            tid,
+            event_type="auth.otp_requested",
+            payload={
+                "user_id": "u-1",
+                "challenge_id": "c-1",
+                "code": "123456",
+                "channel": "sms",
+                "destination": destination,
+                "expires_at": (
+                    datetime.now(UTC) + timedelta(seconds=expires_in_seconds)
+                ).isoformat(),
+            },
+        )
+
+
+async def _load_raw_payload(tid: uuid.UUID, event_id: uuid.UUID) -> str:
+    """The stored payload as raw text — for byte-untouched assertions."""
+    async with tenant_session(factory(), tid) as session:
+        row = (
+            await session.execute(
+                text("SELECT payload::text FROM outbox_events WHERE id = CAST(:id AS uuid)"),
+                {"id": str(event_id)},
+            )
+        ).one()
+    return str(row[0])
+
+
+@_requires_db
+def test_dispatched_otp_event_is_redacted_at_rest() -> None:
+    """#20 half 2: a successfully dispatched OTP row is a delivery
+    receipt that lives for DISPATCHED_RETENTION_DAYS — it must NOT
+    retain the plaintext code or the full destination (PII at rest and
+    an identifier→phone/email correlation table for any DB reader).
+    Mirrors test_dead_lettered_otp_event_is_redacted_at_rest, raw-row
+    6-digit sweep included. Falsifiable: mark dispatched without the
+    payload UPDATE and the code/destination assertions fail."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        destination = "+254712345678"
+        event_id = await _enqueue_otp(tid, destination=destination)
+        port = RecordingPort()
+        await dispatch_due(factory(), tid, OtpRoutingProvider(port, StubProvider(channel="stub")))
+        # The delivery itself carried the REAL code: redaction happens
+        # at the dispatched mark, AFTER the provider call.
+        assert [d["code"] for d in port.deliveries] == ["123456"]
+        status, payload = await _load_row(tid, event_id)
+        assert status == "dispatched"
+        assert "code" not in payload
+        assert "destination" not in payload
+        assert payload["redacted"] is True
+        # Diagnosis survives: channel, challenge id, masked destination.
+        assert payload["channel"] == "sms"
+        assert payload["challenge_id"] == "c-1"
+        assert payload["destination_masked"] == mask_destination(destination)
+        # Sweep the raw row text exactly as the dead-letter test does:
+        # no code, no full destination, no OTP-shaped 6-digit token
+        # outside expires_at (whose ISO microseconds are a legitimate
+        # 6-digit run — excluded from the shape sweep only).
+        raw = await _load_raw_payload(tid, event_id)
+        assert "123456" not in raw
+        assert destination not in raw
+        sweep = json.dumps({k: v for k, v in payload.items() if k != "expires_at"})
+        assert re.search(r"\b\d{6}\b", sweep) is None
+
+    asyncio.run(run())
+
+
+@_requires_db
+def test_dispatched_non_otp_event_payload_is_untouched() -> None:
+    """The other direction: dispatched-mark redaction applies ONLY to
+    OTP events — a non-OTP dispatched row keeps its payload byte for
+    byte (compared as the stored jsonb's raw text before and after)."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        async with tenant_session(factory(), tid) as session:
+            event_id = await enqueue_event(
+                session,
+                tid,
+                event_type="loans.approved",
+                payload={"loan_id": "l-1", "amount": "1000"},
+            )
+        raw_before = await _load_raw_payload(tid, event_id)
+        await dispatch_due(factory(), tid, StubProvider(channel="stub"))
+        status, stored = await _load_row(tid, event_id)
+        assert status == "dispatched"
+        assert stored == {"loan_id": "l-1", "amount": "1000"}
+        assert await _load_raw_payload(tid, event_id) == raw_before
+
+    asyncio.run(run())
+
+
+@_requires_db
+def test_pending_otp_row_keeps_full_payload_for_redelivery() -> None:
+    """#20, the at-least-once guard rail: redaction applies ONLY to
+    PROCESSED rows (dispatched or dead). A failed attempt leaves the
+    row pending WITH its full payload — the retry must still deliver
+    the real code — and only the successful redelivery redacts it.
+    Falsifiable: redact on failure (or on claim) and the retry would
+    deliver a redacted payload; the recorded code assertion fails."""
+
+    async def run() -> None:
+        tid, _ = await seed_user(unique_email())
+        destination = "+254712345678"
+        event_id = await _enqueue_otp(tid, destination=destination)
+        # First attempt fails: the row stays pending, payload intact.
+        await _reset_due(tid)
+        await dispatch_due(factory(), tid, _AlwaysFailingProvider())
+        status, payload = await _load_row(tid, event_id)
+        assert status == "pending"
+        assert payload["code"] == "123456"
+        assert payload["destination"] == destination
+        # The retry delivers the REAL code, then redacts at the mark.
+        await _reset_due(tid)
+        port = RecordingPort()
+        await dispatch_due(factory(), tid, OtpRoutingProvider(port, StubProvider(channel="stub")))
+        assert [d["code"] for d in port.deliveries] == ["123456"]
+        status, payload = await _load_row(tid, event_id)
+        assert status == "dispatched"
+        assert "code" not in payload
+        assert "destination" not in payload
+
+    asyncio.run(run())
+
+
 @_requires_db
 def test_expired_otp_event_is_marked_processed_not_retried(
     caplog: pytest.LogCaptureFixture,
@@ -532,7 +666,9 @@ def test_expired_otp_event_is_marked_processed_not_retried(
     """#20(b) end to end: an expired OTP event dispatches to 'processed'
     (status dispatched, attempts spent ONCE) with the audit line — no
     port delivery, no retry churn. Falsifiable: raise instead of
-    returning and the status stays pending with attempts climbing."""
+    returning and the status stays pending with attempts climbing.
+    The drop-with-audit goes through the same dispatched-mark UPDATE,
+    so the row is redacted at rest exactly like a delivered one."""
 
     async def run() -> None:
         tid, _ = await seed_user(unique_email())
@@ -554,9 +690,18 @@ def test_expired_otp_event_is_marked_processed_not_retried(
         provider = OtpRoutingProvider(port, StubProvider(channel="stub"))
         with caplog.at_level(logging.INFO):
             await dispatch_due(factory(), tid, provider)
-        status, _ = await _load_row(tid, event_id)
+        status, payload = await _load_row(tid, event_id)
         assert status == "dispatched"
         assert port.deliveries == []
         assert "otp expired before delivery" in caplog.text
+        # The expired drop is marked processed through the same
+        # dispatched-mark UPDATE — redacted at rest likewise (#20).
+        assert "code" not in payload
+        assert "destination" not in payload
+        assert payload["redacted"] is True
+        assert payload["destination_masked"] == mask_destination("+254712345678")
+        raw = await _load_raw_payload(tid, event_id)
+        assert "123456" not in raw
+        assert "+254712345678" not in raw
 
     asyncio.run(run())

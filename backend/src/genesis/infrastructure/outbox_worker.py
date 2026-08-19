@@ -141,22 +141,51 @@ async def dispatch_due(
         else:
             delivered += 1
             async with tenant_session(factory, tenant_id) as session:
-                await session.execute(
-                    text(
-                        "UPDATE outbox_events SET status = 'dispatched', "
-                        "dispatched_at = now(), attempts = :attempts "
-                        "WHERE id = CAST(:id AS uuid)"
-                    ),
-                    {"attempts": attempts + 1, "id": event_id},
-                )
+                if event_type in OTP_EVENT_TYPES:
+                    # Redact in the SAME statement as the dispatched
+                    # mark (#20, mirroring the dead-letter path below):
+                    # a dispatched OTP row is a delivery receipt that
+                    # lives for DISPATCHED_RETENTION_DAYS — no window
+                    # where it still holds the plaintext code or the
+                    # full destination at rest. The expired-drop path
+                    # (drop-with-audit in OtpRoutingProvider) is marked
+                    # processed through this exact UPDATE, so it is
+                    # redacted likewise. Pending rows are NEVER
+                    # redacted: at-least-once redelivery of an
+                    # unprocessed row needs the full payload.
+                    await session.execute(
+                        text(
+                            "UPDATE outbox_events SET status = 'dispatched', "
+                            "dispatched_at = now(), attempts = :attempts, "
+                            "payload = CAST(:payload AS jsonb) "
+                            "WHERE id = CAST(:id AS uuid)"
+                        ),
+                        {
+                            "attempts": attempts + 1,
+                            "payload": _redacted_otp_payload(payload),
+                            "id": event_id,
+                        },
+                    )
+                else:
+                    await session.execute(
+                        text(
+                            "UPDATE outbox_events SET status = 'dispatched', "
+                            "dispatched_at = now(), attempts = :attempts "
+                            "WHERE id = CAST(:id AS uuid)"
+                        ),
+                        {"attempts": attempts + 1, "id": event_id},
+                    )
     return delivered
 
 
 def _redacted_otp_payload(payload: dict[str, Any]) -> str:
-    """Dead-letter redaction for OTP payloads (#20): dead rows live
-    forever, and an OTP payload holds the plaintext code plus the full
+    """At-rest redaction for processed OTP payloads (#20): dead rows
+    live forever and dispatched rows live for DISPATCHED_RETENTION_DAYS,
+    and an OTP payload holds the plaintext code plus the full
     destination (PII). Strip both; keep the channel and a masked
-    destination (and every other field) for diagnosis."""
+    destination (and every other field) for diagnosis. Applied only
+    once a row is PROCESSED (dispatched or dead) — pending rows keep
+    the full payload for at-least-once redelivery."""
     destination = payload.get("destination")
     redacted = {k: v for k, v in payload.items() if k not in ("code", "destination")}
     redacted["redacted"] = True
