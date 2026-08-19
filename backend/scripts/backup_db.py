@@ -41,6 +41,11 @@ Environment (see docs/technical/backup-and-restore.md for the runbook):
                             bucketing, immune to the local-time cron /
                             UTC-stamp weekday shift)
   BACKUP_TIMEOUT_SECONDS    default 3600 (per external command)
+  BACKUP_HEARTBEAT_URL      optional https:// heartbeat check URL
+                            (e.g. Healthchecks.io); pinged on success,
+                            <url>/fail on failure — the service alerts
+                            on ping ABSENCE, the true dead-man switch.
+                            Required for production per the runbook §3
 
 cPanel cron does NOT inherit the Passenger app's env vars, so source an
 env file (chmod 600) in the cron line. Example (nightly at 01:30):
@@ -79,6 +84,7 @@ from backup_common import (
     require_encryption_key,
     run,
     script_logger,
+    send_heartbeat,
 )
 
 logger = script_logger(__file__)
@@ -301,24 +307,31 @@ def run_backup(cfg: Config) -> tuple[Path, int, list[str]]:
 
 
 def main() -> int:
+    # Read the heartbeat URL independently of load_config so even a
+    # config-stage failure still emits the explicit /fail ping (#27).
+    heartbeat = os.environ.get("BACKUP_HEARTBEAT_URL", "").strip()
     try:
         cfg = load_config(os.environ)
     except ConfigError as exc:
         logger.error(f"BACKUP_DB FAILURE stage=config error={exc}")
+        send_heartbeat(heartbeat, ok=False)
         return 1
     try:
         encrypted, size, pruned = run_backup(cfg)
     except BackupError as exc:
         logger.error(f"BACKUP_DB FAILURE stage={exc.stage} error={exc}")
+        send_heartbeat(heartbeat, ok=False)
         return 1
     except Exception:
         # Blind on purpose: the greppable FAILURE line must always be emitted.
         logger.exception("unexpected error")
         logger.error("BACKUP_DB FAILURE stage=unexpected error=see traceback above")
+        send_heartbeat(heartbeat, ok=False)
         return 1
     if pruned:
         logger.info(f"retention pruned {len(pruned)}: {', '.join(pruned)}")
     logger.info(f"BACKUP_DB SUCCESS file={encrypted} bytes={size} pruned={len(pruned)}")
+    send_heartbeat(heartbeat, ok=True)
     return 0
 
 

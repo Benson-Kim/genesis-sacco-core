@@ -35,6 +35,7 @@ import logging
 import os
 import shutil
 import subprocess
+import urllib.request
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
@@ -238,3 +239,34 @@ def pre_create_private(path: Path) -> None:
     os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600))
     # The mode argument only applies on creation; pin pre-existing files too.
     os.chmod(path, 0o600)
+
+
+def send_heartbeat(url: str, *, ok: bool, timeout: int = 10) -> None:
+    """Ping a dead-man-switch heartbeat service (issue #27).
+
+    Healthchecks.io convention: ping ``url`` on success, ``url``/fail
+    on failure. The service alerts both on an explicit /fail ping and
+    on the *absence* of any ping past the grace window — which also
+    covers crashes, a broken system python, and a host that never ran
+    cron at all. That absence-based alerting is the actual dead-man
+    switch; the /fail ping just makes explicit failures page faster.
+
+    This function never raises and must never change the caller's exit
+    code: a failed ping must not turn a good backup into a failed run —
+    the missed ping itself is what raises the alarm. Empty URL means
+    heartbeat monitoring is not configured (the runbook makes it
+    required for production; the scripts stay runnable without it so a
+    monitoring outage can never block a backup).
+    """
+    if not url:
+        return
+    if not url.startswith("https://"):
+        logging.getLogger(__name__).warning("heartbeat URL is not https:// — refusing to ping it")
+        return
+    target = url if ok else url.rstrip("/") + "/fail"
+    try:
+        # S310 suppression rationale: scheme is pinned to https just above.
+        with urllib.request.urlopen(target, timeout=timeout) as response:  # noqa: S310
+            response.read()
+    except Exception as exc:  # noqa: BLE001 — deliberate: see docstring
+        logging.getLogger(__name__).warning(f"heartbeat ping failed: {exc}")

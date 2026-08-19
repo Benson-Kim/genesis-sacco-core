@@ -813,3 +813,124 @@ def test_drill_main_exit_codes(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(verify_restore, "run_drill", stage_fail)
     assert verify_restore.main() == 1
+
+
+# --- dead-man-switch heartbeat (#27) ----------------------------------------
+
+
+class _UrlopenRecorder:
+    def __init__(self, fail: bool = False) -> None:
+        self.urls: list[str] = []
+        self.fail = fail
+
+    def __call__(self, url: str, timeout: int = 0) -> object:
+        self.urls.append(url)
+        if self.fail:
+            raise OSError("network down")
+
+        class _Resp:
+            def __enter__(self) -> object:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return b"OK"
+
+        return _Resp()
+
+
+def test_send_heartbeat_pings_success_and_fail_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _UrlopenRecorder()
+    monkeypatch.setattr(backup_common.urllib.request, "urlopen", recorder)
+    backup_common.send_heartbeat("https://hc-ping.com/abc", ok=True)
+    backup_common.send_heartbeat("https://hc-ping.com/abc", ok=False)
+    assert recorder.urls == [
+        "https://hc-ping.com/abc",
+        "https://hc-ping.com/abc/fail",
+    ]
+
+
+def test_send_heartbeat_is_optional_and_https_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _UrlopenRecorder()
+    monkeypatch.setattr(backup_common.urllib.request, "urlopen", recorder)
+    backup_common.send_heartbeat("", ok=True)  # unconfigured: no ping
+    # Plain http would leak the check UUID on the wire; refused.
+    backup_common.send_heartbeat("http://hc-ping.com/abc", ok=True)
+    assert recorder.urls == []
+
+
+def test_send_heartbeat_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A monitoring outage must never turn a good backup into a failure:
+    # the missed ping is itself the alert.
+    recorder = _UrlopenRecorder(fail=True)
+    monkeypatch.setattr(backup_common.urllib.request, "urlopen", recorder)
+    backup_common.send_heartbeat("https://hc-ping.com/abc", ok=True)  # no raise
+    assert recorder.urls == ["https://hc-ping.com/abc"]
+
+
+def _heartbeat_spy() -> tuple[list[bool], object]:
+    pings: list[bool] = []
+
+    def spy(url: str, *, ok: bool, timeout: int = 10) -> None:
+        if url:
+            pings.append(ok)
+
+    return pings, spy
+
+
+def test_backup_main_pings_heartbeat_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pings, spy = _heartbeat_spy()
+    monkeypatch.setattr(backup_db, "send_heartbeat", spy)
+    monkeypatch.setenv("BACKUP_HEARTBEAT_URL", "https://hc-ping.com/abc")
+
+    def boom(env: object) -> object:
+        raise backup_db.ConfigError("nope")
+
+    monkeypatch.setattr(backup_db, "load_config", boom)
+    assert backup_db.main() == 1  # even a config failure pings /fail
+
+    cfg = backup_db.Config(
+        database_url=_URL,
+        backup_dir=tmp_path,
+        retention_daily=7,
+        retention_weekly=4,
+        timeout_seconds=60,
+    )
+    monkeypatch.setattr(backup_db, "load_config", lambda env: cfg)
+    monkeypatch.setattr(backup_db, "run_backup", lambda cfg: (tmp_path / "f", 1, []))
+    assert backup_db.main() == 0
+
+    assert pings == [False, True]
+
+
+def test_drill_main_pings_heartbeat_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pings, spy = _heartbeat_spy()
+    monkeypatch.setattr(verify_restore, "send_heartbeat", spy)
+    monkeypatch.setenv("RESTORE_CHECK_HEARTBEAT_URL", "https://hc-ping.com/def")
+
+    monkeypatch.setattr(verify_restore, "load_config", lambda env: _drill_cfg())
+
+    def stage_fail(cfg: object) -> object:
+        raise verify_restore.DrillError("sanity", "hollow")
+
+    monkeypatch.setattr(verify_restore, "run_drill", stage_fail)
+    assert verify_restore.main() == 1
+
+    monkeypatch.setattr(
+        verify_restore,
+        "run_drill",
+        lambda cfg: ("genesis-20260816T013000Z.dump.enc", _report(), 0),
+    )
+    assert verify_restore.main() == 0
+
+    assert pings == [False, True]

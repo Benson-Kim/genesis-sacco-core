@@ -52,6 +52,11 @@ Environment (see docs/technical/backup-and-restore.md):
                                     restore noise (e.g. a CREATE EXTENSION
                                     privilege refusal on shared hosting)
   BACKUP_TIMEOUT_SECONDS            default 3600 (per external command)
+  RESTORE_CHECK_HEARTBEAT_URL       optional https:// heartbeat check URL
+                                    (e.g. Healthchecks.io); pinged on
+                                    success, <url>/fail on failure —
+                                    the service alerts on ping ABSENCE.
+                                    Required for production (runbook §3)
 
 Example cron line (weekly, Monday 03:15 — drills the newest dump):
   15 3 * * 1 . /home/USER/.genesis_backup_env && \
@@ -87,6 +92,7 @@ from backup_common import (
     require_encryption_key,
     run,
     script_logger,
+    send_heartbeat,
 )
 
 logger = script_logger(__file__)
@@ -453,23 +459,30 @@ def run_drill(cfg: Config) -> tuple[str, dict[str, int | str], int]:
 
 
 def main() -> int:
+    # Read the heartbeat URL independently of load_config so even a
+    # config-stage failure still emits the explicit /fail ping (#27).
+    heartbeat = os.environ.get("RESTORE_CHECK_HEARTBEAT_URL", "").strip()
     try:
         cfg = load_config(os.environ)
     except ConfigError as exc:
         logger.error(f"RESTORE_CHECK FAILURE stage=config error={exc}")
+        send_heartbeat(heartbeat, ok=False)
         return 1
     try:
         name, report, ignored = run_drill(cfg)
     except DrillError as exc:
         logger.error(f"RESTORE_CHECK FAILURE stage={exc.stage} error={exc}")
+        send_heartbeat(heartbeat, ok=False)
         return 1
     except Exception:
         # Blind on purpose: the greppable FAILURE line must always be emitted.
         logger.exception("unexpected error")
         logger.error("RESTORE_CHECK FAILURE stage=unexpected error=see traceback above")
+        send_heartbeat(heartbeat, ok=False)
         return 1
     fields = " ".join(f"{key}={value}" for key, value in report.items())
     logger.info(f"RESTORE_CHECK SUCCESS backup={name} {fields} ignored_errors={ignored}")
+    send_heartbeat(heartbeat, ok=True)
     return 0
 
 

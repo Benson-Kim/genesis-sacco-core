@@ -152,15 +152,30 @@ no venv or install step needed. Exit codes are non-zero on real
 failures; don't redirect stderr to `/dev/null` (cPanel's cron failure
 email is part of the alerting).
 
-**Dead-man switch:** monitoring must alert on the *absence* of the
-SUCCESS line, not the presence of FAILURE — a host that never ran cron
-prints nothing. The **required** mechanism is an external heartbeat
-service (e.g. Healthchecks.io — outbound HTTPS is open, §4): append
-`&& curl -fsS https://hc-ping.com/<uuid>` to each cron line and let
-the service alert when a ping stops arriving; per-job wiring is
-tracked in issue #27. As a stopgap only, a local check — POSIX `sh`
-(cPanel cron does **not** run bash) and bounded to today, so a
-days-old SUCCESS cannot satisfy it:
+**Dead-man switch (required for production — issue #27):** monitoring
+must alert on the *absence* of the SUCCESS signal, not the presence of
+FAILURE — a host that never ran cron prints nothing. The scripts have
+the heartbeat built in: set `BACKUP_HEARTBEAT_URL` and
+`RESTORE_CHECK_HEARTBEAT_URL` in `~/.genesis_backup_env` and each run
+pings its check URL on success and `<url>/fail` on any failure
+(including config-stage failures); a ping that simply stops arriving —
+crash, dead cron, broken python — trips the same alarm. Setup, once:
+
+1. Create two checks on an external heartbeat service reachable over
+   outbound HTTPS (Healthchecks.io works from this host, §4):
+   - *nightly dump*: period 1 day, grace 2 h (cron fires 01:30);
+   - *weekly drill*: period 7 days, grace 6 h (cron fires Mon 03:15);
+   - (once the offsite upload of #25 exists, a third check for it).
+2. Put each check's ping URL in `~/.genesis_backup_env`
+   (`BACKUP_HEARTBEAT_URL=...`, `RESTORE_CHECK_HEARTBEAT_URL=...`).
+3. Route the service's alerts to **every operator on the DR rota**
+   (at least two channels — e-mail plus SMS/messenger integration),
+   never to a single inbox.
+
+A failed ping never fails the run — the missed ping *is* the alert; a
+monitoring outage must not block backups. As a stopgap only, a local
+check — POSIX `sh` (cPanel cron does **not** run bash) and bounded to
+today, so a days-old SUCCESS cannot satisfy it:
 
 ```
 tail -n 200 ~/logs/backup_db.log | grep "BACKUP_DB SUCCESS" | tail -n 1 \
@@ -332,6 +347,8 @@ Scenario: the live database is lost or corrupted beyond repair.
 | `BACKUP_RETENTION_DAILY` | backup | `7` | newest N dumps kept |
 | `BACKUP_RETENTION_WEEKLY` | backup | `4` | newest dump of each of the newest N ISO weeks kept |
 | `BACKUP_TIMEOUT_SECONDS` | both | `3600` | per external command |
+| `BACKUP_HEARTBEAT_URL` | backup | — (required in prod) | https:// check URL; pinged on success, `/fail` on failure (§3) |
+| `RESTORE_CHECK_HEARTBEAT_URL` | drill | — (required in prod) | https:// check URL; same semantics (§3) |
 | `RESTORE_CHECK_DB` | drill | `<dbname>_restore_check` | explicit scratch DB name; live-DB collision refused |
 | `RESTORE_CHECK_DB_SUFFIX` | drill | `_restore_check` | used when `RESTORE_CHECK_DB` unset |
 | `RESTORE_CHECK_PRECREATED` | drill | `false` | for roles without `CREATEDB` (§6) |
