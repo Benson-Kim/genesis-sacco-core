@@ -15,6 +15,13 @@ workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # develop is a long-lived integration branch: merges can land on it
+    # outside an MR (e.g. pushed merge commits from a mirror remote), and
+    # an MR pipeline only ever tests the pre-merge SHA. Running the full
+    # branch pipeline on develop makes the post-merge result itself pass
+    # backend pytest and web lint/tsc — the class of error where a merge
+    # silently duplicates a block is caught at the commit that created it.
+    - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_TAG
 
 default:

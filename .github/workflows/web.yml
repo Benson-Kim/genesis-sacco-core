@@ -21,7 +21,11 @@ name: web
 
 on:
   push:
-    branches: [main]
+    # develop mirrors the GitLab workflow rule: merge commits can land on
+    # the integration branch outside a PR, so the post-merge result itself
+    # must pass web lint + tsc — the exact gate that would have caught the
+    # duplicated status-counts block at the merge commit that created it.
+    branches: [main, develop]
     tags: ['**']
   pull_request:
 
