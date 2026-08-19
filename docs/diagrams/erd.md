@@ -59,6 +59,17 @@
   deterministic (created_at, id) backfill + counter seeding — no new
   table, no RLS change);
   diagrams 2.C/2.D and §3 updated accordingly (v1.2 rules 11/14).
+  Extended for 0049 by the issue-#2 withdrawal business-controls MR,
+  IN THE SAME COMMIT as the migration: alembic head 0048 -> 0049
+  (0049_withdrawal_business_controls.py, down_revision = "0048" —
+  chained onto the verified single head, the issue-#22 rule; adds two
+  nullable CHECK-bounded tenant_settings money columns
+  (daily_withdrawal_limit, withdrawal_notice_threshold) and CREATES
+  withdrawal_holds — the pending/notice state for large withdrawals —
+  with status/amount/channel CHECKs, executed-iff-txn and
+  decided-iff-not-pending CHECK pairs, a status keyset index and
+  forced RLS with the 0001 tenant_isolation policy);
+  diagram 2.C and §3 updated accordingly (v1.2 rules 11/14).
   Derived exclusively from backend/migrations/versions/*.py — every
   entity is a real table from a migration; every edge cites the FK
   that implements it. Falsifiable gate: erd-spot-check.py (§6).
@@ -69,8 +80,9 @@
 
 # Entity-relationship diagram — as-built (P-DIAG.2)
 
-The entire schema at alembic head **0048**: **47 tables** (0035
-creates `member_credentials`; 0033/0034/0036/0037/0040/0043/0048 alter
+The entire schema at alembic head **0049**: **48 tables** (0035
+creates `member_credentials`; 0049 creates `withdrawal_holds`;
+0033/0034/0036/0037/0040/0043/0048 alter
 existing tables and create none; 0038/0041/0044 add indexes only;
 0042 is a data-only backfill touching no schema object), drawn as
 seven subject-area `erDiagram`s (one diagram would not render readably;
@@ -88,10 +100,10 @@ attribute block where it only anchors a cross-area FK.
   [`erd-spot-check.py`](erd-spot-check.py) (§6).
 - **Every edge is a real FOREIGN KEY**, cited in the edge label as
   `column (migration)`. Nothing is inferred from code or prose.
-- **The tenant spine is drawn once, not 46 times.** Every table except
+- **The tenant spine is drawn once, not 47 times.** Every table except
   `tenants` carries `tenant_id uuid NOT NULL REFERENCES tenants(id)
   ON DELETE RESTRICT` (the 0001 pattern, repeated verbatim by every
-  later creating migration). Drawing those 46 edges would bury the
+  later creating migration). Drawing those 47 edges would bury the
   domain FKs, so the spine is shown representatively in diagram E and
   the `tenant_id FK` attribute on every entity stands for its edge.
 - **Attribute lists are keys, not column dictionaries**: PK, FKs,
@@ -312,7 +324,19 @@ erDiagram
     users
     deposit_accounts
 
+    withdrawal_holds {
+        uuid id PK
+        uuid tenant_id FK "tenant spine (0049)"
+        uuid member_id FK "-> members.id (0049)"
+        text status "pending_notice|executed|cancelled CHECK; executed iff executed_txn_id set, decided_at iff decided (paired CHECKs, 0049)"
+        uuid requested_by FK "nullable -> users.id (0049)"
+        uuid decided_by FK "nullable -> users.id (0049)"
+        uuid executed_txn_id FK "nullable -> transactions.id; NOT NULL exactly when executed (0049)"
+    }
     members |o--o{ transactions : "transactions.member_id, nullable (0001)"
+    members ||--o{ withdrawal_holds : "withdrawal_holds.member_id (0049)"
+    users |o--o{ withdrawal_holds : "withdrawal_holds.requested_by / decided_by, nullable (0049)"
+    transactions |o--o{ withdrawal_holds : "withdrawal_holds.executed_txn_id, nullable (0049)"
     transactions |o--o| transactions : "reversal_of_id, tenant-safe composite FK (0004/0014)"
     transactions ||--o{ ledger_entries : "ledger_entries.transaction_id (0001)"
     tenants ||--o{ txn_ref_sequences : "txn_ref_sequences.tenant_id, PK (tenant_id, prefix) (0004)"
@@ -659,7 +683,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `txn_ref_sequences` | 0004 | — | `application/ledger.py` (`_next_ref`, `allocate_sequence` — 0048 loan/exit reference keys), `application/members.py` (member numbering) |
 | `accounting_periods` | 0012 | 0028 (`rollup_at` marker + write-once marker trigger, composite-FK target for the rollup tables) | `application/accounting_periods.py` (+ `period_rollups.py` marker) |
 | `deposit_interest_accruals` | 0008 | — | `application/deposit_interest.py` |
-| `tenant_settings` | 0009 | 0010 (`exit_fee`), 0017 (rate goes nullable + interest/parameters/approval-matrix columns), 0020 (`deposit_rebate_rate_pct`) | `application/tenant_settings.py` (single legitimate writer) |
+| `tenant_settings` | 0009 | 0010 (`exit_fee`), 0017 (rate goes nullable + interest/parameters/approval-matrix columns), 0020 (`deposit_rebate_rate_pct`), 0049 (`daily_withdrawal_limit` + `withdrawal_notice_threshold`, CHECK-bounded — issue #2) | `application/tenant_settings.py` (single legitimate writer) |
 | `member_exits` | 0001 | 0010 (workflow columns, open-exit partial UNIQUE, idxs), 0048 (`exit_ref` + partial `uq_member_exits_exit_ref`) | `application/member_exits.py` |
 | `exit_votes` | 0010 | — | `application/member_exits.py` |
 | `dividend_declarations` | 0020 (incl. write-once trigger) | — | `application/dividends.py` |
@@ -680,6 +704,7 @@ Both directions of the table↔migration mapping are machine-checked by
 | `portfolio_month_snapshots` | 0027 (incl. write-once + no-future triggers) | — | `application/portfolio_snapshots.py` |
 | `account_period_balances` | 0028 (incl. write-once + late-insert-fence triggers) | — | `application/period_rollups.py` |
 | `member_period_balances` | 0028 (incl. write-once + late-insert-fence triggers) | — | `application/period_rollups.py` |
+| `withdrawal_holds` | 0049 (incl. status/amount/channel CHECKs, executed-iff-txn + decided-iff-not-pending paired CHECKs, status keyset idx, forced RLS) | — | `application/transactions.py` (notice holds for large withdrawals, issue #2) |
 
 Nothing in this file is `PLANNED`: every entity above exists at head
 0037. The formerly in-flight !53 claim (0033, issue #23 — the

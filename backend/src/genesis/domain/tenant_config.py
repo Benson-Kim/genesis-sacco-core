@@ -219,6 +219,22 @@ SETTINGS_REGISTRY: dict[str, SettingSpec] = dict(
             ("stored: exposure rule decision tracked in GAP_ANALYSIS 2.4",),
         ),
         _spec(
+            "daily_withdrawal_limit",
+            SettingGroup.PARAMETERS,
+            "money",
+            "KES per member per UTC day",
+            "> 0 (0049 CHECK); NULL = no cap",
+            ("application/transactions.record_withdrawal (issue #2 velocity cap)",),
+        ),
+        _spec(
+            "withdrawal_notice_threshold",
+            SettingGroup.PARAMETERS,
+            "money",
+            "KES per withdrawal",
+            "> 0 (0049 CHECK); NULL = no notice state",
+            ("application/transactions.record_withdrawal (issue #2 notice holds)",),
+        ),
+        _spec(
             "dormancy_period_months",
             SettingGroup.PARAMETERS,
             "integer",

@@ -113,6 +113,8 @@ class TenantSettingsRecord:
     registration_fee: Decimal | None
     min_monthly_contribution: Decimal | None
     max_member_exposure: Decimal | None
+    daily_withdrawal_limit: Decimal | None
+    withdrawal_notice_threshold: Decimal | None
     dormancy_period_months: int | None
     financial_year_end_month: int | None
     exit_notice_period_days: int | None
@@ -219,6 +221,8 @@ def _record_from_raw(raw: dict[str, object] | None) -> TenantSettingsRecord:
         registration_fee=dec("registration_fee"),
         min_monthly_contribution=dec("min_monthly_contribution"),
         max_member_exposure=dec("max_member_exposure"),
+        daily_withdrawal_limit=dec("daily_withdrawal_limit"),
+        withdrawal_notice_threshold=dec("withdrawal_notice_threshold"),
         dormancy_period_months=num("dormancy_period_months"),
         financial_year_end_month=num("financial_year_end_month"),
         exit_notice_period_days=num("exit_notice_period_days"),

@@ -84,6 +84,12 @@ class SettingsUpdateBody(BaseModel):
         default=None, ge=0, max_digits=18, decimal_places=2
     )
     max_member_exposure: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    daily_withdrawal_limit: Decimal | None = Field(
+        default=None, gt=0, max_digits=18, decimal_places=2
+    )
+    withdrawal_notice_threshold: Decimal | None = Field(
+        default=None, gt=0, max_digits=18, decimal_places=2
+    )
     dormancy_period_months: int | None = Field(default=None, ge=1, le=120)
     financial_year_end_month: int | None = Field(default=None, ge=1, le=12)
     exit_notice_period_days: int | None = Field(default=None, ge=0, le=365)
@@ -142,6 +148,8 @@ class SettingsOut(BaseModel):
     registration_fee: str | None
     min_monthly_contribution: str | None
     max_member_exposure: str | None
+    daily_withdrawal_limit: str | None
+    withdrawal_notice_threshold: str | None
     dormancy_period_months: int | None
     financial_year_end_month: int | None
     exit_notice_period_days: int | None
@@ -205,6 +213,8 @@ def _out(record: settings_service.TenantSettingsRecord) -> SettingsOut:
         registration_fee=s(record.registration_fee),
         min_monthly_contribution=s(record.min_monthly_contribution),
         max_member_exposure=s(record.max_member_exposure),
+        daily_withdrawal_limit=s(record.daily_withdrawal_limit),
+        withdrawal_notice_threshold=s(record.withdrawal_notice_threshold),
         dormancy_period_months=record.dormancy_period_months,
         financial_year_end_month=record.financial_year_end_month,
         exit_notice_period_days=record.exit_notice_period_days,
