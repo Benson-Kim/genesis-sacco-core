@@ -144,6 +144,38 @@ def test_schedule_read_alone_returns_nothing_for_a_non_owner() -> None:
     asyncio.run(run())
 
 
+def test_schedule_statement_itself_excludes_a_non_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The STRUCTURAL falsifier (issue #33 item 3): get_schedule's own
+    internal get_loan probe is neutralized, so the ownership EXISTS
+    predicate INSIDE the schedule statement is the ONLY thing standing
+    between a non-owner and the rows. Delete that predicate and this
+    test fails with the owner's schedule leaked — proving the read is
+    safe by statement structure, not by any 404 ordering anywhere."""
+
+    async def run() -> None:
+        tid, _, _ = await seed_actor()
+        owner, other, loan_id = await _seed_loan_with_schedule(tid)
+
+        async def _bypass(*args: object, **kwargs: object) -> None:
+            return None  # every get_loan fence is out of the way
+
+        monkeypatch.setattr(loans_service, "get_loan", _bypass)
+
+        async with tenant_session(factory(), tid) as session:
+            rows = await loans_service.get_schedule(session, tid, loan_id, member_id=other)
+        assert rows == [], "the schedule statement alone leaked a non-owner's rows"
+
+        # Same bypassed path, the owner: the predicate excludes only
+        # non-owners, never the member's own schedule.
+        async with tenant_session(factory(), tid) as session:
+            rows = await loans_service.get_schedule(session, tid, loan_id, member_id=owner)
+        assert [r.installment_no for r in rows] == [1, 2]
+
+    asyncio.run(run())
+
+
 def test_maint_dsn_is_fenced_outside_the_explain_modules() -> None:
     """The fence falsifier (issue #33 item 1): this module is not
     allowlisted, so the RLS-owner DSN must be unusable here — the env
