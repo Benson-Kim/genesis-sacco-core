@@ -1,0 +1,44 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency freshness as reviewed MRs, not drift (issue #5). Covers the hash-pinned backend lock (backend/requirements.txt, compiled from pyproject.toml by uv) and the web npm lock (web/package-lock.json).",
+  "extends": ["config:recommended"],
+  "timezone": "Africa/Nairobi",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 3,
+  "constraints": {
+    "python": "==3.12"
+  },
+  "pip-compile": {
+    "fileMatch": ["^backend/requirements\\.txt$"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "Security-critical packages are exact-pinned (docs/technical/operations.md policy; Playwright precedent) — every bump, including patches, arrives as its own reviewable MR.",
+      "matchPackageNames": [
+        "pyjwt",
+        "@playwright/test",
+        "playwright"
+      ],
+      "rangeStrategy": "pin",
+      "separateMinorPatch": true
+    },
+    {
+      "description": "Group non-major backend lock updates into a single weekly MR; majors stay separate for focused review.",
+      "matchManagers": ["pip-compile"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "backend non-major"
+    },
+    {
+      "description": "Group non-major web updates into a single weekly MR; majors stay separate for focused review.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "web non-major"
+    }
+  ]
+}
