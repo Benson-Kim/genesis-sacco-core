@@ -113,7 +113,7 @@ void main() {
         () => CertificatePinning(
           pins: twoPins,
           enforcement: PinEnforcement.enforce,
-          trustedCertificate: <int>[1, 2, 3],
+          trustedCertificate: const <int>[1, 2, 3],
         ),
         returnsNormally,
       );
@@ -153,7 +153,7 @@ void main() {
       final CertificatePinning pinning = CertificatePinning(
         pins: twoPins,
         enforcement: PinEnforcement.enforce,
-        trustedCertificate: <int>[1, 2, 3],
+        trustedCertificate: const <int>[1, 2, 3],
       );
 
       expect(() => pinning.verifyPeer(null), throwsA(isA<TlsException>()));
