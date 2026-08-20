@@ -67,11 +67,21 @@ POST /member/guarantees/{id}/consent
 POST /member/guarantees/{id}/release
 ```
 
-**Body fields (verified against `backend/src/genesis/api/member.py` on develop):**
-`{signin_identifier}` for request, `{signin_identifier, code}` for verify, `{refresh_token}`
-for refresh — **not** `{email}`/`{phone}`. The act bodies carry `{version}` and nothing else
-(`extra="forbid"`; the principal *is* the authenticated credential). `x-tenant-id` is required
-on all three pre-auth routes.
+**Body fields — corrected 2026-08-20 against `api/auth.py`, not the route body.**
+An earlier reading of this register said `{signin_identifier}`. That was wrong:
+`signin_identifier` is a server-side **property** on `OtpIdentifierBody`, not a wire field.
+The actual contract is:
+
+- `POST /member/auth/otp/request` — `{identifier}` **or** `{email}`, **exactly one**. Sending both, or neither, is rejected by a model validator.
+- `POST /member/auth/otp/verify` — the same identifier envelope plus `{code}` (six digits, `^\d{6}$`).
+- `POST /member/auth/refresh` — `{refresh_token}` (16–512 chars).
+- Both act bodies carry `{version}` and nothing else (`extra="forbid"` — the principal *is* the authenticated credential).
+- `x-tenant-id` is required on all three pre-auth routes.
+
+Two consequences for the app:
+
+1. **Send `identifier`, not `email`.** The docstring marks `email` as "the earlier field, accepted for one more release" — a client shipping `email` is coding against a field with a stated removal horizon.
+2. **`identifier` is not an email address.** It accepts an email *or* a Kenyan mobile number in local (`07XX`/`01XX`) or international (`+2547XX`/`+2541XX`) form. The old design doc's D9 ("rename `phone_screen` to email") is therefore itself outdated — the field is an identifier, and the screen should ask for one, accepting either.
 
 ### 1.2 In the queue — the !7 stack
 

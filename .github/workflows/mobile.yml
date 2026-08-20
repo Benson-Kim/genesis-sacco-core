@@ -47,14 +47,29 @@ jobs:
         with:
           channel: stable
 
-      - name: Format and analyze every package
+      - name: Analyze every package
         if: steps.guard.outputs.present == 'true'
         run: |
           for package in mobile/*/; do
             if [ -f "${package}pubspec.yaml" ]; then
-              (cd "$package" && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze)
+              (cd "$package" && flutter pub get && flutter analyze)
             fi
           done
+
+      # On a formatting failure, PRINT THE PATCH. A bare "7 files changed" tells
+      # a contributor without a local Dart SDK nothing they can act on; the
+      # unified diff can be applied verbatim. Same reasoning as the web
+      # client-drift job, which prints its own diff rather than just failing.
+      - name: Check formatting
+        if: steps.guard.outputs.present == 'true'
+        run: |
+          if ! dart format --output=none --set-exit-if-changed mobile/; then
+            echo "::group::Formatting patch (apply with: git apply)"
+            dart format mobile/ >/dev/null
+            git --no-pager diff -- mobile/
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Guard sweeps (money math, staff paths, tokens in logs, imports)
         if: steps.guard.outputs.present == 'true'
@@ -94,9 +109,9 @@ jobs:
           done
 
   # ---------------------------------------------------------------------------
-  # Mirrors GitLab `mobile:codegen-drift`. Regenerates the client from the
-  # committed OpenAPI snapshot and fails on any diff — a hand-edited or stale
-  # generated tree is a red pipeline.
+  # Mirrors GitLab `mobile:codegen-drift`. Regenerates the member models from
+  # the committed OpenAPI snapshot and fails on any diff — a hand-edited or
+  # stale generated file is a red pipeline.
   # ---------------------------------------------------------------------------
   mobile-codegen-drift:
     name: "mobile:codegen-drift"
@@ -107,12 +122,22 @@ jobs:
       - name: Skip when the generator config is absent
         id: guard
         run: |
-          if [ -f mobile/gp_api_client/openapi-generator-config.yaml ]; then
+          if [ -f mobile/scripts/generate_api_models.py ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.present == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Generator guards
+        if: steps.guard.outputs.present == 'true'
+        working-directory: mobile/scripts
+        run: python test_generate_api_models.py
+
       - name: Regenerate and diff
         if: steps.guard.outputs.present == 'true'
-        run: bash mobile/scripts/regenerate_api_client.sh --check
+        run: python mobile/scripts/generate_api_models.py --check

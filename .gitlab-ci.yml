@@ -580,9 +580,17 @@ mobile:analyze:
     - |
       for package in mobile/*/; do
         if [ -f "${package}pubspec.yaml" ]; then
-          (cd "$package" && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze)
+          (cd "$package" && flutter pub get && flutter analyze)
         fi
       done
+    # On a formatting failure, PRINT THE PATCH so a contributor without a
+    # local Dart SDK has something actionable rather than a file count.
+    - |
+      if ! dart format --output=none --set-exit-if-changed mobile/; then
+        dart format mobile/ >/dev/null
+        git --no-pager diff -- mobile/
+        exit 1
+      fi
     # The P17 guard sweeps. One script, shared with the GitHub workflow, so
     # the two pipelines cannot disagree about what green means.
     - bash mobile/scripts/guard_sweeps.sh
@@ -605,14 +613,11 @@ mobile:test:
 # diff: a hand-edited or stale generated tree is a red pipeline -- the same
 # rule that governs web/packages/api-client/src/generated/schema.d.ts.
 mobile:codegen-drift:
+  image: python:3.12-slim
   stage: test
-  image: docker:27
-  services:
-    - docker:27-dind
   needs: []
   rules:
-    - exists: ["mobile/gp_api_client/openapi-generator-config.yaml"]
+    - exists: ["mobile/scripts/generate_api_models.py"]
   script:
-    - apk add --no-cache bash git
-    - bash mobile/scripts/regenerate_api_client.sh --check
-
+    - python mobile/scripts/test_generate_api_models.py
+    - python mobile/scripts/generate_api_models.py --check
