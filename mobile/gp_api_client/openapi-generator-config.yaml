@@ -1,0 +1,33 @@
+# Generator configuration for gp_api_client's model layer.
+#
+# The INPUT is web/packages/api-client/openapi.json — the committed snapshot
+# that web:spec-drift already arbitrates against the running backend. Pointing
+# the mobile generator at a live staging URL (what the P16 script did) would
+# make the mobile contract depend on whatever a server happened to be serving,
+# which is how a client generated from fiction gets shipped.
+#
+# Only MODELS are generated. The transport is hand-written in
+# lib/src/infrastructure/ because it carries the pinning, custody and
+# idempotency doctrine that no generator knows about — see the D3 note in
+# lib/gp_api_client.dart.
+generatorName: dart
+outputDir: .
+additionalProperties:
+  pubName: gp_api_client
+  pubDescription: Genesis Prestige API transport
+  # The hand-written transport owns the network. Generated api/ classes would
+  # bypass the pin set and the path guard, so they are not generated at all.
+  useEnumExtension: true
+globalProperties:
+  models: ""
+  modelDocs: "false"
+  modelTests: "false"
+  apis: "false"
+  apiDocs: "false"
+  apiTests: "false"
+  supportingFiles: "false"
+files:
+  # Models land under src/generated/ so the drift job can diff exactly one
+  # directory, and so a hand-edit is obvious in review.
+  model.mustache:
+    folder: lib/src/generated
