@@ -227,7 +227,7 @@ void main() {
         refreshes++;
         return TokenPair(accessToken: fresh, refreshToken: 'r2');
       });
-      await session.adopt(TokenPair(accessToken: 'not-a-jwt', refreshToken: 'r1'));
+      await session.adopt(const TokenPair(accessToken: 'not-a-jwt', refreshToken: 'r1'));
 
       expect(await session.validAccessToken(), fresh);
       expect(refreshes, 1);

@@ -108,7 +108,7 @@ class Flavor {
   static Flavor dev = Flavor(
     name: 'dev',
     baseUrl: Uri.parse(
-      String.fromEnvironment('GP_BASE_URL', defaultValue: 'https://dev.invalid'),
+      const String.fromEnvironment('GP_BASE_URL', defaultValue: 'https://dev.invalid'),
     ),
     tenantId: const String.fromEnvironment('GP_TENANT_ID', defaultValue: 'dev-tenant'),
     pinSet: const <String>[
