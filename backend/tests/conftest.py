@@ -1,9 +1,51 @@
 import os
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
 from genesis.api.app import create_app
+
+#: DATABASE_MAINT_URL fence (issue #33 item 1, from the !7 review).
+#:
+#: DATABASE_MAINT_URL is the RLS-OWNER DSN, exported by backend:test
+#: solely so the EXPLAIN structural gates can ANALYZE seeded books
+#: (PG16 has no MAINTAIN privilege for the unprivileged app role).
+#: Left ambient in the whole job env, any future test could quietly
+#: read THROUGH row-level security with it — and the tenant-isolation
+#: / IDOR proofs would keep passing while proving less than they
+#: claim. The autouse fixture below swaps the variable for a sentinel
+#: DSN for every test module EXCEPT this explicit allowlist: the
+#: sentinel's host lives under the RFC 2606 .invalid TLD, so a fenced
+#: test that tries to connect fails loudly with the fence message AS
+#: the unresolvable host name in the error. Extend the allowlist
+#: deliberately (the diff is reviewable); never read
+#: DATABASE_MAINT_URL anywhere else.
+MAINT_DSN_ALLOWED_MODULES = frozenset({"test_member_portal_explain"})
+
+MAINT_DSN_FENCE_SENTINEL = (
+    "postgresql+psycopg://fenced:fenced@"
+    "database-maint-url-is-fenced-to-the-explain-modules"
+    ".see-backend-tests-conftest-issue-33.invalid/fenced"
+)
+
+
+@pytest.fixture(autouse=True)
+def _maint_dsn_fence(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Restrict the owner DSN to the allowlisted EXPLAIN modules."""
+    real = os.environ.get("DATABASE_MAINT_URL")
+    if real is None:
+        yield
+        return
+    module = getattr(request, "module", None)
+    if module is not None and module.__name__ in MAINT_DSN_ALLOWED_MODULES:
+        yield
+        return
+    os.environ["DATABASE_MAINT_URL"] = MAINT_DSN_FENCE_SENTINEL
+    try:
+        yield
+    finally:
+        os.environ["DATABASE_MAINT_URL"] = real
 
 
 @pytest.fixture(autouse=True, scope="session")
