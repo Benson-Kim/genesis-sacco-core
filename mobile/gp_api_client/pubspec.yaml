@@ -1,0 +1,26 @@
+name: gp_api_client
+description: Genesis Prestige API transport — member-audience HTTP client, token custody, certificate pinning, and the generated OpenAPI models.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+# The Flutter SDK is present only because secure storage is a platform plugin.
+# This package must never import package:flutter/widgets.dart or material.dart:
+# it holds transport, not UI. The import-boundary sweep in mobile:analyze
+# fails the pipeline if a widget import appears here.
+dependencies:
+  crypto: ^3.0.3
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^9.0.0
+  http: ^1.2.0
+  meta: ^1.11.0
+  uuid: ^4.4.0
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  flutter_test:
+    sdk: flutter

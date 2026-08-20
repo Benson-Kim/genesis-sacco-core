@@ -1,0 +1,17 @@
+# Shell scripts MUST be stored and checked out with LF.
+#
+# This repository is developed on Windows and run in Linux CI containers. A
+# CRLF checkout makes the shebang unusable and the runner reports a bad
+# interpreter -- a failure that reads like a missing shell rather than a
+# line ending, and one that cannot reproduce on the machine that caused it.
+*.sh text eol=lf
+
+# Source that Linux tooling formats or executes. dart format normalises to LF,
+# so storing CRLF would make the format gate unfixable from a Windows checkout.
+*.dart text eol=lf
+*.py text eol=lf
+
+# Same reasoning: these are executed or parsed by Linux tooling.
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf

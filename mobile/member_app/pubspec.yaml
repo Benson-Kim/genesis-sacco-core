@@ -1,0 +1,29 @@
+name: member_app
+description: Genesis Prestige member mobile app (P17).
+version: 0.1.0+1
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.0
+  go_router: ^13.0.0
+  gp_api_client:
+    path: ../gp_api_client
+  gp_ui:
+    path: ../gp_ui
+  # Local unlock only. Per ADR-0012 the biometric gate wraps a server
+  # round-trip; it never substitutes for one.
+  local_auth: ^2.2.0
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

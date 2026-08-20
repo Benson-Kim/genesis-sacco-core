@@ -571,30 +571,61 @@ sbom:web:
 .mobile:
   image: ghcr.io/cirruslabs/flutter:stable
 
-mobile:lint:
+mobile:analyze:
   extends: .mobile
   stage: lint
   rules:
     - exists: ["mobile/**/pubspec.yaml"]
   script:
     - |
-      for app in mobile/*/; do
-        if [ -f "${app}pubspec.yaml" ]; then
-          (cd "$app" && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze)
+      for package in mobile/*/; do
+        if [ -f "${package}pubspec.yaml" ]; then
+          (cd "$package" && flutter pub get && flutter analyze)
         fi
       done
+    # lib/src/generated/ is EXCLUDED from the format gate: dart format rewraps
+    # long lines with an algorithm the generator cannot reproduce, so the two
+    # gates would fight forever -- format rewraps, codegen-drift reverts. The
+    # generated tree is governed by mobile:codegen-drift instead, which rejects
+    # ANY change to it, formatting included. Same split as **/*.g.dart.
+    #
+    # On failure, PRINT THE PATCH: a bare file count is useless to a
+    # contributor without a local Dart SDK, and the diff applies verbatim.
+    - |
+      mapfile -t DART_FILES < <(find mobile -name '*.dart' -not -path '*/generated/*')
+      if ! dart format --output=none --set-exit-if-changed "${DART_FILES[@]}"; then
+        dart format "${DART_FILES[@]}" >/dev/null
+        git --no-pager diff -- mobile/
+        exit 1
+      fi
+    # The P17 guard sweeps. One script, shared with the GitHub workflow, so
+    # the two pipelines cannot disagree about what green means.
+    - bash mobile/scripts/guard_sweeps.sh
+
 
 mobile:test:
   extends: .mobile
   stage: test
-  needs: ["mobile:lint"]
+  needs: ["mobile:analyze"]
   rules:
     - exists: ["mobile/**/pubspec.yaml"]
   script:
     - |
-      for app in mobile/*/; do
-        if [ -f "${app}pubspec.yaml" ] && [ -d "${app}test" ]; then
-          (cd "$app" && flutter pub get && flutter test)
+      for package in mobile/*/; do
+        if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
+          (cd "$package" && flutter pub get && flutter test)
         fi
       done
 
+# Regenerates the client from the committed OpenAPI snapshot and fails on any
+# diff: a hand-edited or stale generated tree is a red pipeline -- the same
+# rule that governs web/packages/api-client/src/generated/schema.d.ts.
+mobile:codegen-drift:
+  image: python:3.12-slim
+  stage: test
+  needs: []
+  rules:
+    - exists: ["mobile/scripts/generate_api_models.py"]
+  script:
+    - python mobile/scripts/test_generate_api_models.py
+    - python mobile/scripts/generate_api_models.py --check
