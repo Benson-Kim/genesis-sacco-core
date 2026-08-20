@@ -321,8 +321,8 @@ class RecordingOtpService:
         self.requests.append(email)
 
 
-class SimulatedRateLimitExceeded(Exception):
-    pass
+class SimulatedRateLimitError(Exception):
+    """Stands in for the !3 RateLimitedError in the pipeline simulation."""
 
 
 async def _simulated_route(
@@ -340,7 +340,7 @@ async def _simulated_route(
     decision proceeds — the use-case call; the response is IDENTICAL
     either way (the request_otp opaque contract)."""
     if not rate_allowed:
-        raise SimulatedRateLimitExceeded
+        raise SimulatedRateLimitError
     decision = await gate_member_otp_request(
         port, mode=mode, platform=platform, token=token, challenge=CHALLENGE
     )
@@ -372,7 +372,7 @@ def test_enforce_unattested_same_opaque_response_and_no_sms() -> None:
             port=fake,
             mode=ATTESTATION_MODE_ENFORCE,
             platform=ATTESTATION_PLATFORM_ANDROID,
-            token="bot-garbage",
+            token="bot-garbage",  # noqa: S106 - fake attestation material
             service=unattested_service,
             email="member@example.com",
         )
@@ -402,7 +402,7 @@ def test_no_oracle_response_identical_whether_credential_exists() -> None:
                     port=fake,
                     mode=ATTESTATION_MODE_ENFORCE,
                     platform=ATTESTATION_PLATFORM_IOS,
-                    token="unattested",
+                    token="unattested",  # noqa: S106 - fake attestation material
                     service=service,
                     email=email,
                 )
@@ -421,7 +421,7 @@ def test_log_only_mode_request_proceeds_with_sms() -> None:
             port=FakeDeviceAttestationAdapter(),
             mode=ATTESTATION_MODE_LOG_ONLY,
             platform=ATTESTATION_PLATFORM_ANDROID,
-            token="unattested",
+            token="unattested",  # noqa: S106 - fake attestation material
             service=service,
             email="member@example.com",
         )
@@ -441,7 +441,7 @@ def test_attestation_is_additive_to_rate_guard_both_gates_fire() -> None:
         good_token = f"{FAKE_ATTESTED_PREFIX}{CHALLENGE}"
         # Leg 1: attested but rate-limited → the rate guard still fires.
         service = RecordingOtpService()
-        with pytest.raises(SimulatedRateLimitExceeded):
+        with pytest.raises(SimulatedRateLimitError):
             await _simulated_route(
                 rate_allowed=False,
                 port=fake,
@@ -460,7 +460,7 @@ def test_attestation_is_additive_to_rate_guard_both_gates_fire() -> None:
             port=fake,
             mode=ATTESTATION_MODE_ENFORCE,
             platform=ATTESTATION_PLATFORM_ANDROID,
-            token="unattested",
+            token="unattested",  # noqa: S106 - fake attestation material
             service=service,
             email="member@example.com",
         )
@@ -504,7 +504,9 @@ def test_fake_adapter_is_deterministic_and_challenge_bound() -> None:
         )
         assert (replayed.passed, replayed.reason) == (False, VERDICT_NONCE_MISMATCH)
         garbage = await fake.verify_attestation(
-            platform=ATTESTATION_PLATFORM_ANDROID, token="garbage", challenge=CHALLENGE
+            platform=ATTESTATION_PLATFORM_ANDROID,
+            token="garbage",  # noqa: S106 - fake attestation material
+            challenge=CHALLENGE,
         )
         assert (garbage.passed, garbage.reason) == (False, VERDICT_SIGNATURE_INVALID)
         empty = await fake.verify_attestation(
