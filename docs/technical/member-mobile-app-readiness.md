@@ -27,28 +27,43 @@ current. The export bundle is also fetched here as `refs/remotes/export/*` for a
 
 ---
 
-## 0b. CI is not currently an arbiter — owner action
+## 0b. CI now runs — and MR-0 is green
 
-**GitHub Actions is blocked on billing across the whole repository.** Every
-workflow run fails before starting, with:
+The repository was made public on 2026-08-20, which released the account-level
+Actions block. **This was the first pipeline in this repo's GitHub history to
+actually execute**: every earlier run, on `develop` and on the MR-0 branch
+alike, failed before starting with a billing annotation.
 
-> The job was not started because recent account payments have failed or your
-> spending limit needs to be increased.
+**MR-0 (PR #1) — all three mobile jobs green** on `eb8931a4`:
 
-This is **pre-existing and repository-wide**, not caused by any mobile change:
-every `backend`, `web` and `security` run on `develop` today (17:32, 18:55,
-19:06 UTC) failed the same way, as does the MR-0 pull request.
+| Job | Result |
+|---|---|
+| `mobile:analyze` | pass — `flutter analyze` clean on all three packages, format gate, 4 guard sweeps |
+| `mobile:test` | pass — **69 tests** (37 `gp_api_client`, 11 `gp_ui`, 21 `member_app`) |
+| `mobile:codegen-drift` | pass — 12 generator guards + byte-for-byte regeneration diff |
 
-Consequences while it stands:
+`backend:lint` and every `web:*` job pass too.
 
-1. **No Dart in this repository has ever been compiled or tested.** MR-0's tests are written to be falsifiable, but they are unexecuted. The house rule "let CI arbitrate" has no arbiter.
-2. GitLab (`actte-group/sacco`) is where the green pipelines cited across the issue tracker actually ran. This working copy has **no GitLab remote and no GitLab token**, so that arbiter is unreachable from here too.
+### The security stage is red, and it is pre-existing
 
-Three ways out, any one sufficient: settle the GitHub billing; configure a
-GitLab remote plus token so branches can be pushed where the runners work; or
-install the Flutter SDK locally so `flutter analyze` and `flutter test` can run
-before anything is pushed. The last is the only one that does not require an
-account change, and it is the only one that gives fast feedback while building.
+All four `security:*` jobs fail. **Zero findings reference `mobile/`.**
+
+- **gitleaks**: 6 hits, all in `web/src/modules/users/__tests__/users-api.network.test.ts`, from commits dated 2026-07-30 and 2026-08-03. The scan walks 1244 commits of history, so these are long-standing.
+- **semgrep**: 90 blocking findings across 680 files, 508 rules.
+- **npm audit** and **dependency review** also fail.
+
+None of this was visible before today. It is not new debt; it is debt that
+finally has a working scanner pointed at it. Triaging it is its own piece of
+work and does not belong to the mobile MR.
+
+### Local toolchain: not available
+
+The authoring machine's disk is **100% full (0 bytes free)**, which is why two
+Dart SDK install attempts silently produced nothing. Every Dart claim in MR-0
+therefore rests on CI rather than a local run. Two consequences worth keeping:
+
+1. The format job was changed to **print its patch** on failure. The 17-file formatting fix was applied from the pipeline's own output via `git apply`, unmodified — the same pattern the repo already uses for generated-file drift.
+2. Freeing disk space would make the loop far faster for MR-1. Each CI round trip is roughly two minutes; `flutter analyze` locally is seconds.
 
 ---
 
