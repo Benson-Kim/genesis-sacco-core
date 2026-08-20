@@ -174,9 +174,7 @@ class PlayIntegrityVerifier:
         try:
             decoded = await self._source.decoded_verdict(token)
         except AttestationUnavailableError:
-            logger.warning(
-                "play integrity verdict unavailable — failing closed (unverifiable)"
-            )
+            logger.warning("play integrity verdict unavailable — failing closed (unverifiable)")
             return self._fail(VERDICT_UNVERIFIABLE)
         except MalformedAttestationError:
             return self._fail(VERDICT_MALFORMED)
@@ -336,6 +334,7 @@ class _PlatformVerifier(Protocol):
     async def verify_attestation(
         self, *, platform: str, token: str, challenge: str
     ) -> AttestationVerdict:
+        """Verify one attestation token for one platform."""
         ...
 
 

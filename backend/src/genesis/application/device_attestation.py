@@ -179,13 +179,9 @@ async def gate_member_otp_request(
     if mode == ATTESTATION_MODE_OFF:
         return AttestationDecision(proceed=True, verdict=None)
     if not platform or not token:
-        verdict = AttestationVerdict(
-            platform=platform or "", passed=False, reason=VERDICT_MISSING
-        )
+        verdict = AttestationVerdict(platform=platform or "", passed=False, reason=VERDICT_MISSING)
     else:
-        verdict = await port.verify_attestation(
-            platform=platform, token=token, challenge=challenge
-        )
+        verdict = await port.verify_attestation(platform=platform, token=token, challenge=challenge)
     logger.info(
         "member otp attestation verdict: platform=%s passed=%s reason=%s mode=%s",
         verdict.platform or "none",
