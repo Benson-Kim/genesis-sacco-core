@@ -106,9 +106,7 @@ def _passing(platform: str = ATTESTATION_PLATFORM_ANDROID) -> AttestationVerdict
 
 
 def _failing(reason: str = VERDICT_SIGNATURE_INVALID) -> AttestationVerdict:
-    return AttestationVerdict(
-        platform=ATTESTATION_PLATFORM_ANDROID, passed=False, reason=reason
-    )
+    return AttestationVerdict(platform=ATTESTATION_PLATFORM_ANDROID, passed=False, reason=reason)
 
 
 class StaticPlayIntegritySource:
