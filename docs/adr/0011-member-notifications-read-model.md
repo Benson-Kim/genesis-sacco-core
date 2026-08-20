@@ -65,7 +65,14 @@ ADR**):
   `read_at timestamptz NULL` — the read/unread flag is the **only**
   mutable bit; everything else is append-only, constraint-enforced.
 - Index `(tenant_id, member_id, created_at DESC, id DESC)` shipped with
-  the list query that needs it (MASTER_PROMPT §5.3).
+  the list query that needs it (MASTER_PROMPT §5.3), plus a partial
+  index `(tenant_id, member_id) WHERE read_at IS NULL` serving the
+  unread badge (§3). **EXPLAIN gate for the implementing MR
+  (§1.3/§5.7): its MR description must include `EXPLAIN` output for
+  both hot-path queries — the keyset list page and the unread count —
+  showing the composite index and the partial index respectively; a
+  sequential scan, or an unread count planned over the full composite
+  index, is a rejected implementation.**
 
 **The write happens in the same database transaction as the domain
 event**, by the same application service that already writes the audit
@@ -135,7 +142,7 @@ is nothing to redact later and no race between a redactor and a reader.
 - Logs and error payloads follow §1.6: category + ids only, never
   rendered text.
 
-### 3. Surface: list + mark-read
+### 3. Surface: list + unread badge + mark-read
 
 - `GET /member/notifications` — keyset pagination on
   `(created_at DESC, id DESC)`, `limit ≤ 100`, optional
@@ -168,6 +175,39 @@ is nothing to redact later and no race between a redactor and a reader.
   - Un-read, edit, and delete do not exist. Bulk mark-read is a possible
     follow-up (idempotent, bounded by a `created_before` timestamp) but
     is not required by this ADR.
+- **Unread badge: a dedicated `GET /member/notifications/unread-count`
+  endpoint, backed by a partial index — decided.** The badge is the
+  highest-frequency call in any notification center (polled on every
+  app foreground/tab focus, far more often than the list is opened),
+  so it cannot be left undesigned or bolted on later:
+  - The endpoint returns `{"unread": n}` and nothing else — no rows, no
+    cursor, no PII; display truncation ("99+") is a client concern.
+    Same gates as the list: identity exclusively from
+    `MemberAuthContext`, `RequireMemberPrincipal` now,
+    `RequireMemberReadPrincipal` + the member-read rate bucket once #31
+    lands. The count is computed from the rows
+    (`COUNT(*) … WHERE tenant_id = … AND member_id = … AND read_at IS
+    NULL`), never from a denormalized counter — a counter is a second
+    source of truth that drifts under concurrent mark-read, and the
+    partial index makes the honest count cheap enough not to need one.
+  - *Why a partial index, not the list index:* the composite list index
+    covers `(tenant_id, member_id, created_at DESC, id DESC)` but not
+    `read_at`, so a count planned over it scans **every** notification
+    the member has — a cost that grows with the 365-day retention
+    window, on the hottest call. The partial index
+    `(tenant_id, member_id) WHERE read_at IS NULL` scans only unread
+    rows, which mark-read keeps small by construction; the badge stays
+    O(unread), not O(history).
+  - *Alternative — COUNT folded into the list response — rejected:* the
+    badge poll does not want a page, and taxing every paginated fetch
+    with an extra aggregate punishes the list to subsidize the badge;
+    the two calls also have different cache lifetimes and rate
+    profiles.
+  - *Alternative — folded into `/member/me` — rejected:* it couples the
+    highest-frequency poll to the identity/profile payload, forcing the
+    profile query cost on every badge refresh (and the count cost on
+    every profile fetch); `/member/me` is also owned by the !7 surface,
+    and this ADR does not reach into files another MR owns.
 - **Retention window: notifications are NOT the ledger.** The financial
   record lives in the ledger, transactions, and statement history; a
   notification row is a rendered, disposable copy whose deletion deletes
@@ -249,6 +289,10 @@ tenant's feature launch. Statement history covers everything earlier.
 - **Optimistic-locked mark-read** — rejected: monotonic single-bit
   transition; 409s punish legitimate retries for zero integrity gain
   (§3).
+- **Unread badge folded into the list response or `/member/me`, or a
+  denormalized unread counter** — rejected: taxes the wrong call,
+  couples cache lifetimes, and a counter drifts under concurrent
+  mark-read (§3).
 - **Push delivery in scope** — rejected: device-token custody belongs to
   the ADR-0012 device inventory (§5).
 - **Backfill from ledger or audit history** — rejected: fabricated
@@ -256,29 +300,27 @@ tenant's feature launch. Statement history covers everything earlier.
 - **Unbounded retention "because members might want it"** — rejected:
   notifications are not the ledger; statements are the archive (§3).
 
-## Mandatory adversarial tests for the implementation MR
+## Failure modes (BUILD_PROMPTS v1.2 rule 15) — numbered, falsifiable
 
-Named up front so the implementation cannot quietly skip them:
+One row per failure mode, mapped to the decision it falsifies. Every
+test named here is mandatory in the implementation MR, must carry a
+hand-computed oracle in comments, and must FAIL when its guard is
+removed (the removal that breaks it is stated per row) — "covered by
+the general suite" is a rejected answer.
 
-1. `test_cross_member_notification_leak_probe` — with two real members
-   in one tenant (and a third in another tenant): member B's credential
-   must never list, read-count, or mark-read member A's rows — via the
-   list, via direct id probing on mark-read (expect the indistinguishable
-   404), and across tenants under forced RLS. Both directions.
-2. `test_notification_rows_pii_at_rest_sweep` — mirror !24's regex sweep:
-   for every template in the registry, render with hostile fixture data
-   and sweep the **raw row text** for `\b\d{6}\b` OTP shapes, full
-   MSISDN patterns, and known counterparty-PII fixtures; masked forms
-   only may survive.
-3. `test_mark_read_idempotency_under_concurrent_retry` — fire concurrent
-   duplicate mark-read calls for the same row: exactly one `read_at`
-   value persists, every call returns 200 with consistent state, no 409,
-   no double-write anomaly.
-4. `test_notification_cursor_scope_isolation_both_directions` — a
-   `member.notifications.list` cursor is a sanitized 400 on every other
-   member and staff list endpoint, and every other scope's cursor
-   (member or staff) is a sanitized 400 here — never a silently empty
-   page.
+| # | decision | failure mode | falsifiable test (fails when…) |
+|---|---|---|---|
+| FM1 | §1 same-transaction write | split brain: domain event commits without its notification row (or the row without the event) — the member's receipt silently diverges from the ledger | `test_notification_write_atomicity_kill_switch` — abort mid-transaction after the domain change: zero notification rows, zero outbox rows, zero domain state (row counts, §4 kill-switch pattern). Fails when the INSERT is moved after commit or into its own transaction. |
+| FM2 | §1 dedupe key | retried write path double-inserts: the member sees the same deposit twice | `test_notification_dedupe_on_source_event_replay` — replay the application write with the same `source_event_id`: exactly ONE row persists, asserted by side-effect row count, never return values. Fails when `UNIQUE (tenant_id, source_event_id)` is dropped. |
+| FM3 | §2 rendered-safe at write | PII at rest: an OTP shape, full MSISDN, or off-policy counterparty PII survives in a stored row that outlives the event by a year | `test_notification_rows_pii_at_rest_sweep` — mirror !24's regex sweep: render EVERY registry template with hostile fixture data and sweep the raw row text for `\b\d{6}\b` OTP shapes, full-MSISDN patterns, and counterparty-PII fixtures; masked forms only may survive. Fails when the masking helper is removed from any template. |
+| FM4 | §3 list scoping | cross-member / cross-tenant leak via list or count | `test_cross_member_notification_leak_probe` — two members in one tenant plus a third in another: member B's credential never lists, unread-counts, or marks-read member A's rows, under forced RLS, both directions. Fails when the explicit `member_id`/`tenant_id` predicate or RLS is removed. |
+| FM5 | §3 cursor scope | pagination-state replay across the staff/member boundary or across endpoints | `test_notification_cursor_scope_isolation_both_directions` — a `member.notifications.list` cursor is a sanitized 400 on every other member and staff list endpoint, and every other scope's cursor is a sanitized 400 here — never a silently empty page. Fails when scope verification accepts a foreign scope. |
+| FM6 | §3 mark-read 404 | existence oracle: another member's notification id is distinguishable from a nonexistent one | `test_mark_read_no_existence_oracle` — another member's real id and a random id return byte-identical 404 envelopes. Fails when the lookup drops the member-scoped WHERE (id-first fetch + 403). |
+| FM7 | §3 mark-read idempotency | concurrent retries corrupt `read_at` or surface 409s to legitimate mobile retries | `test_mark_read_idempotency_under_concurrent_retry` — concurrent duplicate mark-reads: exactly one `read_at` value persists (asserted on the row, not the response), every call returns 200, no 409. Fails when `COALESCE(read_at, now())` becomes an unconditional `now()` or a version check is added. |
+| FM8 | §3 unread badge | badge cost regression: the hottest call degrades to O(history) or a drifting counter | `test_unread_count_plan_and_oracle` — hand-computed oracle: insert N, mark k read, count = N − k, recomputed correctly under concurrent mark-read; the implementing MR's EXPLAIN gate (§1) proves the partial-index plan. Fails when the partial index is dropped (plan assertion) or the count is served from a denormalized counter (drift under concurrency). |
+| FM9 | §4 immutable categories | a member (or a compromised credential) mutes their own account-takeover alarm | `test_security_category_never_mutable_off` — the preference endpoint returns 400 fail-closed for any non-mutable category, AND a direct SQL INSERT of a preference row for an immutable category violates the CHECK. Two guards, two removals, each breaks its half. |
+| FM10 | §3 retention purge | purge over-deletion: rows inside the window, or rows of a tenant with a longer configured window, are deleted — or the purge touches other tables | `test_notification_purge_bounds` — rows inside the tenant window survive; ledger/audit/outbox row counts unchanged by a purge run; re-run is a no-op. Fails when the age or tenant-config predicate is dropped. |
+| FM11 | §6 empty launch | fabricated history: launch inserts "you were notified" rows for events that predate the feature | `test_launch_backfill_is_empty` — on a fixture tenant with rich pre-existing domain history, the feature's migrations insert ZERO `member_notifications` rows. Fails when any backfill INSERT is added to a migration. |
 
 ## Consequences
 
