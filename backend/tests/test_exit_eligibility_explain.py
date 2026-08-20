@@ -45,7 +45,9 @@ from genesis.application.member_exits import (
     ELIGIBILITY_LOANS_SQL,
     ELIGIBILITY_MEMBER_SQL,
     ELIGIBILITY_OPEN_EXIT_SQL,
+    OPEN_APPLICATIONS_SQL,
     UNRESOLVED_WRITEOFF_CLAIM_SQL,
+    open_stage_params,
 )
 from genesis.infrastructure.tenancy import tenant_session
 from test_member_exits import _seed_active_loan, _seed_guarantee, _seed_member
@@ -55,16 +57,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 OUT_PATH = Path(__file__).resolve().parents[1] / "perf" / "explain_exit_eligibility.txt"
-
-#: Open-application probe: the COUNT the shared _open_application_count
-#: helper executes (its _OPEN_STAGES literal inlined verbatim — the
-#: helper builds the same statement from the same code-owned list).
-_OPEN_APPLICATIONS_SQL = (
-    "SELECT count(*) FROM loan_applications "
-    "WHERE member_id = CAST(:m AS uuid) "
-    "AND tenant_id = CAST(:tid AS uuid) "
-    "AND stage IN ('submitted', 'appraisal', 'committee', 'approved')"
-)
 
 
 async def _explain(session: AsyncSession, sql: str, params: dict[str, object]) -> str:
@@ -91,7 +83,10 @@ def test_exit_eligibility_probes_are_index_backed() -> None:
                 {**params, **live_guarantee_params()},
             ),
             ("active loans", ELIGIBILITY_LOANS_SQL, params),
-            ("open applications", _OPEN_APPLICATIONS_SQL, params),
+            # The exact statement the shared _open_application_count
+            # helper executes — imported, not inlined, since #36 made
+            # it a module-level constant with parameter-bound stages.
+            ("open applications", OPEN_APPLICATIONS_SQL, {**params, **open_stage_params()}),
             ("open exit slot", ELIGIBILITY_OPEN_EXIT_SQL, params),
             ("unresolved write-off claim", UNRESOLVED_WRITEOFF_CLAIM_SQL, params),
         ]
