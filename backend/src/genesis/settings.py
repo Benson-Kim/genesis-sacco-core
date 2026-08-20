@@ -1,5 +1,6 @@
 """Environment-only configuration (no literal secrets)."""
 
+import ipaddress
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -17,6 +18,13 @@ class Settings(BaseSettings):
     jwt_signing_key: str = ""
     otp_pepper: str = ""
     auth_rate_limit_per_minute: int = 60
+    # Secondary pure-IP bucket for the auth rate guard: applies regardless
+    # of the x-tenant-id header, so rotating header values cannot mint a
+    # fresh bucket per request. Deliberately higher than the per-tenant
+    # limit — it is a backstop, not the primary control. NOTE: behind a
+    # reverse proxy, set trusted_proxy_ips (below) so the bucket keys on
+    # the forwarded client IP instead of the proxy's own address.
+    auth_rate_limit_ip_per_minute: int = 240
     # Comma-separated list of browser origins allowed to call this API.
     # Example: "http://localhost:3000,https://admin.example.com"
     # Stored as a plain string so pydantic-settings does not attempt JSON
@@ -35,6 +43,43 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Return origins as a list, filtering out any blank entries."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    # Trusted reverse-proxy addresses for X-Forwarded-For resolution
+    # (issue #13). Comma-separated IP addresses of the proxy hops this
+    # deployment actually terminates behind (e.g. the Passenger host on
+    # MochaHost). DEFAULT EMPTY = X-Forwarded-For is NEVER trusted and the
+    # rate buckets key on the direct peer — today's safe behavior. Only
+    # when the immediate peer is in this set does the guard walk the
+    # forwarded chain (from the right) for the real client IP.
+    trusted_proxy_ips: str = ""
+
+    @field_validator("trusted_proxy_ips", mode="before")
+    @classmethod
+    def _coerce_proxy_list(cls, v: object) -> str:
+        """Accept a pre-split list (e.g. from tests) and join it back to a string."""
+        if isinstance(v, list):
+            return ",".join(str(i) for i in v)
+        return str(v) if v is not None else ""
+
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def _validate_proxy_ips(cls, v: str) -> str:
+        """FAIL CLOSED at settings load: a malformed trusted-proxy entry is a
+        deployment error, never a silently-ignored one — a typo here must
+        not quietly leave the deployment on shared-bucket behavior."""
+        for entry in v.split(","):
+            if entry.strip():
+                ipaddress.ip_address(entry.strip())  # raises ValueError on garbage
+        return v
+
+    @property
+    def trusted_proxy_ips_set(self) -> frozenset[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+        """Normalized trusted-proxy addresses (validated at settings load)."""
+        return frozenset(
+            ipaddress.ip_address(entry.strip())
+            for entry in self.trusted_proxy_ips.split(",")
+            if entry.strip()
+        )
 
     # Export configuration (P13): resolved exclusively server-side —
     # request bodies never carry formats, row limits, or storage
@@ -109,4 +154,27 @@ def assert_dev_otp_display_dev_only(settings: Settings | None = None) -> None:
             "DEV_OTP_DISPLAY is enabled but ENVIRONMENT is "
             f"'{resolved.environment}' — the dev-mode OTP display is "
             "development-only and refuses to boot anywhere else"
+        )
+
+
+def assert_redis_configured_outside_dev(settings: Settings | None = None) -> None:
+    """Fail-closed BOOT guard (#15): outside development the rate limiter
+    must never silently degrade to its per-process in-memory fallback.
+
+    With REDIS_URL empty, ``infrastructure.rate_limit`` counts PER
+    PROCESS — under N workers the effective auth rate limit is N x the
+    configured value, and the degradation is invisible: the deployment
+    boots cleanly and *looks* rate-limited. A forgotten REDIS_URL is a
+    DEPLOYMENT error and aborts startup here (the
+    assert_dev_otp_display_dev_only / assert_cursor_signing_key_configured
+    posture). Called by ``genesis.api.app.create_app`` before any router
+    is wired.
+    """
+    resolved = settings if settings is not None else get_settings()
+    if resolved.environment != "development" and not resolved.redis_url:
+        raise RuntimeError(
+            "REDIS_URL is empty but ENVIRONMENT is "
+            f"'{resolved.environment}' — the auth rate limiter requires "
+            "Redis outside development (the in-process fallback enforces "
+            "per-worker limits only); refusing to boot"
         )

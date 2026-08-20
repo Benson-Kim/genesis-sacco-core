@@ -79,11 +79,13 @@ no literal secrets anywhere (secret-detection CI enforces).
 
 | Setting | Default | Notes |
 |---|---|---|
-| `DATABASE_URL`, `REDIS_URL` | — | Connection strings. The runtime DB role must be non-superuser without BYPASSRLS. |
+| `DATABASE_URL`, `REDIS_URL` | — | Connection strings. The runtime DB role must be non-superuser without BYPASSRLS. `REDIS_URL` is **required whenever `ENVIRONMENT != development`** — boot refuses an empty value (fail-closed guard `assert_redis_configured_outside_dev`), because the rate limiter's in-process fallback counts per worker and would silently weaken auth limits N-fold. |
 | `JWT_SIGNING_KEY` | — | Access-token signing; unset fails requests loudly. |
 | `OTP_PEPPER` | — | Keyed OTP hashing. |
 | `CURSOR_SIGNING_KEY` / `CURSOR_KEY_VERSION` (+ `_PREVIOUS` pair) | — / 1 | Signed pagination cursors; boot **fails closed** on missing/short key material or a version collision. Rotation = dual-version window. |
-| `AUTH_RATE_LIMIT_PER_MINUTE` | 60 | Auth endpoint rate limiting. |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | 60 | Auth endpoint rate limiting, atomic sliding window (per validated tenant + resolved client IP). |
+| `AUTH_RATE_LIMIT_IP_PER_MINUTE` | 240 | Pure-IP backstop bucket on auth endpoints; applies regardless of the `x-tenant-id` header. |
+| `TRUSTED_PROXY_IPS` | **empty (fail-safe)** | Comma-separated IPs of trusted reverse-proxy hops (Passenger on MochaHost). Empty = `X-Forwarded-For` is **never** trusted; when set, the auth rate buckets key on the forwarded client IP (rightmost untrusted, `ipaddress`-validated; malformed chains collapse to one shared bucket). Only list proxies you operate — a wrong entry lets that peer spoof client IPs. |
 | `EXPORT_ROW_CAP` / `EXPORT_BATCH_SIZE` / `EXPORT_ARTIFACT_TTL_HOURS` | 10000 / 500 / 24 | Export bounds, server-resolved only. |
 | `IDEMPOTENCY_RETENTION_HOURS` | 24 | Idempotency replay window. |
 | `DASHBOARD_SERIES_MONTHS` / `DASHBOARD_GUARANTOR_CAP` | 6 / 20 | Dashboard scan bounds. |
