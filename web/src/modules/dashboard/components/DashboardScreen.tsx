@@ -61,7 +61,7 @@ function KpiTrendSparkline({
     caption,
 }: Readonly<{
     series: readonly { pct: number }[] | null | undefined;
-    stroke: "gold" | "navy";
+    stroke: "accent" | "navy";
     testId: string;
     caption: string;
 }>) {
@@ -105,7 +105,7 @@ function StatCards({ summary }: Readonly<{ summary: DashboardSummary }>) {
                 <Stat label="Deposits" value={kes(summary.deposits?.total_deposits)} />
                 {depositTrend !== null && depositTrend.length > 1 && (
                     <>
-                        <Sparkline values={depositTrend} stroke="gold" />
+                        <Sparkline values={depositTrend} stroke="accent" />
                         <div className={charts.sparkCaption}>monthly deposit flows</div>
                     </>
                 )}
@@ -126,7 +126,7 @@ function StatCards({ summary }: Readonly<{ summary: DashboardSummary }>) {
                 />
                 <KpiTrendSparkline
                     series={summary.kpi_trends?.par30}
-                    stroke="gold"
+                    stroke="accent"
                     testId="sparkline-par30"
                     caption="PAR-30 ratio, month-end"
                 />

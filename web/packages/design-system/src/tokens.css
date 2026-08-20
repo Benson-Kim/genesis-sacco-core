@@ -1,15 +1,18 @@
 /*
- * Design tokens as CSS custom properties — names and values are VERBATIM
- * from the prototype:root block (genesis_prestige_app.html). Kept in sync
- * with tokens.ts by the design-system test suite.
+ * Design tokens as CSS custom properties — values are VERBATIM from the
+ * prototype :root block (genesis_prestige_app.html). Kept in sync with
+ * tokens.ts by the design-system test suite. Names match the prototype
+ * except the deliberate semantic renames recorded in TOKEN_RENAMES in
+ * __tests__/tokens.test.ts (#37: --gold/--goldSoft, blue values, are
+ * --accent/--accentSoft here — same values, zero visual diff).
  */
 :root {
   --navy: #0F2C6B;
   --navyMid: #1E4FB0;
   --steel: #3E6FD0;
   --navySoft: #E6EDFB;
-  --gold: #2E90FA;
-  --goldSoft: #DCEBFF;
+  --accent: #2E90FA;
+  --accentSoft: #DCEBFF;
   --ink: #131A2B;
   --sub: #5C6579;
   --line: #E1E4EC;

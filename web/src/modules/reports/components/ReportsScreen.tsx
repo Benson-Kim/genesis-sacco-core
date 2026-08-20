@@ -110,7 +110,7 @@ function statusPill(status: string) {
   }
   if (status === "queued") {
     return (
-      <Pill bg="goldSoft" color="navy">
+      <Pill bg="accentSoft" color="navy">
         Queued
       </Pill>
     );

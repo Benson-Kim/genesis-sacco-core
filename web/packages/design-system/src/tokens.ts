@@ -1,16 +1,20 @@
 /**
- * Design tokens — extracted VERBATIM from the `:root` CSS variables of the
- * canonical prototype (`genesis_prestige_app.html`). Do not add ad-hoc
- * colors in views (the house doctrine reuse-first); the test suite asserts these
- * values byte-for-byte against the prototype.
+ * Design tokens — values extracted VERBATIM from the `:root` CSS variables
+ * of the canonical prototype (`genesis_prestige_app.html`). Do not add
+ * ad-hoc colors in views (the house doctrine reuse-first); the test suite
+ * asserts these values byte-for-byte against the prototype. Names match
+ * the prototype except the deliberate semantic renames recorded in
+ * TOKEN_RENAMES in __tests__/tokens.test.ts (#37: the prototype's
+ * `--gold`/`--goldSoft` are blue values — here `accent`/`accentSoft`,
+ * same values, zero visual diff).
  */
 export const colorTokens = {
   navy: "#0F2C6B",
   navyMid: "#1E4FB0",
   steel: "#3E6FD0",
   navySoft: "#E6EDFB",
-  gold: "#2E90FA",
-  goldSoft: "#DCEBFF",
+  accent: "#2E90FA",
+  accentSoft: "#DCEBFF",
   ink: "#131A2B",
   sub: "#5C6579",
   line: "#E1E4EC",

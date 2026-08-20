@@ -71,7 +71,7 @@ function statusPill(status: MemberStatus) {
             );
         case "dormant":
             return (
-                <Pill bg="goldSoft" color="navy">
+                <Pill bg="accentSoft" color="navy">
                     {STATUS_LABELS.dormant}
                 </Pill>
             );

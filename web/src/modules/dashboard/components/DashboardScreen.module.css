@@ -137,7 +137,7 @@
 .memberBarFill {
   height: 100%;
   min-width: 3px; /* a true zero still shows a hairline, matching your "▏ 1" sketch rather than vanishing */
-  background: var(--gold, #2e90fa);
+  background: var(--accent, #2e90fa);
   border-radius: 999px;
 }
 

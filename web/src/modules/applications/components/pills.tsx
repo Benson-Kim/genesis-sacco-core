@@ -24,7 +24,7 @@ export function stagePill(stage: ApplicationStage): ReactNode {
       );
     case "committee":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {STAGE_LABELS.committee}
         </Pill>
       );

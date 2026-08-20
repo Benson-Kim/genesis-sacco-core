@@ -180,7 +180,7 @@ describe("chart rendering — verbatim server geometry, never derived", () => {
     expect(screen.getByText("13%")).toBeInTheDocument();
 
     // KPI sparklines mounted for the two honest series only.
-    expect(screen.getByTestId("sparkline-gold")).toBeInTheDocument();
+    expect(screen.getByTestId("sparkline-accent")).toBeInTheDocument();
     expect(screen.getByTestId("sparkline-navy")).toBeInTheDocument();
 
     // NEVER-DERIVED proof (falsifiable): what client math WOULD yield
@@ -207,7 +207,7 @@ describe("chart rendering — verbatim server geometry, never derived", () => {
     expect(screen.queryByTestId("flows-bar-chart")).not.toBeInTheDocument();
     expect(screen.queryByTestId("performing-donut")).not.toBeInTheDocument();
     expect(screen.queryByTestId("classification-bars")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("sparkline-gold")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sparkline-accent")).not.toBeInTheDocument();
     expect(screen.queryByText("Portfolio quality")).not.toBeInTheDocument();
   });
 

@@ -17,7 +17,7 @@ export function adjustmentStatusPill(status: AdjustmentStatus): ReactNode {
   switch (status) {
     case "pending_approval":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {ADJUSTMENT_STATUS_LABELS.pending_approval}
         </Pill>
       );
@@ -40,7 +40,7 @@ export function writeOffStatusPill(status: WriteOffStatus): ReactNode {
   switch (status) {
     case "requested":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {WRITE_OFF_STATUS_LABELS.requested}
         </Pill>
       );

@@ -1,14 +1,28 @@
 /**
- * Gate: design tokens are extracted VERBATIM from the prototype CSS
+ * Gate: design token VALUES are extracted VERBATIM from the prototype CSS
  * variables (P14 / MASTER_PROMPT §2.3). This test parses the `:root` block
  * of genesis_prestige_app.html and asserts byte-for-byte equality with
- * both tokens.ts and tokens.css.
+ * both tokens.ts and tokens.css. Names match the prototype except the
+ * deliberate semantic renames in TOKEN_RENAMES below.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { colorTokens, cssVar } from "../tokens";
 
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
+
+/**
+ * #37: the prototype names `--gold`/`--goldSoft` lie about their values
+ * (#2E90FA is a blue, #DCEBFF a pale blue). Renamed to the semantic
+ * `accent`/`accentSoft` matching actual usage (highlight/accent colour and
+ * its soft pill background) WITHOUT changing the values — zero visual
+ * diff by construction. The prototype oracle stays untouched; this map
+ * records the rename so value drift in either direction still fails.
+ */
+const TOKEN_RENAMES: Record<string, string> = {
+  gold: "accent",
+  goldSoft: "accentSoft",
+};
 
 function parseRootVariables(css: string): Record<string, string> {
   const rootMatch = /:root\s*\{([\s\S]*?)\}/.exec(css);
@@ -34,8 +48,25 @@ describe("design tokens", () => {
   );
   const prototypeVars = parseRootVariables(prototypeHtml);
 
-  it("match the prototype :root variables verbatim (names and values)", () => {
-    expect(colorTokens).toEqual(prototypeVars);
+  it("match the prototype :root variables verbatim (values; names modulo the recorded #37 renames)", () => {
+    const expected = Object.fromEntries(
+      Object.entries(prototypeVars).map(([name, value]) => [
+        TOKEN_RENAMES[name] ?? name,
+        value,
+      ]),
+    );
+    expect(colorTokens).toEqual(expected);
+  });
+
+  it("every recorded rename maps a real prototype token to a token that exists (no stale map entries)", () => {
+    for (const [prototypeName, semanticName] of Object.entries(TOKEN_RENAMES)) {
+      expect(prototypeVars).toHaveProperty(prototypeName);
+      expect(colorTokens).toHaveProperty(semanticName);
+      // The rename must be name-only: values stay byte-for-byte identical.
+      expect(
+        (colorTokens as Record<string, string>)[semanticName],
+      ).toBe(prototypeVars[prototypeName]);
+    }
   });
 
   it("tokens.css stays in sync with tokens.ts", () => {

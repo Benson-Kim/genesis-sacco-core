@@ -19,7 +19,7 @@ export function caseStatusPill(status: CaseStatus): ReactNode {
     case "disputed":
     case "irrecoverable_pending_write_off":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {CASE_STATUS_LABELS[status]}
         </Pill>
       );

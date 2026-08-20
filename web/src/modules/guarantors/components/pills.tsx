@@ -12,7 +12,7 @@ export function guaranteeStatusPill(status: GuaranteeStatus): ReactNode {
   switch (status) {
     case "pledged":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {GUARANTEE_STATUS_LABELS.pledged}
         </Pill>
       );

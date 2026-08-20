@@ -53,7 +53,7 @@ import styles from "./Members.module.css";
 function statusPill(status: DocumentStatus) {
   switch (status) {
     case "pending":
-      return <Pill bg="goldSoft" color="navy">{DOCUMENT_STATUS_LABELS.pending}</Pill>;
+      return <Pill bg="accentSoft" color="navy">{DOCUMENT_STATUS_LABELS.pending}</Pill>;
     case "received":
       return <Pill bg="navySoft" color="navy">{DOCUMENT_STATUS_LABELS.received}</Pill>;
     case "verified":

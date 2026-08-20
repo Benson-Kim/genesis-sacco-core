@@ -43,7 +43,7 @@ export function loanClassPill(classification: LoanClass): ReactNode {
       );
     case "watch":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {LOAN_CLASS_LABELS.watch}
         </Pill>
       );

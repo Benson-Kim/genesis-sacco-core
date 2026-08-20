@@ -48,7 +48,7 @@ export function directionPill(direction: Side): ReactNode {
  * append-only ledger corrects by reversal, never by update). */
 export function reversalPill(): ReactNode {
   return (
-    <Pill bg="goldSoft" color="navy">
+    <Pill bg="accentSoft" color="navy">
       Reversal
     </Pill>
   );

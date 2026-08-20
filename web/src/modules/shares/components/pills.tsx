@@ -11,7 +11,7 @@ export function transferStatusPill(status: TransferStatus): ReactNode {
   switch (status) {
     case "pending":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {TRANSFER_STATUS_LABELS.pending}
         </Pill>
       );

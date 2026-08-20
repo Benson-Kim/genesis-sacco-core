@@ -30,7 +30,7 @@ import styles from "./DashboardCharts.module.css";
 const CLASS_TOKEN: Record<string, string> = {
     normal: "var(--emerald)",
     watch: "var(--orange)",
-    substandard: "var(--gold)",
+    substandard: "var(--accent)",
     doubtful: "var(--brick)",
     loss: "var(--loss)",
 };
@@ -48,7 +48,7 @@ export function Sparkline({
     values,
     stroke,
     testId,
-}: Readonly<{ values: readonly number[]; stroke: "gold" | "navy"; testId?: string }>) {
+}: Readonly<{ values: readonly number[]; stroke: "accent" | "navy"; testId?: string }>) {
     if (values.length < 2) return null;
     const last = values.length - 1;
     const points = values.map((v, i) => `${(i * 100) / last},${100 - v}`).join(" ");
@@ -62,7 +62,7 @@ export function Sparkline({
         >
             <polyline
                 points={points}
-                className={stroke === "gold" ? styles.sparkGold : styles.sparkNavy}
+                className={stroke === "accent" ? styles.sparkAccent : styles.sparkNavy}
                 fill="none"
                 vectorEffect="non-scaling-stroke"
             />
@@ -104,7 +104,7 @@ export function FlowsBarChart({ flows }: Readonly<{ flows: FlowsChart }>) {
             </div>
             <div className={styles.legendRow}>
                 <span className={styles.legendItem}>
-                    <span className={`${styles.legendSwatch} ${styles.swatchGold}`} /> Deposits
+                    <span className={`${styles.legendSwatch} ${styles.swatchAccent}`} /> Deposits
                 </span>
                 <span className={styles.legendItem}>
                     <span className={`${styles.legendSwatch} ${styles.swatchNavy}`} /> Disbursed
@@ -135,7 +135,7 @@ export function PerformingDonut({ portfolio }: Readonly<{ portfolio: PortfolioCh
             <div
                 className={styles.donut}
                 style={{
-                    background: `conic-gradient(var(--gold) ${portfolio.performing_pct}%, var(--brickSoft) 0)`,
+                    background: `conic-gradient(var(--accent) ${portfolio.performing_pct}%, var(--brickSoft) 0)`,
                 }}
                 aria-hidden="true"
                 data-testid="performing-donut"

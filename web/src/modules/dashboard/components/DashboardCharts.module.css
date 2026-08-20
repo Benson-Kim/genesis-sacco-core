@@ -9,8 +9,8 @@
     display: block;
 }
 
-.sparkGold {
-    stroke: var(--gold);
+.sparkAccent {
+    stroke: var(--accent);
     stroke-width: 2.2;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -64,7 +64,7 @@
 }
 
 .barDeposits {
-    background: var(--gold);
+    background: var(--accent);
 }
 
 .barDisbursements {
@@ -101,8 +101,8 @@
     border-radius: 2px;
 }
 
-.swatchGold {
-    background: var(--gold);
+.swatchAccent {
+    background: var(--accent);
 }
 
 .swatchNavy {

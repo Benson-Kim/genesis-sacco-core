@@ -11,7 +11,7 @@ export function declarationStatusPill(status: DeclarationStatus): ReactNode {
   switch (status) {
     case "declared":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {DECLARATION_STATUS_LABELS.declared}
         </Pill>
       );

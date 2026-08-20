@@ -194,7 +194,7 @@ test("the four #32 affordances render the SERVER's geometry verbatim; charts sta
 
   // 1) KPI sparklines on the two cards whose series the contract
   // actually carries, with their honest captions.
-  await expect(page.getByTestId("sparkline-gold")).toBeAttached();
+  await expect(page.getByTestId("sparkline-accent")).toBeAttached();
   await expect(page.getByTestId("sparkline-navy")).toBeAttached();
   await expect(page.getByText("monthly deposit flows")).toBeVisible();
   await expect(page.getByText("monthly disbursements")).toBeVisible();
@@ -215,7 +215,7 @@ test("the four #32 affordances render the SERVER's geometry verbatim; charts sta
   await expect(page.getByTestId("performing-donut")).toBeAttached();
   await expect(page.getByTestId("performing-donut")).toHaveAttribute(
     "style",
-    /conic-gradient\(var\(--gold\) 97%/,
+    /conic-gradient\(var\(--accent\) 97%/,
   );
   await expect(page.getByText("Non-performing")).toBeVisible();
 
@@ -254,7 +254,7 @@ test("a summary WITHOUT the charts slice renders the tables honestly with ZERO c
   await expect(page.getByRole("cell", { name: "-200,000.00" })).toBeVisible();
 
   // …and NO geometry exists anywhere: absent slice, absent charts.
-  await expect(page.getByTestId("sparkline-gold")).toHaveCount(0);
+  await expect(page.getByTestId("sparkline-accent")).toHaveCount(0);
   await expect(page.getByTestId("sparkline-navy")).toHaveCount(0);
   await expect(page.getByTestId("flows-bar-chart")).toHaveCount(0);
   await expect(page.getByTestId("performing-donut")).toHaveCount(0);

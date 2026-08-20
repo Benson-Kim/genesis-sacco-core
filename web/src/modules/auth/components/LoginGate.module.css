@@ -28,7 +28,7 @@
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: var(--gold);
+  background: var(--accent);
   color: var(--navy);
   display: grid;
   place-items: center;
@@ -47,7 +47,7 @@
 .brandTag {
   font-size: 10px;
   letter-spacing: 1px;
-  color: var(--gold);
+  color: var(--accent);
   font-weight: 700;
 }
 

@@ -243,7 +243,7 @@ function ReviewPanel({ applicationId }: Readonly<{ applicationId: string }>) {
             <span className={styles.mono}>{app.member_id}</span>
           )}
         </span>
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           Committee stage
         </Pill>
       </div>

@@ -11,7 +11,7 @@ export function exitStatusPill(status: ExitStatus): ReactNode {
   switch (status) {
     case "requested":
       return (
-        <Pill bg="goldSoft" color="navy">
+        <Pill bg="accentSoft" color="navy">
           {EXIT_STATUS_LABELS.requested}
         </Pill>
       );

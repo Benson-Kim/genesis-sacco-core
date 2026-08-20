@@ -80,7 +80,7 @@ const COLUMNS: Column<Member>[] = [
         // The SERVER's status verbatim (label map is a closed enum):
         // this screen never asserts or invents dormancy — a row is
         // here because the server's filter said so.
-        render: (member) => <Pill bg="goldSoft" color="navy">{STATUS_LABELS[member.status]}</Pill>,
+        render: (member) => <Pill bg="accentSoft" color="navy">{STATUS_LABELS[member.status]}</Pill>,
     },
 ];
 
