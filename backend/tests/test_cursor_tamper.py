@@ -46,6 +46,7 @@ from genesis.application.corrections import (
     WRITE_OFFS_SCOPE,
 )
 from genesis.application.dividends import DECLARATIONS_LIST_SCOPE, SHARE_TRANSFERS_SCOPE
+from genesis.application.guarantees import MEMBER_GUARANTEES_SCOPE
 from genesis.application.loan_applications import APPLICATIONS_LIST_SCOPE
 from genesis.application.loans import LOAN_BOOK_SCOPE, MEMBER_LOANS_SCOPE
 from genesis.application.member_exits import EXITS_LIST_SCOPE
@@ -117,6 +118,9 @@ DELEGATED = {
     ),
     MEMBER_STATEMENT_SCOPE: (
         "test_member_portal.py::test_cursor_scopes_are_isolated_between_staff_and_member_routes"
+    ),
+    MEMBER_GUARANTEES_SCOPE: (
+        "test_member_guarantees.py::test_guarantees_cursor_scope_is_isolated_in_both_directions"
     ),
 }
 
