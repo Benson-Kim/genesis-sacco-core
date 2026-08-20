@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     # environment, so forgetting to strip it is impossible — the
     # deployment fails loudly instead of leaking OTPs.
     dev_otp_display: bool = False
+    # Device-attestation enforcement mode for the member OTP request
+    # route (#29): "off" → "log-only" → "enforce", in rollout order.
+    # log-only by default so early app builds are observed, not
+    # bricked; ENFORCE is the required posture before the first PAID
+    # SMS gateway goes live (#18). Valid values are pinned by
+    # application.device_attestation.ATTESTATION_MODES and
+    # boot-validated (fail-closed on a typo) by
+    # assert_member_attestation_mode_valid, called from
+    # api.app.create_app — the assert_dev_otp_display_dev_only posture.
+    # Env-only, like everything in this file: MEMBER_ATTESTATION_MODE.
+    member_attestation_mode: str = "log-only"
 
 
 @lru_cache

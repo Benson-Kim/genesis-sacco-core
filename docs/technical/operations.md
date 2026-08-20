@@ -88,6 +88,7 @@ no literal secrets anywhere (secret-detection CI enforces).
 | `IDEMPOTENCY_RETENTION_HOURS` | 24 | Idempotency replay window. |
 | `DASHBOARD_SERIES_MONTHS` / `DASHBOARD_GUARANTOR_CAP` | 6 / 20 | Dashboard scan bounds. |
 | `DEV_OTP_DISPLAY` | **false (fail-closed)** | DEV-ONLY on-screen OTP; **must be removed before staging** — see [security-model.md](security-model.md#6-dev-only-otp-display-flag). |
+| `MEMBER_ATTESTATION_MODE` | `log-only` | Device-attestation enforcement for `POST /member/auth/otp/request` (#29): `off` → `log-only` → `enforce`, in rollout order. Boot **fails closed** on an unknown mode. `enforce` is required before the first **paid** SMS gateway goes live (#18); attestation is *additive* to the auth rate guard, never a replacement. Verifier credentials (Google Play Integrity service account, Apple App Attest key store) are a human provisioning step — until provisioned, verdicts are fail-closed `unverifiable`. |
 
 Health probes: every service exposes `/healthz` (liveness) and `/readyz`
 (dependencies checked).

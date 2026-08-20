@@ -32,6 +32,7 @@ from genesis.api.reports import router as reports_router
 from genesis.api.tenant_settings import router as tenant_settings_router
 from genesis.api.transactions import router as transactions_router
 from genesis.api.users import router as users_router
+from genesis.application.device_attestation import assert_member_attestation_mode_valid
 from genesis.application.pagination import assert_cursor_signing_key_configured
 from genesis.errors import AppError, ErrorCategory, PayloadSchemaError
 from genesis.logging import configure_logging, correlation_id_var
@@ -54,6 +55,9 @@ def create_app() -> FastAPI:
     # to boot outside development — the enforced replacement for the
     # old "strip before staging" reminder.
     assert_dev_otp_display_dev_only()
+    # Fail-closed boot guard (#29): an unknown device-attestation
+    # enforcement mode refuses boot — never a silent "off" fallback.
+    assert_member_attestation_mode_valid()
     settings = get_settings()
     app = FastAPI(title="Genesis Prestige API", version="0.1.0")
     if settings.cors_origins_list:
