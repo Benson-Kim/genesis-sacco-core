@@ -159,5 +159,5 @@ def test_maint_dsn_is_fenced_outside_the_explain_modules() -> None:
 
     # The fence message IS the unresolvable .invalid host, so the
     # failure names its own cause.
-    with pytest.raises(OperationalError, match="fenced|invalid"):
+    with pytest.raises(OperationalError, match=r"fenced|invalid"):
         asyncio.run(probe())
