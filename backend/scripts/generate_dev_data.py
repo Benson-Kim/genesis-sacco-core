@@ -21,6 +21,17 @@ Prerequisites:
 The script is IDEMPOTENT: re-running skips completed phases via a local
 state file (dev_data_state.json).  Delete it to regenerate from scratch.
 
+SAFETY (#34): the seeder is DESTRUCTIVE against whatever DATABASE_URL
+points at (it deletes otp_challenges rows and plants a fixed OTP code).
+A fail-closed guard therefore refuses to run unless the environment
+affirmatively proves the target is a dev/test database:
+  ALLOW_DESTRUCTIVE_SEED  REQUIRED, must be exactly "1" (explicit opt-in)
+  DATABASE_URL            REQUIRED explicitly (no implicit default), and its
+                          database name must contain dev/test/local, OR
+  SEED_EXPECTED_DB_NAME   optional exact database name the DSN must match
+                          (when set, it dominates the marker heuristic)
+Any ambiguity is a hard exit before any connection is opened.
+
 Environment overrides:
   API_BASE_URL      default http://localhost:8000
   DATABASE_URL      default postgresql://genesis:genesis@localhost:5432/genesis
@@ -44,9 +55,109 @@ import os
 import random
 import sys
 import time
+import urllib.parse
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# FAIL-CLOSED destructive-seed guard (#34)
+#
+# _inject_otp() below DELETEs otp_challenges rows and plants a fixed,
+# publicly-known OTP code against WHATEVER DSN the environment carries --
+# an authentication-bypass primitive if that DSN is ever production. The
+# guard refuses to run unless the environment AFFIRMATIVELY proves the
+# target is a development/test database:
+#
+#   1. ALLOW_DESTRUCTIVE_SEED must be exactly "1" (explicit opt-in), AND
+#   2. DATABASE_URL must be set explicitly (no implicit default), AND
+#   3. the target database name must either
+#        - exactly match SEED_EXPECTED_DB_NAME when that is set (the
+#          explicit expectation dominates the heuristic), or
+#        - contain a dev/test/local marker.
+#
+# ALLOWLIST ONLY: there is deliberately no blocklist of production
+# hostnames, and localhost is NOT sufficient either (tunnels and port
+# forwards make hostnames meaningless). Any ambiguity -- missing opt-in,
+# unset or unparseable DSN, missing database name, name mismatch -- is a
+# hard sys.exit(SEED_GUARD_REFUSAL_EXIT_CODE). The guard sits BEFORE the
+# third-party imports and runs first when executed as a script, so the
+# refusal never depends on dev packages being installed and always fires
+# before any connection that could mutate.
+# ---------------------------------------------------------------------------
+SEED_GUARD_REFUSAL_EXIT_CODE = 3
+_DEV_DB_NAME_MARKERS = ("dev", "test", "local")
+_DSN_SCHEMES = ("postgres", "postgresql", "postgresql+psycopg")
+
+_seed_guard_passed = False
+
+
+def _seed_target_db_name(dsn: str) -> str | None:
+    """Database name from a URL-shaped DSN, or None when ambiguous."""
+    try:
+        parsed = urllib.parse.urlsplit(dsn)
+    except ValueError:
+        return None
+    if parsed.scheme not in _DSN_SCHEMES:
+        return None
+    name = urllib.parse.unquote(parsed.path.lstrip("/"))
+    if not name or "/" in name:
+        return None
+    return name
+
+
+def _seed_guard_verdict(environ: Mapping[str, str]) -> tuple[bool, str]:
+    """(allowed, reason) -- pure, never opens a connection."""
+    if environ.get("ALLOW_DESTRUCTIVE_SEED") != "1":
+        return False, "ALLOW_DESTRUCTIVE_SEED=1 is not set (explicit opt-in required)"
+    dsn = environ.get("DATABASE_URL", "")
+    if not dsn:
+        return False, "DATABASE_URL is not set (the guard refuses implicit defaults)"
+    name = _seed_target_db_name(dsn)
+    if name is None:
+        return False, "target database name could not be determined from DATABASE_URL"
+    expected = environ.get("SEED_EXPECTED_DB_NAME")
+    if expected is not None:
+        if name == expected:
+            return True, f"database {name!r} matches SEED_EXPECTED_DB_NAME"
+        return False, f"database {name!r} does not match SEED_EXPECTED_DB_NAME={expected!r}"
+    if any(marker in name.lower() for marker in _DEV_DB_NAME_MARKERS):
+        return True, f"database {name!r} carries a dev/test/local marker"
+    return False, (
+        f"database {name!r} carries no dev/test/local marker and SEED_EXPECTED_DB_NAME is not set"
+    )
+
+
+def _enforce_seed_guard() -> None:
+    """Hard-exit unless the target DSN is provably dev/test (#34)."""
+    global _seed_guard_passed
+    if _seed_guard_passed:
+        return
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    log = logging.getLogger(Path(__file__).stem)
+    allowed, reason = _seed_guard_verdict(os.environ)
+    if allowed:
+        log.info("seed guard: OK -- %s", reason)
+        _seed_guard_passed = True
+        return
+    log.error(
+        "seed guard: REFUSED -- %s. This seeder DELETES otp_challenges rows and "
+        "plants a fixed OTP code against the DATABASE_URL target; it only runs "
+        "when the environment affirmatively proves a dev/test database. Set "
+        "ALLOW_DESTRUCTIVE_SEED=1 AND point DATABASE_URL at a database whose "
+        "name contains dev/test/local (or set SEED_EXPECTED_DB_NAME to the "
+        "exact intended database name).",
+        reason,
+    )
+    sys.exit(SEED_GUARD_REFUSAL_EXIT_CODE)
+
+
+if __name__ == "__main__":
+    _enforce_seed_guard()  # refuse BEFORE third-party imports / any connection
 
 # ---------------------------------------------------------------------------
 # Third-party imports -- guarded so a missing dev package fails with a
@@ -151,6 +262,7 @@ def _inject_otp(email: str) -> bool:
 
     Returns True on success.
     """
+    _enforce_seed_guard()  # #34: chokepoint re-check -- no mutation path bypasses it
     challenge_id = str(uuid.uuid4())
     code_hash = hmac.new(
         OTP_PEPPER.encode(),
