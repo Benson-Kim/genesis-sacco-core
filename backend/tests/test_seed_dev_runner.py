@@ -256,9 +256,7 @@ def test_sql_guard_refuses_on_expectation_mismatch_despite_marker() -> None:
     target (mirrors the runner's SEED_EXPECTED_DB_NAME semantics)."""
     psycopg = pytest.importorskip("psycopg")
     with _db_connection() as conn:
-        conn.execute(
-            "SELECT set_config('seed.expected_db_name', 'definitely_not_this_db', false)"
-        )
+        conn.execute("SELECT set_config('seed.expected_db_name', 'definitely_not_this_db', false)")
         with pytest.raises(psycopg.errors.RaiseException, match="seed guard: REFUSED"):
             conn.execute(_sql_guard_block())
         conn.rollback()
