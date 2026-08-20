@@ -41,7 +41,8 @@ void main() {
   });
 
   group('headers', () {
-    test('sends x-tenant-id even with no session (D6: pre-auth routes)', () async {
+    test('sends x-tenant-id even with no session (D6: pre-auth routes)',
+        () async {
       late Map<String, String> seen;
       final MockClient inner = MockClient((http.Request request) async {
         seen = request.headers;
@@ -98,7 +99,8 @@ void main() {
       });
 
       await expectLater(
-        clientWith(inner, token: 'stale', onSessionEnded: () => ended = true).get('/member/me'),
+        clientWith(inner, token: 'stale', onSessionEnded: () => ended = true)
+            .get('/member/me'),
         throwsA(isA<ApiError>().having(
           (ApiError e) => e.kind,
           'kind',
@@ -131,7 +133,8 @@ void main() {
 
     test('allows the member surface', () async {
       final MockClient inner = MockClient(
-        (http.Request request) async => http.Response('{"member_no":"M-1"}', 200),
+        (http.Request request) async =>
+            http.Response('{"member_no":"M-1"}', 200),
       );
 
       final GpHttpClient client = clientWith(
@@ -146,7 +149,8 @@ void main() {
 
   group('decoding (D7)', () {
     test('a 204 surfaces as a typed failure, not a decode crash', () async {
-      final MockClient inner = MockClient((http.Request request) async => http.Response('', 204));
+      final MockClient inner =
+          MockClient((http.Request request) async => http.Response('', 204));
 
       await expectLater(
         clientWith(inner, token: 't').get('/member/me'),
@@ -173,7 +177,8 @@ void main() {
       );
     });
 
-    test('a JSON array where an object is expected surfaces as a typed failure', () async {
+    test('a JSON array where an object is expected surfaces as a typed failure',
+        () async {
       final MockClient inner = MockClient(
         (http.Request request) async => http.Response('[1,2,3]', 200),
       );
@@ -192,23 +197,27 @@ void main() {
         ),
       );
 
-      final Map<String, Object?> body = await clientWith(inner, token: 't').get('/member/me');
+      final Map<String, Object?> body =
+          await clientWith(inner, token: 't').get('/member/me');
 
       expect(body['name'], 'Wanjiku Njeri');
     });
   });
 
   group('transport failures', () {
-    test('a socket-level failure never leaks its message to the caller', () async {
+    test('a socket-level failure never leaks its message to the caller',
+        () async {
       final MockClient inner = MockClient(
-        (http.Request request) async => throw const FormatException('host api.example.test cert CN=evil'),
+        (http.Request request) async =>
+            throw const FormatException('host api.example.test cert CN=evil'),
       );
 
       await expectLater(
         clientWith(inner, token: 't').get('/member/me'),
         throwsA(isA<ApiError>()
             .having((ApiError e) => e.kind, 'kind', ApiFailureKind.transport)
-            .having((ApiError e) => e.toString(), 'toString', isNot(contains('evil')))),
+            .having((ApiError e) => e.toString(), 'toString',
+                isNot(contains('evil')))),
       );
     });
   });

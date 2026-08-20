@@ -32,14 +32,16 @@ void main() {
     });
 
     test('degrades on a non-JSON body (an intermediary error page)', () {
-      final ApiError error = ApiError.fromResponse(502, '<html>Bad Gateway</html>');
+      final ApiError error =
+          ApiError.fromResponse(502, '<html>Bad Gateway</html>');
 
       expect(error.kind, ApiFailureKind.server);
       expect(error.category, isNull);
     });
 
     test('degrades on JSON of the wrong shape', () {
-      final ApiError error = ApiError.fromResponse(400, '["not","an","object"]');
+      final ApiError error =
+          ApiError.fromResponse(400, '["not","an","object"]');
 
       expect(error.kind, ApiFailureKind.server);
       expect(error.category, isNull);

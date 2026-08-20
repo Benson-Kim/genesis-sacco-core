@@ -50,21 +50,26 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
       if (!signedIn) {
         return atSignIn ? null : Routes.signIn;
       }
-      return atSignIn || state.matchedLocation == Routes.splash ? Routes.home : null;
+      return atSignIn || state.matchedLocation == Routes.splash
+          ? Routes.home
+          : null;
     },
     routes: <RouteBase>[
       GoRoute(
         path: Routes.splash,
-        builder: (BuildContext context, GoRouterState state) => const _Placeholder('Starting'),
+        builder: (BuildContext context, GoRouterState state) =>
+            const _Placeholder('Starting'),
       ),
       // MR-1 replaces these two with the real OTP flow and the session shell.
       GoRoute(
         path: Routes.signIn,
-        builder: (BuildContext context, GoRouterState state) => const _Placeholder('Sign in'),
+        builder: (BuildContext context, GoRouterState state) =>
+            const _Placeholder('Sign in'),
       ),
       GoRoute(
         path: Routes.home,
-        builder: (BuildContext context, GoRouterState state) => const _Placeholder('Home'),
+        builder: (BuildContext context, GoRouterState state) =>
+            const _Placeholder('Home'),
       ),
     ],
   );

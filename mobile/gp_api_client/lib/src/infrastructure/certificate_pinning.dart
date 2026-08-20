@@ -77,7 +77,8 @@ class CertificatePinning {
     for (final String pin in pins) {
       final List<int> raw = base64.decode(pin);
       if (raw.length != 32) {
-        throw ArgumentError.value(pin, 'pins', 'Not a base64 SHA-256 digest (expected 32 bytes)');
+        throw ArgumentError.value(
+            pin, 'pins', 'Not a base64 SHA-256 digest (expected 32 bytes)');
       }
     }
     if (enforcement == PinEnforcement.enforce && trustedCertificate == null) {
@@ -109,7 +110,8 @@ class CertificatePinning {
   static String spkiPinOf(X509Certificate certificate) =>
       base64.encode(sha256.convert(extractSpki(certificate.der)).bytes);
 
-  bool matches(X509Certificate certificate) => pins.contains(spkiPinOf(certificate));
+  bool matches(X509Certificate certificate) =>
+      pins.contains(spkiPinOf(certificate));
 
   /// The HTTP client this pin set permits.
   ///
@@ -137,7 +139,8 @@ class CertificatePinning {
       client = HttpClient();
     }
     // Never accept a chain the platform rejected, in either mode.
-    client.badCertificateCallback = (X509Certificate _, String __, int ___) => false;
+    client.badCertificateCallback =
+        (X509Certificate _, String __, int ___) => false;
     return client;
   }
 
@@ -152,7 +155,8 @@ class CertificatePinning {
     if (certificate != null && matches(certificate)) {
       return;
     }
-    final String observed = certificate == null ? '<none>' : spkiPinOf(certificate);
+    final String observed =
+        certificate == null ? '<none>' : spkiPinOf(certificate);
     onMismatch?.call(observed);
     if (enforcement == PinEnforcement.enforce) {
       throw const TlsException('Certificate pin mismatch: connection refused.');
@@ -192,7 +196,8 @@ class CertificatePinning {
     if (start + 1 >= bytes.length) {
       throw const FormatException('Truncated DER: no tag/length at offset');
     }
-    int cursor = start + 1; // Single-byte tags only; X.509 uses no high tags here.
+    int cursor =
+        start + 1; // Single-byte tags only; X.509 uses no high tags here.
     final int first = bytes[cursor++];
     int length;
     if (first < 0x80) {

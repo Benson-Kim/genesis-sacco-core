@@ -33,7 +33,8 @@ class IdempotencyKeySlot {
 
   /// The key for [canonicalBody]: stable across retries of the same content,
   /// rotated the moment the content changes.
-  String keyFor(String canonicalBody, {String Function() fresh = newIdempotencyKey}) {
+  String keyFor(String canonicalBody,
+      {String Function() fresh = newIdempotencyKey}) {
     if (_key == null || _body != canonicalBody) {
       _key = fresh();
       _body = canonicalBody;

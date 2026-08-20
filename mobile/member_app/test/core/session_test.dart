@@ -14,9 +14,10 @@ import 'package:member_app/src/core/session.dart';
 String jwtExpiringAt(DateTime expiry) {
   String segment(Map<String, Object?> payload) =>
       base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
-  final String header = segment(<String, Object?>{'alg': 'EdDSA', 'typ': 'JWT'});
-  final String body =
-      segment(<String, Object?>{'exp': expiry.toUtc().millisecondsSinceEpoch ~/ 1000});
+  final String header =
+      segment(<String, Object?>{'alg': 'EdDSA', 'typ': 'JWT'});
+  final String body = segment(
+      <String, Object?>{'exp': expiry.toUtc().millisecondsSinceEpoch ~/ 1000});
   return '$header.$body.signature-not-verified-client-side';
 }
 
@@ -37,7 +38,8 @@ void main() {
 
   group('adopt', () {
     test('persists the refresh token before the future completes', () async {
-      final MemberSession session = sessionWith((_) async => throw StateError('unused'));
+      final MemberSession session =
+          sessionWith((_) async => throw StateError('unused'));
 
       await session.adopt(TokenPair(
         accessToken: jwtExpiringAt(clock.add(const Duration(minutes: 15))),
@@ -49,10 +51,13 @@ void main() {
     });
 
     test('never persists the access token', () async {
-      final String access = jwtExpiringAt(clock.add(const Duration(minutes: 15)));
-      final MemberSession session = sessionWith((_) async => throw StateError('unused'));
+      final String access =
+          jwtExpiringAt(clock.add(const Duration(minutes: 15)));
+      final MemberSession session =
+          sessionWith((_) async => throw StateError('unused'));
 
-      await session.adopt(TokenPair(accessToken: access, refreshToken: 'refresh-1'));
+      await session
+          .adopt(TokenPair(accessToken: access, refreshToken: 'refresh-1'));
 
       // Custody holds the refresh token and the cache key. Nothing else.
       expect(await store.readRefreshToken(), isNot(access));
@@ -61,13 +66,15 @@ void main() {
   });
 
   group('validAccessToken', () {
-    test('reuses a token that is comfortably live, without refreshing', () async {
+    test('reuses a token that is comfortably live, without refreshing',
+        () async {
       int refreshes = 0;
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
         return TokenPair(accessToken: jwtExpiringAt(clock), refreshToken: 'r2');
       });
-      final String access = jwtExpiringAt(clock.add(const Duration(minutes: 15)));
+      final String access =
+          jwtExpiringAt(clock.add(const Duration(minutes: 15)));
       await session.adopt(TokenPair(accessToken: access, refreshToken: 'r1'));
 
       expect(await session.validAccessToken(), access);
@@ -78,7 +85,8 @@ void main() {
       // Oracle: margin is 30s. A token expiring in 20s is inside it, so the
       // machine must refresh BEFORE the request rather than after a 401.
       int refreshes = 0;
-      final String fresh = jwtExpiringAt(clock.add(const Duration(minutes: 15)));
+      final String fresh =
+          jwtExpiringAt(clock.add(const Duration(minutes: 15)));
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
         return TokenPair(accessToken: fresh, refreshToken: 'r2');
@@ -99,7 +107,8 @@ void main() {
       // expectation becomes 10.
       int refreshes = 0;
       final Completer<void> gate = Completer<void>();
-      final String fresh = jwtExpiringAt(clock.add(const Duration(minutes: 15)));
+      final String fresh =
+          jwtExpiringAt(clock.add(const Duration(minutes: 15)));
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
         await gate.future;
@@ -121,7 +130,8 @@ void main() {
       expect(results, everyElement(fresh));
     });
 
-    test('the refresh token is persisted before the new access token is handed out',
+    test(
+        'the refresh token is persisted before the new access token is handed out',
         () async {
       // Persist-before-use: if the write happened after the token was
       // returned, a crash in between would leave the app holding a token the
@@ -167,7 +177,8 @@ void main() {
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
         return TokenPair(
-          accessToken: jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+          accessToken:
+              jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
           refreshToken: 'r${refreshes + 1}',
         );
       });
@@ -185,15 +196,18 @@ void main() {
 
   group('restore', () {
     test('no stored token means signed out', () async {
-      final MemberSession session = sessionWith((_) async => throw StateError('unused'));
+      final MemberSession session =
+          sessionWith((_) async => throw StateError('unused'));
 
       expect(await session.restore(), isFalse);
       expect(session.state, SessionState.signedOut);
     });
 
-    test('a stored token restores the session without asserting authentication', () async {
+    test('a stored token restores the session without asserting authentication',
+        () async {
       await store.writeRefreshToken('r1');
-      final MemberSession session = sessionWith((_) async => throw StateError('unused'));
+      final MemberSession session =
+          sessionWith((_) async => throw StateError('unused'));
 
       expect(await session.restore(), isTrue);
       // Presence is not proof: no access token has been minted yet. The
@@ -204,7 +218,8 @@ void main() {
 
   group('end', () {
     test('is idempotent and always purges', () async {
-      final MemberSession session = sessionWith((_) async => throw StateError('unused'));
+      final MemberSession session =
+          sessionWith((_) async => throw StateError('unused'));
       await session.adopt(TokenPair(
         accessToken: jwtExpiringAt(clock.add(const Duration(minutes: 15))),
         refreshToken: 'r1',
@@ -220,14 +235,17 @@ void main() {
   });
 
   group('malformed tokens', () {
-    test('an unreadable access token is treated as expired, not trusted', () async {
+    test('an unreadable access token is treated as expired, not trusted',
+        () async {
       int refreshes = 0;
-      final String fresh = jwtExpiringAt(clock.add(const Duration(minutes: 15)));
+      final String fresh =
+          jwtExpiringAt(clock.add(const Duration(minutes: 15)));
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
         return TokenPair(accessToken: fresh, refreshToken: 'r2');
       });
-      await session.adopt(const TokenPair(accessToken: 'not-a-jwt', refreshToken: 'r1'));
+      await session
+          .adopt(const TokenPair(accessToken: 'not-a-jwt', refreshToken: 'r1'));
 
       expect(await session.validAccessToken(), fresh);
       expect(refreshes, 1);

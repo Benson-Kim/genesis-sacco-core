@@ -583,17 +583,25 @@ mobile:analyze:
           (cd "$package" && flutter pub get && flutter analyze)
         fi
       done
-    # On a formatting failure, PRINT THE PATCH so a contributor without a
-    # local Dart SDK has something actionable rather than a file count.
+    # lib/src/generated/ is EXCLUDED from the format gate: dart format rewraps
+    # long lines with an algorithm the generator cannot reproduce, so the two
+    # gates would fight forever -- format rewraps, codegen-drift reverts. The
+    # generated tree is governed by mobile:codegen-drift instead, which rejects
+    # ANY change to it, formatting included. Same split as **/*.g.dart.
+    #
+    # On failure, PRINT THE PATCH: a bare file count is useless to a
+    # contributor without a local Dart SDK, and the diff applies verbatim.
     - |
-      if ! dart format --output=none --set-exit-if-changed mobile/; then
-        dart format mobile/ >/dev/null
+      mapfile -t DART_FILES < <(find mobile -name '*.dart' -not -path '*/generated/*')
+      if ! dart format --output=none --set-exit-if-changed "${DART_FILES[@]}"; then
+        dart format "${DART_FILES[@]}" >/dev/null
         git --no-pager diff -- mobile/
         exit 1
       fi
     # The P17 guard sweeps. One script, shared with the GitHub workflow, so
     # the two pipelines cannot disagree about what green means.
     - bash mobile/scripts/guard_sweeps.sh
+
 
 mobile:test:
   extends: .mobile

@@ -66,7 +66,8 @@ class MemberSession {
 
   Future<String?>? _refreshInFlight;
 
-  final StreamController<SessionState> _states = StreamController<SessionState>.broadcast();
+  final StreamController<SessionState> _states =
+      StreamController<SessionState>.broadcast();
   Stream<SessionState> get states => _states.stream;
 
   SessionState _state = SessionState.signedOut;
@@ -103,7 +104,9 @@ class MemberSession {
   Future<String?> validAccessToken() {
     final String? token = _accessToken;
     final DateTime? expiry = _accessTokenExpiry;
-    if (token != null && expiry != null && _now().add(_expiryMargin).isBefore(expiry)) {
+    if (token != null &&
+        expiry != null &&
+        _now().add(_expiryMargin).isBefore(expiry)) {
       return Future<String?>.value(token);
     }
     // Single flight: every concurrent caller awaits the SAME refresh. Remove
@@ -167,11 +170,13 @@ class MemberSession {
     }
     try {
       final String normalized = base64Url.normalize(parts[1]);
-      final Object? payload = jsonDecode(utf8.decode(base64Url.decode(normalized)));
+      final Object? payload =
+          jsonDecode(utf8.decode(base64Url.decode(normalized)));
       if (payload is Map<String, Object?>) {
         final Object? exp = payload['exp'];
         if (exp is int) {
-          return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true).toLocal();
+          return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true)
+              .toLocal();
         }
       }
     } on FormatException {

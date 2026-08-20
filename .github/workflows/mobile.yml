@@ -56,16 +56,23 @@ jobs:
             fi
           done
 
-      # On a formatting failure, PRINT THE PATCH. A bare "7 files changed" tells
-      # a contributor without a local Dart SDK nothing they can act on; the
-      # unified diff can be applied verbatim. Same reasoning as the web
-      # client-drift job, which prints its own diff rather than just failing.
+      # lib/src/generated/ is EXCLUDED: dart format rewraps long lines with an
+      # algorithm the generator cannot reproduce, so the two gates would fight
+      # forever -- format rewraps, codegen-drift reverts. The generated tree is
+      # governed by mobile:codegen-drift instead, which rejects ANY change to
+      # it, formatting included. Same split as **/*.g.dart in analysis_options.
+      #
+      # On failure, PRINT THE PATCH. A bare "7 files changed" tells a
+      # contributor without a local Dart SDK nothing they can act on; the
+      # unified diff applies verbatim. Same reasoning as the web client-drift
+      # job, which prints its own diff rather than just failing.
       - name: Check formatting
         if: steps.guard.outputs.present == 'true'
         run: |
-          if ! dart format --output=none --set-exit-if-changed mobile/; then
+          mapfile -t DART_FILES < <(find mobile -name '*.dart' -not -path '*/generated/*')
+          if ! dart format --output=none --set-exit-if-changed "${DART_FILES[@]}"; then
             echo "::group::Formatting patch (apply with: git apply)"
-            dart format mobile/ >/dev/null
+            dart format "${DART_FILES[@]}" >/dev/null
             git --no-pager diff -- mobile/
             echo "::endgroup::"
             exit 1

@@ -56,7 +56,8 @@ class GpHttpClient {
     if (baseUrl.scheme != 'https') {
       // FM-F: cleartext is refused at construction, not per request, so no
       // build can ever be configured into an unencrypted transport.
-      throw ArgumentError.value(baseUrl, 'baseUrl', 'Only https:// is permitted');
+      throw ArgumentError.value(
+          baseUrl, 'baseUrl', 'Only https:// is permitted');
     }
   }
 
@@ -70,7 +71,8 @@ class GpHttpClient {
   static http.Client _pinnedClient(CertificatePinning? pinning) =>
       IOClient(pinning?.buildClient() ?? HttpClient(), pinning);
 
-  Future<Map<String, Object?>> get(String path, {Map<String, String>? query}) async {
+  Future<Map<String, Object?>> get(String path,
+      {Map<String, String>? query}) async {
     final http.Response response = await _send(
       (Uri uri) => _inner.get(uri, headers: _headers()),
       path,
@@ -106,7 +108,8 @@ class GpHttpClient {
   ) async {
     final PathGuard? guard = _pathGuard;
     if (guard != null && !guard(path)) {
-      throw ArgumentError.value(path, 'path', 'Path is outside this client\'s allowed surface');
+      throw ArgumentError.value(
+          path, 'path', 'Path is outside this client\'s allowed surface');
     }
     final Uri uri = _baseUrl.replace(
       path: '${_baseUrl.path}$path',
@@ -185,7 +188,8 @@ class IOClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final HttpClientRequest ioRequest = await _io.openUrl(request.method, request.url);
+    final HttpClientRequest ioRequest =
+        await _io.openUrl(request.method, request.url);
     request.headers.forEach(ioRequest.headers.set);
     final List<int> body = await request.finalize().toBytes();
     if (body.isNotEmpty) {
@@ -203,7 +207,8 @@ class IOClient extends http.BaseClient {
     return http.StreamedResponse(
       ioResponse,
       ioResponse.statusCode,
-      contentLength: ioResponse.contentLength == -1 ? null : ioResponse.contentLength,
+      contentLength:
+          ioResponse.contentLength == -1 ? null : ioResponse.contentLength,
       headers: headers,
       reasonPhrase: ioResponse.reasonPhrase,
     );

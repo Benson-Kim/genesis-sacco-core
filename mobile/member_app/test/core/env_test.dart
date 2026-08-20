@@ -19,8 +19,10 @@ void main() {
       // develop carries POST /member/auth/* and the guarantee consent/release
       // ACTS. It carries no member-audience GET at all.
       expect(merged.balances, isFalse, reason: 'GET /member/me is on !7');
-      expect(merged.transactions, isFalse, reason: 'GET /member/transactions is on !7');
-      expect(merged.statement, isFalse, reason: 'GET /member/statement is on !7');
+      expect(merged.transactions, isFalse,
+          reason: 'GET /member/transactions is on !7');
+      expect(merged.statement, isFalse,
+          reason: 'GET /member/statement is on !7');
       expect(merged.loans, isFalse, reason: 'GET /member/loans is on !7');
     });
 
@@ -28,16 +30,20 @@ void main() {
       // The subtle one, and the reason #41 was filed. A member can consent to
       // a guarantee only if the app already knows its id; no merged route
       // reveals a member their own pledges.
-      expect(merged.guaranteeInbox, isFalse, reason: 'GET /member/guarantees is on !31 (#41)');
+      expect(merged.guaranteeInbox, isFalse,
+          reason: 'GET /member/guarantees is on !31 (#41)');
     });
 
     test('every money-movement capability is false', () {
-      expect(merged.deposits, isFalse, reason: 'payment intents are #7, ADR only');
-      expect(merged.loanApplication, isFalse, reason: 'application + quote is #51');
+      expect(merged.deposits, isFalse,
+          reason: 'payment intents are #7, ADR only');
+      expect(merged.loanApplication, isFalse,
+          reason: 'application + quote is #51');
     });
 
     test('notifications are false: the outbox is not a read model', () {
-      expect(merged.notifications, isFalse, reason: 'ADR-0011 read model (#45) is undesigned');
+      expect(merged.notifications, isFalse,
+          reason: 'ADR-0011 read model (#45) is undesigned');
     });
   });
 
@@ -65,7 +71,8 @@ void main() {
     });
 
     test('logs the member out on inactivity regardless of token lifetime', () {
-      expect(Flavor.dev.inactivityTimeout, lessThanOrEqualTo(const Duration(minutes: 15)));
+      expect(Flavor.dev.inactivityTimeout,
+          lessThanOrEqualTo(const Duration(minutes: 15)));
     });
   });
 }

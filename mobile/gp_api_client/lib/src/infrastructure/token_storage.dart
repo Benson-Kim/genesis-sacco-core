@@ -39,7 +39,9 @@ class TokenStorage implements TokenStore {
       : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
-              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+              iOptions: IOSOptions(
+                  accessibility:
+                      KeychainAccessibility.first_unlock_this_device),
             );
 
   final FlutterSecureStorage _storage;

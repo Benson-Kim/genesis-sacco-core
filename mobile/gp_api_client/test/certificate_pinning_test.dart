@@ -77,7 +77,8 @@ void main() {
       base64.encode(List<int>.filled(32, 2)),
     ];
 
-    test('refuses a single pin even in a release build (throw, not assert)', () {
+    test('refuses a single pin even in a release build (throw, not assert)',
+        () {
       // An un-rotatable pin is an outage: the brief makes the backup pin
       // mandatory from day one. Asserts vanish in release, so this must be a
       // throw - swap it back to an assert and this test still passes under
@@ -93,7 +94,8 @@ void main() {
 
     test('accepts a pin set that carries a backup pin', () {
       expect(
-        () => CertificatePinning(pins: twoPins, enforcement: PinEnforcement.report),
+        () => CertificatePinning(
+            pins: twoPins, enforcement: PinEnforcement.report),
         returnsNormally,
       );
     });
@@ -103,7 +105,8 @@ void main() {
       // exists to replace. A mode that only looks enforced is worse than an
       // honest report mode, so construction fails instead.
       expect(
-        () => CertificatePinning(pins: twoPins, enforcement: PinEnforcement.enforce),
+        () => CertificatePinning(
+            pins: twoPins, enforcement: PinEnforcement.enforce),
         throwsArgumentError,
       );
     });
@@ -159,7 +162,9 @@ void main() {
       expect(() => pinning.verifyPeer(null), throwsA(isA<TlsException>()));
     });
 
-    test('report mode still calls onMismatch, or the pre-cutover period is blind', () {
+    test(
+        'report mode still calls onMismatch, or the pre-cutover period is blind',
+        () {
       // The whole point of shipping report before the hosting cutover is early
       // warning. Drop the callback and this fails.
       int calls = 0;
