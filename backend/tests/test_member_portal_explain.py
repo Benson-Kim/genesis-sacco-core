@@ -189,10 +189,43 @@ async def _analyze_book() -> None:
     choice below would assert planner noise. CI provides the owner
     DSN as DATABASE_MAINT_URL (the role migrations ran as); the
     probes themselves still run through the RLS app role session.
+
+    No fail-open (issue #33 item 2): in CI a missing maint DSN is a
+    hard failure — the silent DATABASE_URL fallback would degrade
+    ANALYZE to the app-role no-op WARNING and this gate would
+    re-inherit the planner-noise flake that d519624/6b8c1cb/50ccb6f
+    fought. The fallback survives for dev only (where DATABASE_URL is
+    often the owner), and EITHER way the reltuples probe below proves
+    ANALYZE actually took: statistics are asserted, never assumed.
     """
-    maint_url = os.environ.get("DATABASE_MAINT_URL", os.environ["DATABASE_URL"])
+    maint_url = os.environ.get("DATABASE_MAINT_URL")
+    if maint_url is None:
+        if os.environ.get("CI"):
+            pytest.fail(
+                "DATABASE_MAINT_URL is not set in CI: ANALYZE would silently "
+                "degrade to the app-role no-op WARNING and this EXPLAIN gate "
+                "would assert planner noise instead of plans. Restore the "
+                "owner DSN export in .gitlab-ci.yml (backend:test)."
+            )
+        maint_url = os.environ["DATABASE_URL"]  # dev-only fallback (often the owner)
     async with get_sessionmaker(maint_url)() as session, session.begin():
         await session.execute(text("ANALYZE loans, members, loan_products"))
+        # Prove ANALYZE took effect: only the table OWNER's ANALYZE
+        # writes statistics; as a non-owner it is a no-op WARNING and
+        # reltuples stays at its unset sentinel (-1 on PG14+, 0 before).
+        reltuples = (
+            await session.execute(
+                text("SELECT reltuples FROM pg_class WHERE oid = 'loans'::regclass")
+            )
+        ).scalar_one()
+    if float(reltuples) <= 0:
+        pytest.fail(
+            f"ANALYZE left loans without statistics (pg_class.reltuples = "
+            f"{reltuples}): the maint DSN role does not own the tables, so "
+            "the cost model is degenerate and the plan assertions below "
+            "would gate planner noise. Point DATABASE_MAINT_URL at the "
+            "role that ran the migrations."
+        )
 
 
 async def _explain(session: AsyncSession, sql: str, params: dict[str, object]) -> str:
