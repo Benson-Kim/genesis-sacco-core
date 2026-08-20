@@ -22,10 +22,56 @@
 -- Everything else is auto-generated so repeated seeding never collides.
 -- =============================================================================
 
+-- Abort at the first error under psql (the guard block below relies on it
+-- to stop the script dead; without psql, the failed guard still aborts the
+-- surrounding transaction so the TRUNCATE can never commit).
+\set ON_ERROR_STOP on
+
 -- Suppress notices from DO blocks
 SET client_min_messages TO WARNING;
 
 BEGIN;
+
+-- ---------------------------------------------------------------------------
+-- GUARD (#48, secondary layer — the runner scripts/seed_dev.py is primary):
+-- refuse unless current_database() is PROVABLY a dev/test database.
+-- Allowlist only — never a blocklist of production names/hostnames:
+--   * when the runner hands down an explicit expectation via the session
+--     GUC seed.expected_db_name (from SEED_EXPECTED_DB_NAME), the name
+--     must match EXACTLY (the expectation dominates the heuristic);
+--   * otherwise the name must carry a dev/test/local marker.
+-- This layer is acknowledged WEAKER than the runner guard: it fires after
+-- a connection already exists. It exists to protect direct psql
+-- invocation that bypasses the runner. Placed INSIDE the transaction and
+-- BEFORE the TRUNCATE: on refusal the transaction is aborted, so every
+-- later statement (including TRUNCATE) errors out and COMMIT rolls back
+-- even when ON_ERROR_STOP is not honoured.
+-- ---------------------------------------------------------------------------
+DO $guard$
+DECLARE
+    db       text := current_database();
+    expected text := nullif(current_setting('seed.expected_db_name', true), '');
+BEGIN
+    IF expected IS NOT NULL THEN
+        IF db = expected THEN
+            RETURN;
+        END IF;
+        RAISE EXCEPTION
+            'seed guard: REFUSED -- current_database() % does not match the declared expectation %',
+            quote_literal(db), quote_literal(expected)
+            USING HINT = 'Run through scripts/seed_dev.py (issue #48); refusal is the default.';
+    END IF;
+    IF db ILIKE '%dev%' OR db ILIKE '%test%' OR db ILIKE '%local%' THEN
+        RETURN;
+    END IF;
+    RAISE EXCEPTION
+        'seed guard: REFUSED -- current_database() % is not provably a dev/test database',
+        quote_literal(db)
+        USING HINT = 'Run through scripts/seed_dev.py with ALLOW_DESTRUCTIVE_SEED=1 and a '
+                     'DATABASE_URL whose database name contains dev/test/local, or set '
+                     'SEED_EXPECTED_DB_NAME to the exact intended database name (issue #48).';
+END
+$guard$;
 
 -- ---------------------------------------------------------------------------
 -- CLEANUP: wipe all seed data so the script is safe to re-run.
