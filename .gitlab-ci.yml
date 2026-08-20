@@ -15,6 +15,13 @@ workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # develop is a long-lived integration branch: merges can land on it
+    # outside an MR (e.g. pushed merge commits from a mirror remote), and
+    # an MR pipeline only ever tests the pre-merge SHA. Running the full
+    # branch pipeline on develop makes the post-merge result itself pass
+    # backend pytest and web lint/tsc — the class of error where a merge
+    # silently duplicates a block is caught at the commit that created it.
+    - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_TAG
 
 default:
@@ -125,19 +132,67 @@ docs:spot-check:
 
 # -----------------------------------------------------------------------------
 # Backend — Python 3.12 / FastAPI
+#
+# Supply chain (issue #5): backend/requirements.txt is a HASH-PINNED LOCKFILE
+# generated from pyproject.toml (uv pip compile --generate-hashes). The
+# pyproject ranges remain the *intent*; the lock is the *artifact*. Every
+# backend job installs from the lock with --require-hashes, so a job can only
+# ever execute the exact bytes that were reviewed — pip aborts on any hash
+# mismatch or any package missing from the lock. The first-party package is
+# then installed with --no-deps --no-build-isolation (setuptools, the build
+# backend, is itself in the lock).
 # -----------------------------------------------------------------------------
 .backend:
   image: python:3.12-slim
   before_script:
     - cd backend
     - pip install --upgrade pip
-    - pip install -e ".[dev]"
+    - pip install --require-hashes -r requirements.txt
+    - pip install --no-deps --no-build-isolation -e .
   cache:
     key:
       files:
-        - backend/pyproject.toml
+        - backend/requirements.txt
     paths:
       - .cache/pip
+
+# Lock drift gate (issue #5): the lock must always be a faithful compile of
+# pyproject.toml. Re-runs the exact regeneration command — uv keeps existing
+# pins that still satisfy the declared ranges, so new PyPI releases do NOT
+# fail this gate; only editing pyproject.toml without regenerating the lock
+# (or hand-editing the lock) does. This replaces the old hand-mirrored
+# dependency-scanning shim, which had no sync guarantee at all. Dependency
+# Scanning now points at the lock directly (requirements.txt IS the lock).
+backend:lock-drift:
+  stage: lint
+  needs: []
+  image: python:3.12-slim
+  rules:
+    - exists: ["backend/requirements.txt"]
+  cache: []
+  script:
+    - pip install --upgrade pip
+    - pip install uv==0.12.5
+    - cd backend
+    - cp requirements.txt /tmp/requirements.committed.txt
+    - uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes -o requirements.txt
+    - |
+      if ! diff -u /tmp/requirements.committed.txt requirements.txt; then
+        echo "ERROR: backend/requirements.txt is OUT OF SYNC with backend/pyproject.toml." >&2
+        echo "Regenerate with uv==0.12.5:" >&2
+        echo "  cd backend && uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes -o requirements.txt" >&2
+        echo "and commit the result." >&2
+        exit 1
+      fi
+    - echo "OK - lockfile is in sync with pyproject.toml"
+  # On drift, artifact the regenerated lock so it can be committed
+  # byte-exactly from this job (the web:spec-drift artifact precedent —
+  # never a hand edit; the sandbox proxy blocks local regeneration).
+  artifacts:
+    when: on_failure
+    paths:
+      - backend/requirements.txt
+    expire_in: 3 days
 
 backend:lint:
   extends: .backend
@@ -402,12 +457,15 @@ web:spec-drift:
   cache:
     key:
       files:
-        - backend/pyproject.toml
+        - backend/requirements.txt
     paths:
       - .cache/pip
   script:
     - pip install --upgrade pip
-    - pip install ./backend
+    # Same deterministic install path as the backend jobs (issue #5):
+    # hash-pinned lock first, then the first-party package dependency-free.
+    - pip install --require-hashes -r backend/requirements.txt
+    - pip install --no-deps --no-build-isolation ./backend
     - python backend/scripts/export_openapi.py /tmp/openapi.json
     - |
       if ! diff -u web/packages/api-client/openapi.json /tmp/openapi.json; then
@@ -461,6 +519,59 @@ web:client-drift:
     paths:
       - schema.regenerated.d.ts
     expire_in: 3 days
+
+# -----------------------------------------------------------------------------
+# SBOM — CycloneDX inventory for both stacks (issue #5). Artifact-only:
+# allow_failure keeps these jobs non-gating (SBOM generation must never
+# block a fix from shipping), but the artifacts:reports:cyclonedx wiring
+# feeds GitLab's dependency list on every pipeline that succeeds.
+# -----------------------------------------------------------------------------
+sbom:backend:
+  stage: security
+  needs: []
+  image: python:3.12-slim
+  allow_failure: true
+  rules:
+    - exists: ["backend/requirements.txt"]
+  cache: []
+  script:
+    - pip install --upgrade pip
+    - pip install cyclonedx-bom==7.3.1
+    - cyclonedx-py requirements backend/requirements.txt --output-format JSON --output-file backend-sbom.cdx.json
+    - echo "backend SBOM written (backend-sbom.cdx.json)"
+  artifacts:
+    paths:
+      - backend-sbom.cdx.json
+    reports:
+      cyclonedx: backend-sbom.cdx.json
+    expire_in: 1 month
+
+sbom:web:
+  stage: security
+  needs: []
+  image: node:22-alpine
+  allow_failure: true
+  rules:
+    - exists: ["web/package-lock.json"]
+  cache:
+    key:
+      files:
+        - web/package-lock.json
+    paths:
+      - .cache/npm
+  script:
+    - cd web
+    # --ignore-scripts: SBOM generation must not execute third-party
+    # lifecycle scripts; the tree is only materialized for inventory.
+    - npm ci --ignore-scripts
+    - npm sbom --sbom-format cyclonedx > ../web-sbom.cdx.json
+    - echo "web SBOM written (web-sbom.cdx.json)"
+  artifacts:
+    paths:
+      - web-sbom.cdx.json
+    reports:
+      cyclonedx: web-sbom.cdx.json
+    expire_in: 1 month
 
 # -----------------------------------------------------------------------------
 # Mobile — Flutter (member_app, admin_app, shared packages)

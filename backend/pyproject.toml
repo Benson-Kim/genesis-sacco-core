@@ -29,6 +29,9 @@ dev = [
     "mypy>=1.11",
     "import-linter>=2.0",
     "hypothesis>=6.100",
+    # Build backend, declared here so the hash-pinned lock covers it and the
+    # editable install can run with --no-build-isolation (issue #5).
+    "setuptools>=69",
 ]
 
 [tool.setuptools.packages.find]
@@ -76,6 +79,7 @@ type = "forbidden"
 source_modules = ["genesis.api"]
 forbidden_modules = [
     "genesis.infrastructure.providers",
+    "genesis.infrastructure.otp_delivery",
     "genesis.infrastructure.outbox_worker",
     "genesis.infrastructure.export_worker",
     "genesis.infrastructure.idempotency_worker",

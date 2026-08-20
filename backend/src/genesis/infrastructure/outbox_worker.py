@@ -25,6 +25,7 @@ idempotent by event id (reliability).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import secrets
 import time
@@ -38,6 +39,7 @@ from sqlalchemy import CursorResult, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from genesis.application.batch_runner import run_in_batches
+from genesis.infrastructure.otp_delivery import OTP_EVENT_TYPES, mask_destination
 from genesis.infrastructure.providers import NotificationProvider
 from genesis.infrastructure.tenancy import tenant_session
 
@@ -131,6 +133,8 @@ async def dispatch_due(
                 factory,
                 tenant_id,
                 event_id,
+                event_type,
+                payload,
                 attempts + 1,
                 traceback.format_exc(limit=3)[:1000],
             )
@@ -148,22 +152,55 @@ async def dispatch_due(
     return delivered
 
 
+def _redacted_otp_payload(payload: dict[str, Any]) -> str:
+    """Dead-letter redaction for OTP payloads (#20): dead rows live
+    forever, and an OTP payload holds the plaintext code plus the full
+    destination (PII). Strip both; keep the channel and a masked
+    destination (and every other field) for diagnosis."""
+    destination = payload.get("destination")
+    redacted = {k: v for k, v in payload.items() if k not in ("code", "destination")}
+    redacted["redacted"] = True
+    if isinstance(destination, str):
+        redacted["destination_masked"] = mask_destination(destination)
+    return json.dumps(redacted)
+
+
 async def _record_failure(
     factory: async_sessionmaker[AsyncSession],
     tenant_id: uuid.UUID,
     event_id: str,
+    event_type: str,
+    payload: dict[str, Any],
     attempts: int,
     error_text: str,
 ) -> None:
     async with tenant_session(factory, tenant_id) as session:
         if attempts >= MAX_ATTEMPTS:
-            await session.execute(
-                text(
-                    "UPDATE outbox_events SET status = 'dead', attempts = :attempts, "
-                    "last_error = :err WHERE id = CAST(:id AS uuid)"
-                ),
-                {"attempts": attempts, "err": error_text, "id": event_id},
-            )
+            if event_type in OTP_EVENT_TYPES:
+                # Redact in the SAME transaction as the dead-letter
+                # mark: no window where a dead row still holds the
+                # plaintext code/destination (#20).
+                await session.execute(
+                    text(
+                        "UPDATE outbox_events SET status = 'dead', attempts = :attempts, "
+                        "last_error = :err, payload = CAST(:payload AS jsonb) "
+                        "WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {
+                        "attempts": attempts,
+                        "err": error_text,
+                        "payload": _redacted_otp_payload(payload),
+                        "id": event_id,
+                    },
+                )
+            else:
+                await session.execute(
+                    text(
+                        "UPDATE outbox_events SET status = 'dead', attempts = :attempts, "
+                        "last_error = :err WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"attempts": attempts, "err": error_text, "id": event_id},
+                )
             logger.error("outbox event dead-lettered: %s", event_id)
             return
         delay = backoff_delay(attempts, _jitter())

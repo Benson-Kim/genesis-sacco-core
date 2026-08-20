@@ -15,15 +15,42 @@ with `rules:exists` so they activate as each codebase lands.
 | `web:lint` | lint | ESLint + `tsc --noEmit` (TypeScript strict). |
 | `docs:diagrams` | lint | Renders every `.mmd` file and every ```` ```mermaid ```` block under `docs/diagrams/` with mermaid-cli — an unrenderable diagram is a red pipeline. Runs only when `docs/diagrams/**` changes. **Syntax gate only.** |
 | `docs:spot-check` | lint | The **semantic** diagram gates: `docs/diagrams/c4-spot-check.py` and `docs/diagrams/erd-spot-check.py` verify diagram claims against real module paths, router wiring and the migration chain. On merge requests it runs when the diagram files, the router wiring or the migration chain change; on the default branch it runs **unconditionally** (a squash merge lands file combinations no MR pipeline tested together). |
+| `backend:lock-drift` | lint | Re-compiles `backend/requirements.txt` (the hash-pinned lock) from `backend/pyproject.toml` and fails on any diff — editing the ranges without regenerating the lock, or hand-editing the lock, is a red pipeline. On failure the regenerated lock is attached as an artifact (the `web:spec-drift` precedent — take the artifact, never hand-edit). |
 | `backend:test` | test | pytest against a real PostgreSQL 16 service with migrations applied and **RLS actually enforced**: the job creates a non-superuser, non-BYPASSRLS application role and runs the suite through it. Coverage gate ≥ 85%; captured EXPLAIN plans are printed in `after_script` so MR authors can copy evidence from the job trace. |
 | `web:test` | test | Jest suites, including per-module network wire tests. |
 | `web:e2e` | test | Playwright against the real production build (`next start` — middleware/CSP live), API mocked at the browser network boundary; request counts/bodies are the assertion surface for double-submit and 409 single-attempt proofs. |
 | `web:spec-drift` | test | Regenerates the OpenAPI document from the backend and diffs it byte-for-byte against the committed snapshot. |
 | `web:client-drift` | test | Regenerates the client from the snapshot, diffs against the committed generated client, and proves its own falsifiability on every run (a deliberately staled client must fail the check). |
-| SAST / Secret Detection / Dependency Scanning | security | GitLab `latest` template variants (they include merge-request rules). Critical findings block merge. |
+| SAST / Secret Detection / Dependency Scanning | security | GitLab `latest` template variants (they include merge-request rules). Critical findings block merge. Dependency Scanning reads `backend/requirements.txt` — since issue #5 that file **is** the hash-pinned lock, so scan coverage equals install reality (runtime + dev toolchain). |
+| `sbom:backend` / `sbom:web` | security | CycloneDX SBOM artifacts for both stacks (`backend-sbom.cdx.json` from the lock, `web-sbom.cdx.json` from `package-lock.json`), wired into `artifacts:reports:cyclonedx`. **Non-gating** (`allow_failure`): inventory must never block a fix from shipping. |
 | `backend:build` / `web:build` | build | Container image (default branch) / production `next build`. |
 | `backend:migrate-check` | migrate-check | `alembic upgrade head` → `downgrade -1` → `upgrade head` against a fresh database — every migration must have a working downgrade. |
 | `web:lockfile` | lint (utility) | Non-gating helper: regenerates `package-lock.json` **in CI** when `web/package.json` changes, because the npm registry is proxy-blocked in the agent sandbox; the lockfile travels via job artifact/trace. |
+
+### 1.1 Dependency supply chain (issue #5)
+
+- `backend/pyproject.toml` ranges are the **intent**; the hash-pinned lock
+  `backend/requirements.txt` is the **artifact**. CI and deploys install from
+  the lock with `pip install --require-hashes -r requirements.txt` (then the
+  first-party package with `--no-deps --no-build-isolation`); nothing outside
+  the reviewed lock can ever execute. `backend:lock-drift` gates sync.
+- Regenerate the lock (uv `0.12.5`) whenever `pyproject.toml` dependencies
+  change:
+  ```
+  cd backend && uv pip compile pyproject.toml --extra dev --universal --python-version 3.12 --generate-hashes -o requirements.txt
+  ```
+  Runtime and dev extras are locked **together** in one file: every backend
+  CI job needs the dev toolchain anyway, one artifact means one drift
+  surface, and Dependency Scanning then covers the CI toolchain too.
+- **Policy: security-critical packages are exact-pinned** — the Playwright
+  precedent (`@playwright/test` is pinned `1.62.1`, not ranged). The same
+  applies to token/crypto-adjacent packages (`pyjwt`) and anything whose
+  compromise reaches auth, money movement or CI execution: exact pin in the
+  manifest, every bump its own reviewed MR. `renovate.json` enforces
+  `rangeStrategy: pin` for these.
+- `renovate.json` schedules weekly update MRs for **both** stacks (backend
+  lock via the `pip-compile` manager, web via `package-lock.json`), so
+  freshness is a reviewed event, not drift.
 
 Known flake: one export-rendering timing test can trip on loaded runners.
 If it is the only red and the change does not touch exports, re-run the
