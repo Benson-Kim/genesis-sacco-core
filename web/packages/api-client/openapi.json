@@ -3812,7 +3812,7 @@
         "type": "object"
       },
       "MemberGuaranteeOut": {
-        "description": "One OWN pledge row on the member guarantees inbox (#41).\n\nShaped through the canonical _guarantee_out (reuse-first, gate 1.1)\nwith the staff-only fields SUBTRACTED (least disclosure): no\napplication/loan UUIDs (internal ids), no guarantor_member_id (the\nrows are the principal's own by construction) and no\nborrower_member_id \u2014 no borrower PII beyond what the consent screen\nalready requires. loan_ref is the human reference (LN-XXXX, 0048)\nonce the loan is disbursed, None while the pledge backs an\napplication; version pins the optimistic lock for the\nconsent/release acts on this same surface.",
+        "description": "One OWN pledge row on the member guarantees inbox.\n\nShaped through the canonical staff guarantee shaping (reuse-first)\nwith the staff-only fields SUBTRACTED (least disclosure): no\napplication/loan UUIDs (internal ids), no guarantor_member_id (the\nrows are the principal's own by construction) and no\nborrower_member_id \u2014 no borrower PII beyond what the consent screen\nalready requires. loan_ref is the human reference (LN-XXXX) once\nthe loan is disbursed, None while the pledge backs an application;\nversion pins the optimistic lock for the consent/release acts on\nthis same surface.",
         "properties": {
           "amount": {
             "title": "Amount",
@@ -11958,7 +11958,7 @@
     },
     "/member/guarantees": {
       "get": {
-        "description": "The member's OWN pledges, keyset-paginated (#41 \u2014 the P17\nconsent-inbox data source; the consent/release ACTS above finally\nget a member-audience list that reveals the guarantee ids).\n\nGuarantor-side only; ownership is the principal-derived guarantor\npredicate IN the statement (idx_guarantees_guarantor \u2014 no new\nindex). Cursors mint under the member-own scope\n(member.guarantees.list), so a staff cursor is a sanitized 400\nhere and vice versa (ADR-0007 cursor-scope discipline).",
+        "description": "The member's OWN pledges, keyset-paginated \u2014 the consent-inbox\ndata source: the consent/release acts on this surface finally get\na member-audience list that reveals the member's guarantee ids.\n\nGuarantor-side only; ownership is the principal-derived guarantor\npredicate IN the statement, never a post-fetch check. Cursors mint\nunder the member-own scope (member.guarantees.list), so a staff\ncursor is a sanitized 400 here and vice versa (ADR-0007\ncursor-scope discipline).",
         "operationId": "list_member_guarantees_member_guarantees_get",
         "parameters": [
           {

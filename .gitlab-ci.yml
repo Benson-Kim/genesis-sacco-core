@@ -292,6 +292,7 @@ backend:test:
     - cat backend/perf/explain_batch10.txt || true
     - cat backend/perf/explain_signin_phone.txt || true
     - cat backend/perf/explain_member_portal.txt || true
+    - cat backend/perf/explain_member_guarantees.txt || true
   coverage: '/TOTAL.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     when: always
