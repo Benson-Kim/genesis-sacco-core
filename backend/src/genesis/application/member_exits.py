@@ -133,12 +133,55 @@ _EXIT_LABEL_JOIN = (
     "AND mm.id = member_exits.member_id "
 )
 
+# -- The single audited SQL-composition site (#36) --------------------
+# A projection is STRUCTURAL SQL — column identifiers can never be
+# bound parameters — so the two code-owned lists above are interpolated
+# exactly once, HERE, and nowhere else. No runtime string can reach
+# these statements: every call site appends only static literal clauses
+# and binds every VALUE as a parameter (the get_loan house pattern).
+# test_member_exits_sql.py makes the suppressions falsifiable instead
+# of trust-me: it locks the identifier charset of the interpolated
+# constants, forbids duplicate columns (the #24 regression class), pins
+# the projection arity to ExitRecord, and pins both composed prefixes
+# byte-for-byte.
+_EXIT_SELECT = f"SELECT {_EXIT_COLS} FROM member_exits "  # noqa: S608 -- static identifiers (#36)
+_EXIT_READ_SELECT = (
+    f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608 -- static identifiers (#36)
+    f"{_EXIT_LABEL_JOIN}"
+)
+
 #: Cursor scope id: signed cursors are bound to this
 #: endpoint and this tenant — no cross-scope replay (tenant isolation).
 EXITS_LIST_SCOPE = "member_exits.list"
 
 #: Application stages that block an exit (P8 blocker set, single list).
-_OPEN_STAGES = "('submitted', 'appraisal', 'committee', 'approved')"
+#: VALUES, not identifiers — bound as parameters via open_stage_params(),
+#: never interpolated into SQL (#36).
+_OPEN_STAGES: tuple[str, ...] = ("submitted", "appraisal", "committee", "approved")
+
+#: Open-application probe — ONE copy (reuse-first) shared by the
+#: request-time blocker check and the advisory eligibility read.
+#: Fully static SQL: the stages ride in as bound parameters (#36).
+#: Module-level so the EXPLAIN capture asserts the exact statement
+#: the shared helper executes. Served by idx_applications_member.
+OPEN_APPLICATIONS_SQL = (
+    "SELECT count(*) FROM loan_applications "
+    "WHERE member_id = CAST(:m AS uuid) "
+    "AND tenant_id = CAST(:tid AS uuid) "
+    "AND stage IN (:stage0, :stage1, :stage2, :stage3)"
+)
+
+
+def open_stage_params() -> dict[str, str]:
+    """Bound-parameter map for OPEN_APPLICATIONS_SQL's stage list (#36).
+
+    The live_guarantee_params() pattern: the placeholders and the
+    values they bind come from the same code-owned tuple, so the
+    statement and its parameters can never diverge
+    (test_member_exits_sql.py locks the arity).
+    """
+    return {f"stage{i}": stage for i, stage in enumerate(_OPEN_STAGES)}
+
 
 #: Unresolved POSTED write-off claim probe — ONE copy
 #: (reuse-first) shared verbatim by the locked settlement computation and
@@ -345,14 +388,8 @@ async def _open_application_count(
 ) -> int:
     value = (
         await session.execute(
-            text(
-                # _OPEN_STAGES is a static literal chosen in code.
-                "SELECT count(*) FROM loan_applications "  # noqa: S608
-                "WHERE member_id = CAST(:m AS uuid) "
-                "AND tenant_id = CAST(:tid AS uuid) "
-                f"AND stage IN {_OPEN_STAGES}"
-            ),
-            {"m": str(member_id), "tid": str(tenant_id)},
+            text(OPEN_APPLICATIONS_SQL),
+            {"m": str(member_id), "tid": str(tenant_id), **open_stage_params()},
         )
     ).scalar_one()
     return int(value)
@@ -661,9 +698,7 @@ async def get_exit(session: AsyncSession, tenant_id: uuid.UUID, exit_id: uuid.UU
     row = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608
-                f"{_EXIT_LABEL_JOIN}"
-                "WHERE member_exits.id = CAST(:id AS uuid) "
+                _EXIT_READ_SELECT + "WHERE member_exits.id = CAST(:id AS uuid) "
                 "AND member_exits.tenant_id = CAST(:tid AS uuid)"
             ),
             {"id": str(exit_id), "tid": str(tenant_id)},
@@ -709,10 +744,7 @@ async def list_exits(
     rows = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_READ_COLS} FROM member_exits "  # noqa: S608
-                f"{_EXIT_LABEL_JOIN}"
-                f"{where}"
-                "ORDER BY member_exits.created_at DESC, "
+                _EXIT_READ_SELECT + where + "ORDER BY member_exits.created_at DESC, "
                 "member_exits.id DESC LIMIT :limit"
             ),
             params,
@@ -969,8 +1001,8 @@ async def post_settlement(
     exit_row = (
         await session.execute(
             text(
-                f"SELECT {_EXIT_COLS} FROM member_exits "  # noqa: S608
-                "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
+                _EXIT_SELECT
+                + "WHERE id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) FOR UPDATE"
             ),
             {"id": str(exit_id), "tid": str(tenant_id)},
         )
