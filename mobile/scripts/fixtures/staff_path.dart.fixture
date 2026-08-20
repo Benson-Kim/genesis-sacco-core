@@ -1,0 +1,9 @@
+// Fixture: a staff API path in the member app. Rejected by sweep 2.
+// The member surface is /member/*. Naming a staff route is principal
+// confusion even when the server would answer 403 (FM-H).
+class Wrong {
+  static const String path = '/members/123/statement';
+  static const String permissions = '/me/permissions';
+  // Dart takes either quote, so the sweep must too.
+  static const String exits = "/member-exits/1/settlement";
+}

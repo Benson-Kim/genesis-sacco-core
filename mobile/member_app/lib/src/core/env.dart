@@ -3,7 +3,7 @@
 /// Owner sign-off, 2026-08-20: the tenant is baked at build time. There is no
 /// runtime tenant switcher, and this is a security decision, not a packaging
 /// preference: a switcher makes the tenant a value the CLIENT asserts, which
-/// is the client-side half of the principal-confusion class the whole
+/// is the client side half of the principal confusion class the whole
 /// `/member` surface is designed to exclude.
 ///
 /// Everything here is `const` and read from `--dart-define` at compile time,

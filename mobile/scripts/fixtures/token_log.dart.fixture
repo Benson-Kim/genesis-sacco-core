@@ -1,0 +1,7 @@
+// Fixture: a token reaching a log sink. Rejected by sweep 3.
+// Log lines and crash payloads outlive the session they describe (FM-A).
+class Wrong {
+  void trace(String accessToken) {
+    print('sending with accessToken=$accessToken');
+  }
+}

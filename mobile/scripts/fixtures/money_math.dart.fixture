@@ -1,0 +1,9 @@
+// Fixture: client money math. Rejected by sweep 1.
+// Money is a server-rendered decimal string. The moment a client adds two of
+// them it has invented a figure the ledger never produced.
+class Wrong {
+  String render(String depositBalance, String shareBalance) {
+    final double total = double.parse(depositBalance) + double.parse(shareBalance);
+    return total.toString();
+  }
+}

@@ -29,7 +29,7 @@ import 'package:meta/meta.dart';
 ///
 /// Owner decision, 2026-08-20: #42 Option 1 (own-key SPKI custody) is adopted
 /// NOW, while ENFORCEMENT waits for the #11 hosting cutover — the current
-/// shared-host chain is not the chain the fleet will meet in production, so
+/// shared host chain is not the chain the fleet will meet in production, so
 /// enforcing against it would pin the wrong key and brick the fleet at
 /// cutover. Flavors ship [report] until the exit completes, then [enforce].
 enum PinEnforcement {

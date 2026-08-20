@@ -1,0 +1,118 @@
+# =============================================================================
+# Genesis Prestige — GitHub Actions mirror of the mobile jobs in .gitlab-ci.yml
+# (the single source of truth — see README "CI parity"). Job-for-job:
+#   mobile:analyze -> mobile:test        (needs chain, Flutter stable)
+#   mobile:codegen-drift                 (independent, regenerate + diff)
+#
+# The guard sweeps are NOT reimplemented here. Both pipelines run the same
+# mobile/scripts/guard_sweeps.sh, because a gate that is written twice is a
+# gate that will eventually mean two different things.
+#
+# GitLab `rules:exists` on mobile/**/pubspec.yaml translates to a paths filter
+# plus a guard step, so the workflow is a no-op on branches without mobile/.
+# =============================================================================
+name: mobile
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['**']
+  pull_request:
+
+concurrency:
+  group: mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `mobile:analyze`.
+  # ---------------------------------------------------------------------------
+  mobile-analyze:
+    name: "mobile:analyze"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the workspace is absent
+        id: guard
+        run: |
+          if ls mobile/*/pubspec.yaml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.guard.outputs.present == 'true'
+        with:
+          channel: stable
+
+      - name: Format and analyze every package
+        if: steps.guard.outputs.present == 'true'
+        run: |
+          for package in mobile/*/; do
+            if [ -f "${package}pubspec.yaml" ]; then
+              (cd "$package" && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze)
+            fi
+          done
+
+      - name: Guard sweeps (money math, staff paths, tokens in logs, imports)
+        if: steps.guard.outputs.present == 'true'
+        run: bash mobile/scripts/guard_sweeps.sh
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `mobile:test`.
+  # ---------------------------------------------------------------------------
+  mobile-test:
+    name: "mobile:test"
+    runs-on: ubuntu-latest
+    needs: [mobile-analyze]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the workspace is absent
+        id: guard
+        run: |
+          if ls mobile/*/pubspec.yaml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.guard.outputs.present == 'true'
+        with:
+          channel: stable
+
+      - name: Run every package's tests
+        if: steps.guard.outputs.present == 'true'
+        run: |
+          for package in mobile/*/; do
+            if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
+              (cd "$package" && flutter pub get && flutter test)
+            fi
+          done
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `mobile:codegen-drift`. Regenerates the client from the
+  # committed OpenAPI snapshot and fails on any diff — a hand-edited or stale
+  # generated tree is a red pipeline.
+  # ---------------------------------------------------------------------------
+  mobile-codegen-drift:
+    name: "mobile:codegen-drift"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the generator config is absent
+        id: guard
+        run: |
+          if [ -f mobile/gp_api_client/openapi-generator-config.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Regenerate and diff
+        if: steps.guard.outputs.present == 'true'
+        run: bash mobile/scripts/regenerate_api_client.sh --check

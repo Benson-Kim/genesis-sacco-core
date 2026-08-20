@@ -4,7 +4,7 @@
 ///
 /// 1. **Proactive, single-flight refresh.** The access token is refreshed
 ///    BEFORE a request when it is close to expiry — not reactively after a
-///    401. Concurrent callers share one in-flight refresh. Refresh tokens
+///    401. Concurrent callers await one refresh, not ten. Refresh tokens
 ///    rotate and reuse revokes the whole family, so ten parallel refreshes are
 ///    not ten chances to succeed: they are nine reuses that kill the session.
 ///    Ported from the web's `getValidAccessToken` (`web/src/modules/auth/
