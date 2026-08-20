@@ -39,7 +39,7 @@ from genesis.api.auth import (
     _rate_guard,
     tenant_id_from_headers,
 )
-from genesis.api.authz import RequireMemberPrincipal
+from genesis.api.authz import RequireMemberPrincipal, RequireMemberReadPrincipal
 from genesis.api.loans import GuaranteeOut, _guarantee_out
 from genesis.api.members import StatementLineOut, StatementResponse
 from genesis.application import guarantees as guarantees_service
@@ -56,8 +56,16 @@ from genesis.settings import get_settings
 router = APIRouter(prefix="/member", tags=["member"])
 
 _member_principal = RequireMemberPrincipal()
+# The READ surface's gate: the same two fences PLUS a per-credential rate
+# bucket spent BEFORE the live-link database re-check — ONE bucket shared
+# across all five read routes, keyed on the decoded token's tenant +
+# credential id (see RequireMemberReadPrincipal). The consent/release
+# POSTs keep the plain gate: money-moving, low-frequency, already
+# serialized under the guarantee row lock.
+_member_read_principal = RequireMemberReadPrincipal()
 
 MemberCtx = Annotated[MemberAuthContext, Depends(_member_principal)]
+MemberReadCtx = Annotated[MemberAuthContext, Depends(_member_read_principal)]
 
 
 class MemberActBody(BaseModel):
@@ -320,7 +328,7 @@ def _installment_out(row: loans_service.ScheduleRow) -> MemberInstallmentOut:
 
 
 @router.get("/me")
-async def get_member_me(ctx: MemberCtx) -> MemberMeOut:
+async def get_member_me(ctx: MemberReadCtx) -> MemberMeOut:
     """The authenticated member's profile, balances and loan summary
     (ADR-0007). Identity comes ONLY from the live-linked credential —
     there is no member id to pass and nothing to get wrong."""
@@ -344,7 +352,7 @@ async def get_member_me(ctx: MemberCtx) -> MemberMeOut:
 
 @router.get("/transactions")
 async def list_member_transactions(
-    ctx: MemberCtx,
+    ctx: MemberReadCtx,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> MemberTransactionListResponse:
@@ -367,7 +375,7 @@ async def list_member_transactions(
 
 @router.get("/loans")
 async def list_member_loans(
-    ctx: MemberCtx,
+    ctx: MemberReadCtx,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> MemberLoanListResponse:
@@ -388,7 +396,7 @@ async def list_member_loans(
 
 
 @router.get("/loans/{loan_id}")
-async def get_member_loan(loan_id: uuid.UUID, ctx: MemberCtx) -> MemberLoanDetailOut:
+async def get_member_loan(loan_id: uuid.UUID, ctx: MemberReadCtx) -> MemberLoanDetailOut:
     """One OWN loan with schedule/installment status (ADR-0007).
 
     Ownership is enforced IN the query via the principal-derived member
@@ -408,7 +416,7 @@ async def get_member_loan(loan_id: uuid.UUID, ctx: MemberCtx) -> MemberLoanDetai
 
 @router.get("/statement")
 async def get_member_statement(
-    ctx: MemberCtx,
+    ctx: MemberReadCtx,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> StatementResponse:

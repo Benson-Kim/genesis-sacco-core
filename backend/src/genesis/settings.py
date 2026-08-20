@@ -25,6 +25,18 @@ class Settings(BaseSettings):
     # reverse proxy, set trusted_proxy_ips (below) so the bucket keys on
     # the forwarded client IP instead of the proxy's own address.
     auth_rate_limit_ip_per_minute: int = 240
+    # Per-credential limit shared by ALL member READ routes (/member/me,
+    # /member/transactions, /member/loans, /member/loans/{id},
+    # /member/statement): ONE bucket across the five routes, keyed on the
+    # tenant + credential id from the DECODED member token — never a
+    # header, never an IP (mobile carrier CGNAT would collateral-throttle
+    # thousands of legitimate members behind one egress). A per-route
+    # split would multiply an abuser's budget by five, so the surface
+    # shares a single budget. The default assumes screen-load fan-out
+    # (dashboard opening me + transactions + loans in parallel, plus
+    # pull-to-refresh); verify against the real app's burst profile
+    # before production.
+    member_read_rate_limit_per_minute: int = 120
     # Comma-separated list of browser origins allowed to call this API.
     # Example: "http://localhost:3000,https://admin.example.com"
     # Stored as a plain string so pydantic-settings does not attempt JSON

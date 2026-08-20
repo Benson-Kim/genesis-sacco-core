@@ -17,8 +17,9 @@ from genesis.application.auth import (
 )
 from genesis.application.member_auth import live_credential_by_id
 from genesis.domain.rbac import Action, Module
-from genesis.errors import ForbiddenError, UnauthenticatedError
+from genesis.errors import ForbiddenError, RateLimitedError, UnauthenticatedError
 from genesis.infrastructure.db import get_sessionmaker
+from genesis.infrastructure.rate_limit import consume_rate_limit
 from genesis.infrastructure.tenancy import tenant_session
 from genesis.settings import get_settings
 
@@ -83,11 +84,64 @@ class RequireMemberPrincipal:
 
     async def __call__(self, request: Request) -> MemberAuthContext:
         ctx = decode_member_access_token(_bearer_token(request))
+        await self._verify_live_link(ctx)
+        return ctx
+
+    @staticmethod
+    async def _verify_live_link(ctx: MemberAuthContext) -> None:
+        """The LIVE LINK fence (see the class docstring) — the ONE database
+        touch of the gate, factored out so subclasses can order their own
+        checks before the session is opened."""
         factory = get_sessionmaker(get_settings().database_url)
         async with tenant_session(factory, ctx.tenant_id) as session:
             credential = await live_credential_by_id(session, ctx.tenant_id, ctx.credential_id)
         if credential is None or credential.member_id != ctx.member_id:
             raise UnauthenticatedError("member credential is not active")
+
+
+class RequireMemberReadPrincipal(RequireMemberPrincipal):
+    """RequireMemberPrincipal with a per-credential rate bucket SPENT
+    BEFORE the live-link database re-check (the member READ surface).
+
+    Ordering is the point: every member read costs two database
+    sessions (this gate's live-link re-check plus the read itself), so
+    a guard that ran after the re-check would still pay the first
+    session for every over-limit request. Here an over-limit request is
+    denied with ZERO sessions opened:
+
+      decode (pure JWT, no DB) -> bucket spend (Redis) -> live link (DB).
+
+    ONE bucket is shared across ALL member read routes — a per-route
+    split would multiply an abuser's budget by the number of routes.
+    The key is the tenant + credential id from the DECODED token:
+    the credential is what the token proves (a re-pointed credential
+    can never inherit a fresh bucket by pointing at a new member), the
+    tenant never comes from a header (rotating header values must not
+    mint buckets), and there is no IP component (carrier CGNAT would
+    collateral-throttle every member behind one egress). Garbage or
+    absent bearer tokens die at decode — no bucket needed, no DB touched.
+
+    FAIL CLOSED on a limiter outage, with NO logout-style carve-out:
+    a denied read never strands a stolen token, and failing open under
+    a Redis outage is exactly the pool-pressure scenario this guard
+    exists to prevent. The 429 carries the standard Retry-After hint.
+
+    The consent/release POST routes deliberately keep the plain
+    RequireMemberPrincipal gate: they are money-moving, low-frequency,
+    and already serialized under the guarantee row lock.
+    """
+
+    async def __call__(self, request: Request) -> MemberAuthContext:
+        ctx = decode_member_access_token(_bearer_token(request))
+        decision = await consume_rate_limit(
+            f"member:read:{ctx.tenant_id}:{ctx.credential_id}",
+            get_settings().member_read_rate_limit_per_minute,
+        )
+        if not decision.allowed:
+            raise RateLimitedError(
+                "member read rate limit exceeded", retry_after=decision.retry_after
+            )
+        await self._verify_live_link(ctx)
         return ctx
 
 
