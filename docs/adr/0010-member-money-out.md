@@ -368,7 +368,7 @@ convention) lives on a new `payout_intents` table (+ append-only
   notice state; the member read surface (§9) and the staff pending
   register present BOTH. The one-hold-register alternative (extend
   !17's table expand-only) is recorded as a rejected alternative and
-  flagged on #44 as a gap work item so a human can overrule before
+  filed as gap work item **#47** so a human can overrule before
   implementation.
 - `held→submitted`: the B2C call happens OUTSIDE any row lock
   (gate 1.3 — three short transactions, the !19 §1 pattern); the
@@ -632,8 +632,7 @@ Rollback of this ADR: delete the file.
    withdrawal.
 2. One-hold-register overrule (§6): accept the expand-only ALTER of
    `withdrawal_holds` instead of the `payout_intents.held_notice`
-   state? Decide before the implementation MR (gap work item filed
-   on #44).
+   state? Decide before the implementation MR (gap work item #47).
 3. Tenant default values: step-up threshold, post-MSISDN-change
    delay/first-payout cap, maker-checker threshold; v2: cooling-off
    duration, first-send cap, beneficiary count cap.
