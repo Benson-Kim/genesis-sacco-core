@@ -183,6 +183,9 @@ def decode_expression(schema: dart_type.__annotations__["schema"], required: boo
         item_ref = item.get("$ref")
         if isinstance(item_ref, str):
             element = f"{ref_name(item_ref)}.fromJson(e! as Map<String, Object?>)"
+        elif item_type == "Object?":
+            # `e! as Object?` is an unnecessary_cast: every value already is one.
+            element = "e"
         else:
             element = f"e! as {item_type}"
         listing = (
@@ -191,6 +194,9 @@ def decode_expression(schema: dart_type.__annotations__["schema"], required: boo
         return f"{raw} == null ? null : {listing}" if optional else listing
 
     target = dart_type(schema, required)
+    if target == "Object?":
+        # Casting anything to Object? is a no-op the analyzer rejects.
+        return raw
     return f"{raw} as {target}"
 
 

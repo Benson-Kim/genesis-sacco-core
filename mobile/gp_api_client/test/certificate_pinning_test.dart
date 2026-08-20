@@ -17,6 +17,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,6 +98,27 @@ void main() {
       );
     });
 
+    test('refuses enforce mode without our own certificate', () {
+      // Enforcing while still trusting the public store is the posture pinning
+      // exists to replace. A mode that only looks enforced is worse than an
+      // honest report mode, so construction fails instead.
+      expect(
+        () => CertificatePinning(pins: twoPins, enforcement: PinEnforcement.enforce),
+        throwsArgumentError,
+      );
+    });
+
+    test('accepts enforce mode when our certificate is supplied', () {
+      expect(
+        () => CertificatePinning(
+          pins: twoPins,
+          enforcement: PinEnforcement.enforce,
+          trustedCertificate: <int>[1, 2, 3],
+        ),
+        returnsNormally,
+      );
+    });
+
     test('rejects a digest that is not 32 bytes', () {
       expect(
         () => CertificatePinning(
@@ -105,6 +127,52 @@ void main() {
         ),
         throwsArgumentError,
       );
+    });
+  });
+
+  group('verifyPeer', () {
+    final List<String> twoPins = <String>[
+      base64.encode(List<int>.filled(32, 1)),
+      base64.encode(List<int>.filled(32, 2)),
+    ];
+
+    test('report mode reports a mismatch and lets the connection stand', () {
+      String? observed;
+      final CertificatePinning pinning = CertificatePinning(
+        pins: twoPins,
+        enforcement: PinEnforcement.report,
+        onMismatch: (String pin) => observed = pin,
+      );
+
+      // A null certificate is the strongest mismatch there is.
+      expect(() => pinning.verifyPeer(null), returnsNormally);
+      expect(observed, '<none>');
+    });
+
+    test('enforce mode refuses a mismatch', () {
+      final CertificatePinning pinning = CertificatePinning(
+        pins: twoPins,
+        enforcement: PinEnforcement.enforce,
+        trustedCertificate: <int>[1, 2, 3],
+      );
+
+      expect(() => pinning.verifyPeer(null), throwsA(isA<TlsException>()));
+    });
+
+    test('report mode still calls onMismatch, or the pre-cutover period is blind', () {
+      // The whole point of shipping report before the hosting cutover is early
+      // warning. Drop the callback and this fails.
+      int calls = 0;
+      final CertificatePinning pinning = CertificatePinning(
+        pins: twoPins,
+        enforcement: PinEnforcement.report,
+        onMismatch: (String _) => calls++,
+      );
+
+      pinning.verifyPeer(null);
+      pinning.verifyPeer(null);
+
+      expect(calls, 2);
     });
   });
 }

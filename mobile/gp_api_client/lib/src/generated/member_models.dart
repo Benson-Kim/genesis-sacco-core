@@ -213,8 +213,8 @@ class ValidationError {
 
   factory ValidationError.fromJson(Map<String, Object?> json) => ValidationError(
         ctx: json['ctx'] as Map<String, Object?>?,
-        input: json['input'] as Object?,
-        loc: (json['loc']! as List<Object?>).map((Object? e) => e! as Object?).toList(growable: false),
+        input: json['input'],
+        loc: (json['loc']! as List<Object?>).map((Object? e) => e).toList(growable: false),
         msg: json['msg'] as String,
         type: json['type'] as String,
       );

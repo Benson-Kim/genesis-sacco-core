@@ -67,11 +67,8 @@ class GpHttpClient {
   final PathGuard? _pathGuard;
   final http.Client _inner;
 
-  static http.Client _pinnedClient(CertificatePinning? pinning) {
-    final HttpClient io = HttpClient();
-    pinning?.install(io);
-    return IOClient(io);
-  }
+  static http.Client _pinnedClient(CertificatePinning? pinning) =>
+      IOClient(pinning?.buildClient() ?? HttpClient(), pinning);
 
   Future<Map<String, Object?>> get(String path, {Map<String, String>? query}) async {
     final http.Response response = await _send(
@@ -107,7 +104,8 @@ class GpHttpClient {
     String path,
     Map<String, String>? query,
   ) async {
-    if (_pathGuard != null && !_pathGuard(path)) {
+    final PathGuard? guard = _pathGuard;
+    if (guard != null && !guard(path)) {
       throw ArgumentError.value(path, 'path', 'Path is outside this client\'s allowed surface');
     }
     final Uri uri = _baseUrl.replace(
@@ -180,9 +178,10 @@ class GpHttpClient {
 /// `http/io_client.dart`'s public surface, so the pinned [HttpClient] is the
 /// only path to the network.
 class IOClient extends http.BaseClient {
-  IOClient(this._io);
+  IOClient(this._io, [this._pinning]);
 
   final HttpClient _io;
+  final CertificatePinning? _pinning;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
@@ -193,6 +192,10 @@ class IOClient extends http.BaseClient {
       ioRequest.add(body);
     }
     final HttpClientResponse ioResponse = await ioRequest.close();
+    // The SPKI half of the pin check. Under enforce this is a second gate
+    // behind the trust-anchor restriction that already governed the handshake;
+    // under report it is the staleness signal.
+    _pinning?.verifyPeer(ioResponse.certificate);
     final Map<String, String> headers = <String, String>{};
     ioResponse.headers.forEach((String name, List<String> values) {
       headers[name] = values.join(', ');

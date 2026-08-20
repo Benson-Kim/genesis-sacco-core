@@ -61,6 +61,7 @@ class CertificatePinning {
   CertificatePinning({
     required this.pins,
     required this.enforcement,
+    this.trustedCertificate,
     this.onMismatch,
   }) {
     // A throw, not an assert: asserts are compiled OUT of release builds, so
@@ -79,10 +80,25 @@ class CertificatePinning {
         throw ArgumentError.value(pin, 'pins', 'Not a base64 SHA-256 digest (expected 32 bytes)');
       }
     }
+    if (enforcement == PinEnforcement.enforce && trustedCertificate == null) {
+      // Enforcement without our own certificate would fall back to the public
+      // trust store, which is the posture pinning exists to replace. Refuse to
+      // build rather than ship a mode that only looks enforced.
+      throw ArgumentError.value(
+        trustedCertificate,
+        'trustedCertificate',
+        'enforce mode requires our own certificate (PEM bytes) as the sole trust anchor',
+      );
+    }
   }
 
   final List<String> pins;
   final PinEnforcement enforcement;
+
+  /// PEM bytes of the certificate (or issuing CA) WE own. Required under
+  /// [PinEnforcement.enforce]; unused under [PinEnforcement.report], where the
+  /// public trust store still applies and only [verifyPeer] reports.
+  final List<int>? trustedCertificate;
 
   /// Telemetry seam. Called on every mismatch in BOTH modes — in [report] mode
   /// this is the only signal that the pin set has gone stale, so a flavor that
@@ -95,33 +111,52 @@ class CertificatePinning {
 
   bool matches(X509Certificate certificate) => pins.contains(spkiPinOf(certificate));
 
-  /// Installs the check on [client]. Every connection the client opens is
-  /// inspected after the TLS handshake and before any request byte is
-  /// written; on a mismatch under [PinEnforcement.enforce] the socket is
-  /// destroyed and the connection attempt fails.
-  void install(HttpClient client) {
-    client.connectionFactory = (Uri url, String? proxyHost, int? proxyPort) async {
-      final ConnectionTask<SecureSocket> task = await SecureSocket.startConnect(
-        proxyHost ?? url.host,
-        proxyPort ?? (url.port == 0 ? 443 : url.port),
-      );
-      return ConnectionTask<Socket>.fromSocket(
-        task.socket.then((SecureSocket socket) {
-          final X509Certificate? certificate = socket.peerCertificate;
-          if (certificate == null || !matches(certificate)) {
-            final String observed =
-                certificate == null ? '<none>' : spkiPinOf(certificate);
-            onMismatch?.call(observed);
-            if (enforcement == PinEnforcement.enforce) {
-              socket.destroy();
-              throw const TlsException('Certificate pin mismatch: connection refused.');
-            }
-          }
-          return socket;
-        }),
-        task.cancel,
-      );
-    };
+  /// The HTTP client this pin set permits.
+  ///
+  /// Under [PinEnforcement.enforce] the client is built on a [SecurityContext]
+  /// that trusts ONLY [trustedCertificate] -- the platform then refuses the
+  /// handshake for anything that does not chain to our own certificate, before
+  /// a single request byte is written (FM-E).
+  ///
+  /// A note on what was tried first: the natural-looking approach is to
+  /// intercept the socket via `HttpClient.connectionFactory` and check the
+  /// peer certificate there. Dart does not allow it -- `ConnectionTask` has no
+  /// public constructor, so a factory can only forward a task from
+  /// `Socket.startConnect`, never wrap one. `badCertificateCallback` is not an
+  /// option either: it fires only when the platform's own chain validation has
+  /// ALREADY failed, so a rogue certificate that some CA validly signed never
+  /// reaches it. Restricting the trust anchors is the mechanism the platform
+  /// actually offers, and it fails closed.
+  HttpClient buildClient() {
+    final HttpClient client;
+    if (enforcement == PinEnforcement.enforce) {
+      final SecurityContext context = SecurityContext(withTrustedRoots: false)
+        ..setTrustedCertificatesBytes(trustedCertificate!);
+      client = HttpClient(context: context);
+    } else {
+      client = HttpClient();
+    }
+    // Never accept a chain the platform rejected, in either mode.
+    client.badCertificateCallback = (X509Certificate _, String __, int ___) => false;
+    return client;
+  }
+
+  /// Verifies the leaf key of a completed connection against the pin set.
+  ///
+  /// This is the SPKI half, and it runs in BOTH modes: under [enforce] it is a
+  /// second gate behind the trust-anchor restriction (a certificate can chain
+  /// correctly and still carry the wrong key); under [report] it is the only
+  /// signal that the pin set has gone stale, which is what makes the pre-cutover
+  /// period informative rather than blind.
+  void verifyPeer(X509Certificate? certificate) {
+    if (certificate != null && matches(certificate)) {
+      return;
+    }
+    final String observed = certificate == null ? '<none>' : spkiPinOf(certificate);
+    onMismatch?.call(observed);
+    if (enforcement == PinEnforcement.enforce) {
+      throw const TlsException('Certificate pin mismatch: connection refused.');
+    }
   }
 
   /// Walks the certificate DER far enough to return the SubjectPublicKeyInfo
