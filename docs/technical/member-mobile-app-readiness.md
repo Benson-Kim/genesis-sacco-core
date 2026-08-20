@@ -27,6 +27,31 @@ current. The export bundle is also fetched here as `refs/remotes/export/*` for a
 
 ---
 
+## 0b. CI is not currently an arbiter — owner action
+
+**GitHub Actions is blocked on billing across the whole repository.** Every
+workflow run fails before starting, with:
+
+> The job was not started because recent account payments have failed or your
+> spending limit needs to be increased.
+
+This is **pre-existing and repository-wide**, not caused by any mobile change:
+every `backend`, `web` and `security` run on `develop` today (17:32, 18:55,
+19:06 UTC) failed the same way, as does the MR-0 pull request.
+
+Consequences while it stands:
+
+1. **No Dart in this repository has ever been compiled or tested.** MR-0's tests are written to be falsifiable, but they are unexecuted. The house rule "let CI arbitrate" has no arbiter.
+2. GitLab (`actte-group/sacco`) is where the green pipelines cited across the issue tracker actually ran. This working copy has **no GitLab remote and no GitLab token**, so that arbiter is unreachable from here too.
+
+Three ways out, any one sufficient: settle the GitHub billing; configure a
+GitLab remote plus token so branches can be pushed where the runners work; or
+install the Flutter SDK locally so `flutter analyze` and `flutter test` can run
+before anything is pushed. The last is the only one that does not require an
+account change, and it is the only one that gives fast feedback while building.
+
+---
+
 ## 1. The member API contract
 
 Money is a server-rendered decimal string on every shape below. Every list is keyset-paginated,
