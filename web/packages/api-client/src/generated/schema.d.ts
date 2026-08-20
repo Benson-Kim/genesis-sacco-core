@@ -1476,6 +1476,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/member/guarantees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Member Guarantees
+         * @description The member's OWN pledges, keyset-paginated (#41 — the P17
+         *     consent-inbox data source; the consent/release ACTS above finally
+         *     get a member-audience list that reveals the guarantee ids).
+         *
+         *     Guarantor-side only; ownership is the principal-derived guarantor
+         *     predicate IN the statement (idx_guarantees_guarantor — no new
+         *     index). Cursors mint under the member-own scope
+         *     (member.guarantees.list), so a staff cursor is a sanitized 400
+         *     here and vice versa (ADR-0007 cursor-scope discipline).
+         */
+        get: operations["list_member_guarantees_member_guarantees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/member/guarantees/{guarantee_id}/consent": {
         parameters: {
             query?: never;
@@ -3843,6 +3871,39 @@ export interface components {
             status: string;
             /** Type */
             type: string;
+            /** Version */
+            version: number;
+        };
+        /** MemberGuaranteeListResponse */
+        MemberGuaranteeListResponse: {
+            /** Items */
+            items: components["schemas"]["MemberGuaranteeOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * MemberGuaranteeOut
+         * @description One OWN pledge row on the member guarantees inbox (#41).
+         *
+         *     Shaped through the canonical _guarantee_out (reuse-first, gate 1.1)
+         *     with the staff-only fields SUBTRACTED (least disclosure): no
+         *     application/loan UUIDs (internal ids), no guarantor_member_id (the
+         *     rows are the principal's own by construction) and no
+         *     borrower_member_id — no borrower PII beyond what the consent screen
+         *     already requires. loan_ref is the human reference (LN-XXXX, 0048)
+         *     once the loan is disbursed, None while the pledge backs an
+         *     application; version pins the optimistic lock for the
+         *     consent/release acts on this same surface.
+         */
+        MemberGuaranteeOut: {
+            /** Amount */
+            amount: string;
+            /** Id */
+            id: string;
+            /** Loan Ref */
+            loan_ref: string | null;
+            /** Status */
+            status: string;
             /** Version */
             version: number;
         };
@@ -7773,6 +7834,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_member_guarantees_member_guarantees_get: {
+        parameters: {
+            query?: {
+                status?: ("pledged" | "active" | "released") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberGuaranteeListResponse"];
                 };
             };
             /** @description Validation Error */

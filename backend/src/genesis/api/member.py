@@ -26,7 +26,7 @@ state never replays across the staff/member boundary.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -432,4 +432,76 @@ async def get_member_statement(
             for line in page.items
         ],
         next_cursor=page.next_cursor,
+    )
+
+
+class MemberGuaranteeOut(BaseModel):
+    """One OWN pledge row on the member guarantees inbox (#41).
+
+    Shaped through the canonical _guarantee_out (reuse-first, gate 1.1)
+    with the staff-only fields SUBTRACTED (least disclosure): no
+    application/loan UUIDs (internal ids), no guarantor_member_id (the
+    rows are the principal's own by construction) and no
+    borrower_member_id — no borrower PII beyond what the consent screen
+    already requires. loan_ref is the human reference (LN-XXXX, 0048)
+    once the loan is disbursed, None while the pledge backs an
+    application; version pins the optimistic lock for the
+    consent/release acts on this same surface.
+    """
+
+    id: str
+    loan_ref: str | None
+    amount: str
+    status: str
+    version: int
+
+
+class MemberGuaranteeListResponse(BaseModel):
+    items: list[MemberGuaranteeOut]
+    next_cursor: str | None
+
+
+def _member_guarantee_out(
+    item: guarantees_service.MemberGuaranteeItem,
+) -> MemberGuaranteeOut:
+    # Reuse-first: the staff shaping renders the row (canonical decimal
+    # strings, status verbatim); this surface subtracts, never re-shapes.
+    staff = _guarantee_out(item.record)
+    return MemberGuaranteeOut(
+        id=staff.id,
+        loan_ref=item.loan_ref,
+        amount=staff.amount,
+        status=staff.status,
+        version=staff.version,
+    )
+
+
+# TODO(#31): once the member-read rate-limit MR lands (introducing
+# RequireMemberReadPrincipal), gate this route with it instead of
+# RequireMemberPrincipal so the guarantees inbox shares the
+# member-read bucket with the other ADR-0007 reads.
+@router.get("/guarantees")
+async def list_member_guarantees(
+    ctx: MemberCtx,
+    status: Annotated[Literal["pledged", "active", "released"] | None, Query()] = None,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> MemberGuaranteeListResponse:
+    """The member's OWN pledges, keyset-paginated (#41 — the P17
+    consent-inbox data source; the consent/release ACTS above finally
+    get a member-audience list that reveals the guarantee ids).
+
+    Guarantor-side only; ownership is the principal-derived guarantor
+    predicate IN the statement (idx_guarantees_guarantor — no new
+    index). Cursors mint under the member-own scope
+    (member.guarantees.list), so a staff cursor is a sanitized 400
+    here and vice versa (ADR-0007 cursor-scope discipline).
+    """
+    factory = get_sessionmaker(get_settings().database_url)
+    async with tenant_session(factory, ctx.tenant_id) as session:
+        items, next_cursor = await member_portal_service.list_member_guarantees(
+            session, ctx.tenant_id, ctx.member_id, status=status, cursor=cursor, limit=limit
+        )
+    return MemberGuaranteeListResponse(
+        items=[_member_guarantee_out(x) for x in items], next_cursor=next_cursor
     )

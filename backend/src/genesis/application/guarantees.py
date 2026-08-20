@@ -36,6 +36,12 @@ from genesis.application.loan_applications import (
 )
 from genesis.application.member_auth import live_credential_by_id
 from genesis.application.outbox import enqueue_event
+from genesis.application.pagination import (
+    build_created_id_cursor,
+    decode_cursor,
+    encode_cursor,
+    parse_created_id_cursor,
+)
 from genesis.domain.lending import ApplicationStage
 from genesis.domain.members import MemberStatus, MoneyOperation, member_may
 from genesis.domain.money import ZERO, to_cents
@@ -1039,3 +1045,151 @@ async def substitute_guarantee(
         version=replacement_version,
     )
     return released, replacement
+
+
+# ---------------------------------------------------------------------------
+# #41 — the member's OWN pledge listing (the P17 consent-inbox data source)
+# ---------------------------------------------------------------------------
+
+#: Cursor scope id for the MEMBER self-service guarantees listing
+#: (#41, ADR-0007 cursor-scope discipline): cursors mint under this
+#: member-OWN scope, so a staff cursor is a sanitized 400 on
+#: GET /member/guarantees and a member guarantees cursor is a
+#: sanitized 400 on every staff route — the FM1 audience separation
+#: extended to pagination state, exactly like MEMBER_LOANS_SCOPE.
+MEMBER_GUARANTEES_SCOPE = "member.guarantees.list"
+
+#: Table-qualified guarantee columns for the member pledge listing:
+#: the statement joins loans (alias ll) for the human loan_ref, and
+#: guarantees/loans share column names (id, application_id, amount,
+#: status, version), so bare _G_COLS would be ambiguous. Module-level
+#: so the EXPLAIN structural gate (tests/test_member_guarantees_explain.py)
+#: asserts the exact production statement (the EXPLAIN-capture
+#: convention).
+_MEMBER_GUARANTEE_COLS = (
+    "guarantees.id, guarantees.application_id, guarantees.loan_id, "
+    "guarantees.guarantor_member_id, guarantees.borrower_member_id, "
+    "guarantees.amount, guarantees.status, guarantees.version"
+)
+
+#: Human loan-reference join (LN-XXXX, 0048): rides the loans PRIMARY
+#: KEY per page row plus the explicit tenant predicate (index-served,
+#: no new index — the _LOAN_LABEL_JOINS posture). LEFT JOIN keeps the
+#: inbox honest for undisbursed pledges: loan_id is NULL until the P7
+#: disbursement links it, and a missing loan row must never drop a
+#: pledge the member is being asked to consent to.
+_MEMBER_GUARANTEE_LOAN_JOIN = (
+    "LEFT JOIN loans ll ON ll.tenant_id = guarantees.tenant_id AND ll.id = guarantees.loan_id "
+)
+
+#: Status-filter whitelist: exactly the schema CHECK set (0001). The
+#: API layer already rejects anything else at validation (a Literal
+#: query param); this is defence in depth so the service can never
+#: interpolate an unvetted value — the value itself is still a bound
+#: parameter either way (v1.1 rule 6).
+MEMBER_GUARANTEE_STATUS_FILTERS = frozenset({"pledged", "active", "released"})
+
+
+@dataclass(frozen=True)
+class MemberGuaranteeItem:
+    """One OWN pledge row for the member guarantees listing (#41).
+
+    The full GuaranteeRecord (so the API reuses the canonical
+    _guarantee_out shaping — reuse-first — and SUBTRACTS staff-only
+    fields; least disclosure is decided at the surface) plus the human
+    loan reference resolved server-side in the same statement.
+    """
+
+    record: GuaranteeRecord
+    loan_ref: str | None
+
+
+async def list_member_guarantees(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    guarantor_member_id: uuid.UUID,
+    *,
+    status: str | None = None,
+    cursor: str | None = None,
+    limit: int = 20,
+    cursor_scope: str = MEMBER_GUARANTEES_SCOPE,
+) -> tuple[list[MemberGuaranteeItem], str | None]:
+    """Keyset-paginated OWN pledges, newest first, page cap 100 (#41).
+
+    guarantor_member_id is ALWAYS the principal-derived id from the
+    authenticated MemberAuthContext (ADR-0007): ownership is the
+    guarantor predicate IN the statement — never fetch-then-check —
+    so another member's pledges simply never enter the page. The
+    guarantor-side ONLY: rows where the member is the BORROWER belong
+    to the loan surface, not the consent inbox.
+
+    The probe rides idx_guarantees_guarantor (0001: tenant_id,
+    guarantor_member_id) — this read ships NO migration; the residual
+    top-N order runs over ONE member's pledges only (bounded by
+    guarantorship reality, never the tenant book — the idx_loans_member
+    posture). Explicit tenant predicate on top of forced RLS (defence
+    in depth); every value is a bound parameter (v1.1 rule 6).
+    """
+    limit = max(1, min(limit, 100))
+    clauses: list[str] = [
+        "guarantees.tenant_id = CAST(:tid AS uuid)",
+        "guarantees.guarantor_member_id = CAST(:g AS uuid)",
+    ]
+    params: dict[str, object] = {
+        "tid": str(tenant_id),
+        "g": str(guarantor_member_id),
+        "limit": limit + 1,
+    }
+    if status is not None:
+        if status not in MEMBER_GUARANTEE_STATUS_FILTERS:
+            raise InvalidInputError("invalid guarantee status filter")
+        clauses.append("guarantees.status = :status")
+        params["status"] = status
+    if cursor:
+        # Opaque signed cursor: verify+unseal under the member-own
+        # scope first; the plaintext parse stays as defence in depth.
+        inner = decode_cursor(
+            cursor, tenant_id=tenant_id, endpoint=cursor_scope, entity="guarantee"
+        )
+        params["c_ts"], params["c_id"] = parse_created_id_cursor(inner, entity="guarantee")
+        clauses.append("(guarantees.created_at, guarantees.id) < (:c_ts, CAST(:c_id AS uuid))")
+    where = f"WHERE {' AND '.join(clauses)} "
+    # Static fragments chosen in code; all values are bound parameters.
+    rows = (
+        await session.execute(
+            text(
+                f"SELECT guarantees.created_at, {_MEMBER_GUARANTEE_COLS}, "  # noqa: S608
+                "ll.loan_ref FROM guarantees "
+                f"{_MEMBER_GUARANTEE_LOAN_JOIN}"
+                f"{where}"
+                "ORDER BY guarantees.created_at DESC, guarantees.id DESC LIMIT :limit"
+            ),
+            params,
+        )
+    ).all()
+    page_rows = rows[:limit]
+    items = [
+        MemberGuaranteeItem(
+            record=GuaranteeRecord(
+                id=uuid.UUID(str(r[1])),
+                application_id=uuid.UUID(str(r[2])) if r[2] is not None else None,
+                loan_id=uuid.UUID(str(r[3])) if r[3] is not None else None,
+                guarantor_member_id=uuid.UUID(str(r[4])),
+                borrower_member_id=uuid.UUID(str(r[5])),
+                amount=Decimal(str(r[6])),
+                status=str(r[7]),
+                version=int(r[8]),
+            ),
+            loan_ref=str(r[9]) if r[9] is not None else None,
+        )
+        for r in page_rows
+    ]
+    next_cursor = None
+    if len(rows) > limit and page_rows:
+        last = page_rows[-1]
+        next_cursor = encode_cursor(
+            build_created_id_cursor(last[0], last[1]),
+            tenant_id=tenant_id,
+            endpoint=cursor_scope,
+        )
+    return items, next_cursor

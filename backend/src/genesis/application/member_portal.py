@@ -30,6 +30,7 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from genesis.application import guarantees as guarantees_service
 from genesis.application import loans as loans_service
 from genesis.application import members as members_service
 from genesis.application import transactions as txn_service
@@ -219,4 +220,34 @@ async def member_statement(
         cursor=cursor,
         limit=limit,
         cursor_scope=members_service.MEMBER_STATEMENT_SCOPE,
+    )
+
+
+async def list_member_guarantees(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    status: str | None = None,
+    cursor: str | None = None,
+    limit: int = 20,
+) -> tuple[list[guarantees_service.MemberGuaranteeItem], str | None]:
+    """The member's OWN pledges (#41 — the P17 consent-inbox source).
+
+    Guarantor-side ONLY: ownership is the guarantees.guarantor_member_id
+    predicate inside the statement (idx_guarantees_guarantor — no new
+    index, no migration), never a post-fetch check; the member id is
+    the principal-derived id, exactly like every other read here.
+    Cursors mint under MEMBER_GUARANTEES_SCOPE (member.guarantees.list),
+    so no staff cursor replays here and no guarantees cursor replays on
+    any staff route (the ADR-0007 cursor-scope discipline).
+    """
+    return await guarantees_service.list_member_guarantees(
+        session,
+        tenant_id,
+        member_id,
+        status=status,
+        cursor=cursor,
+        limit=limit,
+        cursor_scope=guarantees_service.MEMBER_GUARANTEES_SCOPE,
     )
