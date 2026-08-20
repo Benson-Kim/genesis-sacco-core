@@ -299,19 +299,48 @@ async def list_loans(
 
 
 async def get_schedule(
-    session: AsyncSession, tenant_id: uuid.UUID, loan_id: uuid.UUID
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    loan_id: uuid.UUID,
+    *,
+    member_id: uuid.UUID | None = None,
 ) -> list[ScheduleRow]:
-    """Full amortisation schedule; bounded by the loan term (<= 120 rows)."""
-    await get_loan(session, tenant_id, loan_id)  # 404 before returning an empty list
+    """Full amortisation schedule; bounded by the loan term (<= 120 rows).
+
+    member_id (ADR-0007, issue #33 item 3): when the member
+    self-service detail passes the principal-derived member id, this
+    read is ownership-scoped STRUCTURALLY — the scoped get_loan probe
+    404s a non-owner before any schedule row is read, and the schedule
+    statement itself carries an ownership predicate (EXISTS against
+    loans.member_id) — never order-safe reliance on a caller having
+    checked first. Same style as get_loan: static clause literals
+    chosen in code, every value a bound parameter (v1.1 rule 6).
+    """
+    # 404 before returning an empty list; ownership-scoped when the
+    # member surface calls (non-owner indistinguishable from
+    # nonexistent — least disclosure).
+    await get_loan(session, tenant_id, loan_id, member_id=member_id)
+    ownership = (
+        "AND EXISTS (SELECT 1 FROM loans "
+        "WHERE loans.id = loan_schedules.loan_id "
+        "AND loans.tenant_id = loan_schedules.tenant_id "
+        "AND loans.member_id = CAST(:mid AS uuid)) "
+        if member_id is not None
+        else ""
+    )
+    params: dict[str, object] = {"id": str(loan_id), "tid": str(tenant_id)}
+    if member_id is not None:
+        params["mid"] = str(member_id)
     rows = (
         await session.execute(
             text(
-                "SELECT installment_no, due_date, principal_due, interest_due, "
+                "SELECT installment_no, due_date, principal_due, interest_due, "  # noqa: S608
                 "total_due, paid_amount FROM loan_schedules "
                 "WHERE loan_id = CAST(:id AS uuid) AND tenant_id = CAST(:tid AS uuid) "
+                f"{ownership}"
                 "ORDER BY installment_no"
             ),
-            {"id": str(loan_id), "tid": str(tenant_id)},
+            params,
         )
     ).all()
     return [

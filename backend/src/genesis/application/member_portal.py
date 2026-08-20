@@ -143,6 +143,17 @@ async def list_member_transactions(
     (idx_txns_member_keyset serves it); cursors mint under the member
     scope so a staff transactions cursor is a sanitized 400 here and a
     member cursor is a sanitized 400 on the staff route (ADR-0007).
+
+    Known reuse cost — DECIDED, not overlooked (issue #33 item 4, !7
+    review): the reused staff statement pays TXN_LABEL_JOIN (member
+    display labels via the members PK, max 100 rows/page) that the
+    member serializer (_member_txn_out) never emits. We keep the join:
+    reuse-first wins while the staff statement is the single
+    EXPLAIN-gated source (test_p11_explain) — a label-free fork would
+    be a second statement to gate and a drift surface. TRIGGER to shed
+    it: the member app becomes the dominant read source of this
+    statement; then split the member read into its own gated statement
+    without TXN_LABEL_JOIN.
     """
     return await txn_service.list_transactions(
         session,
@@ -190,11 +201,14 @@ async def get_member_loan(
     derived member id: a loan belonging to another member (or another
     tenant, hidden by RLS) is a 404 BEFORE any schedule row is read —
     no rejection path echoes a figure (least disclosure). The schedule
-    read reuses the existing get_schedule service verbatim (bounded by
-    the loan term, <= 120 rows).
+    read reuses the existing get_schedule service (bounded by the loan
+    term, <= 120 rows) and carries the SAME principal-derived
+    ownership predicate (issue #33 item 3): the detail read stays safe
+    even if these awaits are ever reordered or parallelised —
+    structural, not order-safe.
     """
     loan = await loans_service.get_loan(session, tenant_id, loan_id, member_id=member_id)
-    schedule = await loans_service.get_schedule(session, tenant_id, loan_id)
+    schedule = await loans_service.get_schedule(session, tenant_id, loan_id, member_id=member_id)
     return MemberLoanDetail(loan=loan, schedule=schedule)
 
 
