@@ -127,7 +127,7 @@ an admin can act on it immediately:
 | `next dev` / `next start` (frontend) | cPanel "Setup Node.js App" (Passenger) | Passenger's Node integration runs a startup file that listens on `process.env.PORT`; `web/server.js` (new) does that. |
 | `outbox_worker.run_worker()` / `export_worker.run_worker()` / `idempotency_worker.run_worker()` / `dormancy_worker.run_worker()` (persistent loops) | cPanel Cron Jobs calling one-shot scripts | Shared/Passenger hosting cannot keep a `while True` daemon alive. Each worker already exposes a single-pass function under its loop (`run_dispatch_cycle`, `run_purge_cycle`, `run_export_cycle`, `run_dormancy_cycle`) — `backend/scripts/cron_*.py` (new) call those once per invocation; nothing about the workers' own logic changed. |
 | `alembic upgrade head` (CI / local) | Same command, run once via SSH | See §3. |
-| `scripts/seed_dev.sql` (fixture data) | `backend/scripts/provision_tenant.sql` (new) | Dev seed truncates and reseeds fixture members/loans on every run; the production script runs once, creates one real tenant + branch + System Admin role + your own user, and leaves everything else to be configured from the Access Control screen. |
+| `scripts/seed_dev.py` (guarded runner for the `seed_dev.sql` fixture data — the only sanctioned way to run it, issue #48) | `backend/scripts/provision_tenant.sql` (new) | Dev seed truncates and reseeds fixture members/loans on every run; the production script runs once, creates one real tenant + branch + System Admin role + your own user, and leaves everything else to be configured from the Access Control screen. |
 
 ## 2. Provision the database
 

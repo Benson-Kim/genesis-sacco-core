@@ -1,8 +1,15 @@
 -- =============================================================================
 -- Genesis Prestige — development seed data
 -- =============================================================================
--- Run from the backend/ directory:
---   psql "$DATABASE_URL" -f scripts/seed_dev.sql
+-- Run from the backend/ directory THROUGH THE GUARDED RUNNER (#48):
+--   ALLOW_DESTRUCTIVE_SEED=1 python scripts/seed_dev.py
+--
+-- Do NOT invoke this file with raw psql: the CLEANUP section TRUNCATEs
+-- every tenant table (CASCADE), and TRUNCATE bypasses the append-only
+-- trigger on ledger_entries. The runner enforces the fail-closed dev-DSN
+-- guard (#34/#48) BEFORE any connection is opened. The DO block below is
+-- a weaker second layer for direct psql invocation that bypasses the
+-- runner — it fires only after a connection already exists.
 --
 -- RLS note: every tenant-scoped table has FORCE ROW LEVEL SECURITY so the
 -- very first INSERT (the tenant row itself) must come from a superuser or a
@@ -647,6 +654,42 @@ BEGIN
         decl_id, tid,
         date_trunc('year', now() - interval '1 year')::date,
         (date_trunc('year', now()) - interval '1 day')::date,
+        10.00, 3.00,
+        18, 1200000.00, 4500000.00,
+        120000.00, 135000.00, 255000.00,
+        'distributed', uid,
+        date_trunc('year', now()) - interval '5 days',
+        date_trunc('year', now()) - interval '3 days',
+        date_trunc('year', now()) - interval '10 days',
+        now()
+    ) ON CONFLICT DO NOTHING;
+END
+$dividends$;
+
+COMMIT;
+
+-- ---------------------------------------------------------------------------
+-- Summary
+-- ---------------------------------------------------------------------------
+DO $summary$
+DECLARE
+    tid uuid := '11111111-1111-1111-1111-111111111111';
+BEGIN
+    RAISE NOTICE '=== Seed complete for tenant 11111111-1111-1111-1111-111111111111 ===';
+    RAISE NOTICE 'Branches:              %', (SELECT count(*) FROM branches WHERE tenant_id = tid);
+    RAISE NOTICE 'Roles:                 %', (SELECT count(*) FROM roles WHERE tenant_id = tid);
+    RAISE NOTICE 'Users:                 %', (SELECT count(*) FROM users WHERE tenant_id = tid);
+    RAISE NOTICE 'Members:               %', (SELECT count(*) FROM members WHERE tenant_id = tid);
+    RAISE NOTICE 'Loan products:         %', (SELECT count(*) FROM loan_products WHERE tenant_id = tid);
+    RAISE NOTICE 'Loans:                 %', (SELECT count(*) FROM loans WHERE tenant_id = tid);
+    RAISE NOTICE 'Transactions:          %', (SELECT count(*) FROM transactions WHERE tenant_id = tid);
+    RAISE NOTICE 'Accounting periods:    %', (SELECT count(*) FROM accounting_periods WHERE tenant_id = tid);
+    RAISE NOTICE 'Recovery cases:        %', (SELECT count(*) FROM recovery_cases WHERE tenant_id = tid);
+    RAISE NOTICE 'Member exits:          %', (SELECT count(*) FROM member_exits WHERE tenant_id = tid);
+    RAISE NOTICE 'Dividend declarations: %', (SELECT count(*) FROM dividend_declarations WHERE tenant_id = tid);
+END
+$summary$;
+, now()) - interval '1 day')::date,
         10.00, 3.00,
         18, 1200000.00, 4500000.00,
         120000.00, 135000.00, 255000.00,
