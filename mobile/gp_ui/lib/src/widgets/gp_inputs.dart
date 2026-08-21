@@ -28,6 +28,9 @@ class GpField extends StatelessWidget {
     this.onSubmitted,
     this.errorText,
     this.helperText,
+    this.obscure = false,
+    this.trailing,
+    this.inputFormatters,
   });
 
   final String label;
@@ -44,6 +47,17 @@ class GpField extends StatelessWidget {
 
   /// Shown in the muted colour under the field, when there is no error.
   final String? helperText;
+
+  /// Masks the value. For PINs, which are the only secret this app asks a
+  /// member to type.
+  final bool obscure;
+
+  /// A control inside the field, on the trailing edge — the reveal eye on a
+  /// PIN, and nothing else so far. Inside the field rather than beside it so
+  /// the tap target sits where the value is.
+  final Widget? trailing;
+
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -63,13 +77,19 @@ class GpField extends StatelessWidget {
           controller: controller,
           enabled: enabled,
           autocorrect: false,
+          obscureText: obscure,
+          // A masked field must never be handed to the keyboard's learning
+          // dictionary or its clipboard suggestions.
+          enableSuggestions: !obscure,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
           autofillHints: autofillHints,
+          inputFormatters: inputFormatters,
           onSubmitted: onSubmitted,
           style: GpTypography.bodyLarge,
           decoration: InputDecoration(
             hintText: hint,
+            suffixIcon: trailing,
             hintStyle: GpTypography.bodyLarge.copyWith(
               color: GpPalette.sub.withValues(alpha: 0.6),
             ),

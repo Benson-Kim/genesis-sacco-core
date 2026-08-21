@@ -27,6 +27,7 @@ export 'src/widgets/gp_balance_hero.dart';
 export 'src/widgets/gp_bottom_nav.dart';
 export 'src/widgets/gp_brand.dart';
 export 'src/widgets/gp_controls.dart';
+export 'src/widgets/gp_countdown.dart';
 export 'src/widgets/gp_error_view.dart';
 export 'src/widgets/gp_inputs.dart';
 export 'src/widgets/gp_loading_view.dart';

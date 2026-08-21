@@ -14,6 +14,8 @@ import 'dart:async';
 import 'package:gp_api_client/gp_api_client.dart';
 import 'package:member_app/src/core/session.dart';
 import 'package:member_app/src/features/auth/domain/auth_port.dart';
+import 'package:member_app/src/features/auth/domain/credential_port.dart';
+import 'package:member_app/src/features/auth/domain/member_credential.dart';
 import 'package:member_app/src/features/auth/domain/sign_in_identifier.dart';
 import 'package:member_app/src/features/guarantees/domain/guarantee_port.dart';
 
@@ -58,6 +60,112 @@ class FakeAuthPort implements AuthPort {
   Future<TokenPair> refresh(String refreshToken) async => const TokenPair(
         accessToken: 'header.payload.signature',
         refreshToken: 'r-2',
+        expiresIn: Duration(seconds: 900),
+      );
+}
+
+/// A [CredentialPort] for the two-factor flow whose endpoints do not exist.
+///
+/// Answers instantly, and can be told to refuse the way the proposed contract
+/// says the server will: one indistinguishable refusal for a wrong PIN and an
+/// unknown member number, and a separate one for lockout.
+class FakeCredentialPort implements CredentialPort {
+  FakeCredentialPort({
+    this.rejectCredentials = false,
+    this.lockedOut = false,
+    this.rejectCode = false,
+    this.now,
+  });
+
+  final bool rejectCredentials;
+  final bool lockedOut;
+  final bool rejectCode;
+
+  /// Anchors the challenge expiry, so a countdown renders the same every run.
+  final DateTime? now;
+
+  int signInCalls = 0;
+  int resendCalls = 0;
+
+  OtpChallenge get _challenge => OtpChallenge(
+        id: 'challenge-1',
+        destination: '07XX XXX 678',
+        expiresAt: (now ?? DateTime.now()).add(const Duration(minutes: 5)),
+      );
+
+  @override
+  Future<OtpChallenge> signIn(MemberNumber number, MemberPin pin) async {
+    signInCalls++;
+    if (lockedOut) {
+      throw const ApiError(
+        kind: ApiFailureKind.forbidden,
+        statusCode: 403,
+        correlationId: 'c-locked',
+      );
+    }
+    if (rejectCredentials) {
+      throw const ApiError(
+        kind: ApiFailureKind.unauthenticated,
+        statusCode: 401,
+      );
+    }
+    return _challenge;
+  }
+
+  @override
+  Future<TokenPair> verify(OtpChallenge challenge, String code) async {
+    if (rejectCode) {
+      throw const ApiError(
+        kind: ApiFailureKind.unauthenticated,
+        statusCode: 401,
+      );
+    }
+    return const TokenPair(
+      accessToken: 'header.payload.signature',
+      refreshToken: 'r-1',
+      expiresIn: Duration(seconds: 900),
+    );
+  }
+
+  @override
+  Future<OtpChallenge> resend(OtpChallenge challenge) async {
+    resendCalls++;
+    return _challenge;
+  }
+
+  @override
+  Future<OtpChallenge> requestPinReset(MemberNumber number) async =>
+      OtpChallenge(
+        id: 'reset-1',
+        // Empty on purpose: this route cannot verify anything first, so
+        // naming the destination would confirm the member number is real.
+        destination: '',
+        expiresAt: (now ?? DateTime.now()).add(const Duration(minutes: 5)),
+      );
+
+  @override
+  Future<void> resetPin(
+    OtpChallenge challenge,
+    String code,
+    MemberPin pin,
+  ) async {
+    if (rejectCode) {
+      throw const ApiError(
+        kind: ApiFailureKind.unauthenticated,
+        statusCode: 401,
+      );
+    }
+  }
+
+  @override
+  Future<TokenPair> setInitialPin(
+    OtpChallenge challenge,
+    String code,
+    MemberPin pin,
+  ) async =>
+      const TokenPair(
+        accessToken: 'header.payload.signature',
+        refreshToken: 'r-1',
         expiresIn: Duration(seconds: 900),
       );
 }

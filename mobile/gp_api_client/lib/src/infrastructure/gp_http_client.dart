@@ -101,6 +101,32 @@ class GpHttpClient {
     return _decodeObject(response);
   }
 
+  /// A mutation whose success carries no body.
+  ///
+  /// [post] treats an empty body as [ApiFailureKind.malformedResponse],
+  /// which is right when a caller needs a value back and wrong when the
+  /// endpoint's whole contract is "it worked". Without this, an endpoint
+  /// answering 204 would have to be redesigned to return a token object
+  /// nobody reads — shaping the API around a gap in the client.
+  ///
+  /// Failures are unchanged: everything at or above 400 still raises.
+  Future<void> postVoid(
+    String path, {
+    required Object? body,
+    required String idempotencyKey,
+  }) async {
+    final String encoded = jsonEncode(body ?? const <String, Object?>{});
+    await _send(
+      (Uri uri) => _inner.post(
+        uri,
+        headers: _headers(idempotencyKey: idempotencyKey, json: true),
+        body: encoded,
+      ),
+      path,
+      null,
+    );
+  }
+
   Future<http.Response> _send(
     Future<http.Response> Function(Uri) call,
     String path,

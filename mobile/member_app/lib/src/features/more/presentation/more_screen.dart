@@ -107,6 +107,36 @@ class MoreScreen extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: GpSpace.xl),
+        const GpSectionHeader('Need help?'),
+        const SizedBox(height: GpSpace.md),
+        const GpCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              _Contact(
+                icon: Icons.call_rounded,
+                label: 'Call your SACCO',
+                value: '0700 123 456',
+              ),
+              SizedBox(height: GpSpace.md),
+              _Contact(
+                icon: Icons.mail_outline_rounded,
+                label: 'Email',
+                value: 'support@example.co.ke',
+              ),
+              SizedBox(height: GpSpace.lg),
+              // The one warning worth putting where a member will see it
+              // before they need it. Every OTP fraud in this market runs on
+              // somebody being talked into reading a code aloud.
+              GpBanner(
+                'Never share your PIN or a verification code with anyone, '
+                'including people who say they are from your SACCO.',
+                icon: Icons.shield_outlined,
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: GpSpace.xxl),
         Center(
           child: Text(
@@ -137,6 +167,38 @@ class _Entry extends StatelessWidget {
         // this repository. Wiring a tap to an empty screen would be worse
         // than leaving it inert until there is something to show.
         onTap: null,
+      );
+}
+
+/// A support contact. The numbers are per tenant and come from the flavor
+/// once a real SACCO's details exist; these are the placeholders the concept
+/// sheets used, and they are marked as such rather than passed off as real.
+class _Contact extends StatelessWidget {
+  const _Contact({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: <Widget>[
+          Icon(icon, size: 20, color: GpPalette.navy),
+          const SizedBox(width: GpSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(label, style: GpTypography.bodySmall),
+                Text(value, style: GpTypography.titleSmall),
+              ],
+            ),
+          ),
+        ],
       );
 }
 
