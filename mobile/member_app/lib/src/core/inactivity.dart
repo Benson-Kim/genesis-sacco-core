@@ -28,7 +28,6 @@ import 'dart:async';
 // scroll.
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
-import 'package:meta/meta.dart';
 
 /// Whether a session last touched at [lastActivity] has gone stale by [now].
 ///
