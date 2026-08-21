@@ -1,0 +1,26 @@
+name: gp_golden
+description: Golden render harness — real fonts and device frames, so a design review looks at type rather than at boxes.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+# flutter_test sits in `dependencies`, not `dev_dependencies`, because this
+# package's whole public surface IS test machinery. It is only ever consumed
+# as a dev_dependency by the packages it serves, so nothing it pulls in
+# reaches a shipped binary.
+#
+# It deliberately does NOT depend on gp_ui. That would be convenient — the
+# harness could apply GpTheme itself — but gp_ui needs this package to render
+# its own goldens, and a path dependency cycle is not something pub should be
+# asked to resolve. Callers pass their theme in instead.
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^3.0.0

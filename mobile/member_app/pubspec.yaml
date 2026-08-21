@@ -37,6 +37,9 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_test:
     sdk: flutter
+  # Real fonts and device frames for the screen goldens.
+  gp_golden:
+    path: ../gp_golden
   # MockClient, so the repository's tests exercise the REAL transport and see
   # the real wire bytes rather than a stubbed client that agrees with them.
   http: ^1.2.0

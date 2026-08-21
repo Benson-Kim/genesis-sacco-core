@@ -15,6 +15,10 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   flutter_test:
     sdk: flutter
+  # Real fonts and device frames for the component sheet goldens. Without it
+  # every glyph renders as a filled box and the sheet is unreviewable.
+  gp_golden:
+    path: ../gp_golden
 
 flutter:
   # No assets at scaffold stage; add fonts/images in P17/P18.

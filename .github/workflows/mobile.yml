@@ -110,14 +110,92 @@ jobs:
         with:
           channel: stable
 
+      # Golden tests are EXCLUDED here and run in mobile:goldens instead.
+      # They are a design review artifact before they are a regression gate:
+      # they need real fonts loaded from the SDK, they write PNGs, and their
+      # images have to be published somewhere a person can look at them.
+      # Mixing that into the unit run would slow every push for a benefit
+      # nobody reads on every push.
       - name: Run every package's tests
         if: steps.guard.outputs.present == 'true'
         run: |
           for package in mobile/*/; do
             if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
-              (cd "$package" && flutter pub get && flutter test)
+              (cd "$package" && flutter pub get \
+                && flutter test --exclude-tags golden)
             fi
           done
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `mobile:goldens`. Renders every screen and component state
+  # to a PNG and publishes them as a workflow artifact.
+  #
+  # This is how the design gets reviewed. There is no local Flutter SDK on the
+  # authoring machine, so CI is the only thing in this project that can draw a
+  # pixel; a job that renders and publishes is the difference between a design
+  # somebody can approve and a pile of Dart nobody can picture.
+  #
+  # `--update-goldens` WRITES the images rather than comparing them, which is
+  # correct while the design is still being agreed. Once it is signed off the
+  # images get committed and this flips to a comparison, at which point it
+  # also becomes the regression gate that stops an unintended visual change.
+  # ---------------------------------------------------------------------------
+  mobile-goldens:
+    name: "mobile:goldens"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the workspace is absent
+        id: guard
+        run: |
+          if ls mobile/*/pubspec.yaml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.guard.outputs.present == 'true'
+        with:
+          channel: stable
+
+      - name: Render goldens
+        if: steps.guard.outputs.present == 'true'
+        run: |
+          for package in mobile/*/; do
+            if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
+              (cd "$package" && flutter pub get \
+                && flutter test --tags golden --update-goldens)
+            fi
+          done
+
+      - name: Collect the images
+        if: always() && steps.guard.outputs.present == 'true'
+        run: |
+          mkdir -p golden-output
+          find mobile -path '*/test/goldens/*.png' -print0 \
+            | while IFS= read -r -d '' image; do
+                package="$(echo "$image" | cut -d/ -f2)"
+                cp "$image" "golden-output/${package}__$(basename "$image")"
+              done
+          ls -la golden-output || true
+
+      # `always()`: when a golden test FAILS the comparison, Flutter writes
+      # the expected, actual and diff images into test/failures/. Those are
+      # the most useful artifacts in the whole job and they only exist on the
+      # run that failed, so publishing them only on success would throw away
+      # the evidence exactly when it is needed.
+      - name: Publish
+        if: always() && steps.guard.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-goldens
+          path: |
+            golden-output/
+            mobile/*/test/failures/
+          if-no-files-found: warn
+          retention-days: 30
 
   # ---------------------------------------------------------------------------
   # Mirrors GitLab `mobile:codegen-drift`. Regenerates the member models from

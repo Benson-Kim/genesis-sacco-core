@@ -52,6 +52,13 @@ money_math() {
   grep -nHEi "(${MONEY_WORDS})" "$@" 2>/dev/null     | awk '{
         content = $0;
         sub(/^[^:]*:[0-9]+:/, "", content);
+        # A directive is a PATH, and a path cannot be arithmetic.
+        # Without this, exporting gp_balance_hero.dart trips the gate on
+        # the slashes in its own filename: a false positive that teaches
+        # people to rename files to appease a grep, which is how a gate
+        # stops being believed.
+        if (content ~ /^[[:space:]]*(import|export|part)[[:space:]]/)
+          { next }
         sub(/^[[:space:]]*\/\/+/, "", content);
         if (content ~ /[-+*\/]/) { print }
       }'

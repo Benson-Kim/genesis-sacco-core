@@ -626,9 +626,40 @@ mobile:test:
     - |
       for package in mobile/*/; do
         if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
-          (cd "$package" && flutter pub get && flutter test)
+          # Goldens are excluded here and run in mobile:goldens: they need
+          # real fonts from the SDK, they write PNGs, and their output has to
+          # be published somewhere a person can look at it.
+          (cd "$package" && flutter pub get && flutter test --exclude-tags golden)
         fi
       done
+
+# Renders every screen and component state to a PNG and publishes them.
+#
+# This is how the design gets reviewed. `--update-goldens` WRITES the images
+# rather than comparing them, which is correct while the design is still being
+# agreed; once it is signed off the images get committed and this flips to a
+# comparison, becoming the regression gate as well.
+mobile:goldens:
+  extends: .mobile
+  stage: test
+  rules:
+    - exists: ["mobile/**/pubspec.yaml"]
+  script:
+    - |
+      for package in mobile/*/; do
+        if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
+          (cd "$package" && flutter pub get && flutter test --tags golden --update-goldens)
+        fi
+      done
+  artifacts:
+    # `when: always` — a failed comparison writes expected/actual/diff images
+    # into test/failures/, and those are the most useful artifacts in the job.
+    # They exist only on the run that failed.
+    when: always
+    expire_in: 30 days
+    paths:
+      - mobile/*/test/goldens/
+      - mobile/*/test/failures/
 
 # Regenerates the client from the committed OpenAPI snapshot and fails on any
 # diff: a hand-edited or stale generated tree is a red pipeline -- the same
