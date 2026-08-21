@@ -1,4 +1,10 @@
-/// Sign in: one route, two panes.
+/// Sign in: the prototype's gate, on a phone.
+///
+/// The desktop console puts sign in behind a full screen navy gradient with a
+/// single white card floating on it, and that treatment survives the move to
+/// mobile better than most of the prototype does — it is the one screen with
+/// no navigation, no data and one job, so a card on a coloured ground is
+/// exactly right at any size.
 ///
 /// The identifier pane and the code pane share a route on purpose. A separate
 /// `/verify-code` route would be a named, reachable location representing a
@@ -7,9 +13,9 @@
 /// is outstanding lives in the controller, is not addressable, and disappears
 /// with the flow.
 ///
-/// This layer imports `domain/` only. It never sees an [ApiError], a status
-/// code, or a token; the guard sweep in `mobile:analyze` fails the build if a
-/// `presentation/` file imports `gp_api_client` at all.
+/// This layer imports `domain/` and `gp_ui` only. It never sees an
+/// `ApiError`, a status code or a token; two guard sweeps in `mobile:analyze`
+/// fail the build if that changes.
 library;
 
 import 'package:flutter/material.dart';
@@ -25,20 +31,44 @@ class SignInScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final SignInState state = ref.watch(signInControllerProvider);
     return Scaffold(
-      backgroundColor: GpPalette.bg,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: switch (state.step) {
-                SignInStep.identifier => const _IdentifierPane(),
-                SignInStep.code => const _CodePane(),
-                // The router redirects on the session flip; this is what the
-                // frame between adoption and redirect shows.
-                SignInStep.done => const GpLoadingView(),
-              },
+      // The gate's own ground, straight from the prototype: navy to navyMid
+      // on the diagonal, edge to edge.
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[GpPalette.navy, GpPalette.navyMid],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(GpSpace.xl),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _GateCard(
+                      child: switch (state.step) {
+                        SignInStep.identifier => const _IdentifierPane(),
+                        SignInStep.code => const _CodePane(),
+                        // The router redirects on the session flip; this is
+                        // the frame between adoption and that redirect.
+                        SignInStep.done => const Padding(
+                            padding: EdgeInsets.symmetric(
+                              vertical: GpSpace.xxxl,
+                            ),
+                            child: GpLoadingView(),
+                          ),
+                      },
+                    ),
+                    const SizedBox(height: GpSpace.xl),
+                    const _Footnote(),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -47,39 +77,48 @@ class SignInScreen extends ConsumerWidget {
   }
 }
 
-/// Shared chrome: the wordmark, and the message line beneath the form.
-class _Frame extends StatelessWidget {
-  const _Frame({
-    required this.title,
-    required this.subtitle,
-    required this.children,
-  });
+/// The prototype's `.gatecard`: white, 20px corners, and the one real shadow
+/// in this design system.
+class _GateCard extends StatelessWidget {
+  const _GateCard({required this.child});
 
-  final String title;
-  final String subtitle;
-  final List<Widget> children;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          const Text('Genesis Prestige',
-              style: GpTypography.displayLarge, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(title, style: GpTypography.titleMedium),
-          const SizedBox(height: 4),
-          Text(subtitle, style: GpTypography.bodyMedium),
-          const SizedBox(height: 24),
-          ...children,
-        ],
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(GpSpace.xxl),
+        decoration: BoxDecoration(
+          color: GpPalette.card,
+          borderRadius: BorderRadius.circular(GpRadius.hero),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: GpPalette.ink.withValues(alpha: 0.28),
+              blurRadius: 48,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: child,
       );
 }
 
-/// The message line.
-///
-/// Renders [SignInState.message], which the controller wrote, and the
-/// correlation id when there is one. It cannot render a server category
-/// because it is never given one.
+class _Footnote extends StatelessWidget {
+  const _Footnote();
+
+  @override
+  Widget build(BuildContext context) => Text(
+        'Protected by a one-time code · Kenya DPA 2019',
+        textAlign: TextAlign.center,
+        style: GpTypography.bodySmall.copyWith(
+          color: Colors.white.withValues(alpha: 0.72),
+        ),
+      );
+}
+
+/// The message line. Renders what the controller wrote, and the correlation
+/// id when there is one. It cannot render a server category because it is
+/// never given one.
 class _Message extends StatelessWidget {
   const _Message({required this.message, required this.correlationId});
 
@@ -93,21 +132,44 @@ class _Message extends StatelessWidget {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.only(top: GpSpace.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(text,
-              key: const Key('signIn.message'),
-              style: GpTypography.bodyMedium.copyWith(color: GpPalette.brick)),
+          GpBanner(
+            text,
+            key: const Key('signIn.message'),
+            tone: GpBannerTone.danger,
+            icon: Icons.error_outline_rounded,
+          ),
           if (correlationId != null) ...<Widget>[
-            const SizedBox(height: 4),
-            Text('Ref: $correlationId', style: GpTypography.labelSmall),
+            const SizedBox(height: GpSpace.sm),
+            Text('Ref: $correlationId', style: GpTypography.bodySmall),
           ],
         ],
       ),
     );
   }
+}
+
+class _Heading extends StatelessWidget {
+  const _Heading({required this.title, required this.subtitle});
+
+  final String title;
+  final Widget subtitle;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const GpBrandLockup(eyebrow: 'Zuri Genesis · SACCO'),
+          const SizedBox(height: GpSpace.xl),
+          Text(title, style: GpTypography.headlineMedium),
+          const SizedBox(height: GpSpace.xs),
+          subtitle,
+          const SizedBox(height: GpSpace.xl),
+        ],
+      );
 }
 
 class _IdentifierPane extends ConsumerStatefulWidget {
@@ -129,34 +191,40 @@ class _IdentifierPaneState extends ConsumerState<_IdentifierPane> {
   @override
   Widget build(BuildContext context) {
     final SignInState state = ref.watch(signInControllerProvider);
-    return _Frame(
-      title: 'Sign in',
-      subtitle: 'We will send a six-digit code to confirm it is you.',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        TextField(
+        const _Heading(
+          title: 'Sign in',
+          subtitle: Text(
+            'We will send a six-digit code to confirm it is you.',
+            style: GpTypography.bodyMedium,
+          ),
+        ),
+        GpField(
           key: const Key('signIn.identifier'),
+          label: 'Mobile number or email',
           controller: _field,
+          hint: '07XX XXX XXX',
           enabled: !state.busy,
-          autocorrect: false,
-          // The field takes a number OR an email, so neither a pure number pad
-          // nor a pure email keyboard is right. This one carries the digits,
-          // the plus and the at-sign together.
+          // The field takes a number OR an email, so neither a number pad nor
+          // an email keyboard is right on its own. This one carries the
+          // digits, the plus and the at sign together.
           keyboardType: TextInputType.emailAddress,
           textInputAction: TextInputAction.go,
-          decoration: const InputDecoration(
-            labelText: 'Mobile number or email',
-            hintText: '07XX XXX XXX',
-          ),
+          autofillHints: const <String>[AutofillHints.username],
           onSubmitted: state.busy ? null : _submit,
         ),
-        const SizedBox(height: 16),
-        ElevatedButton(
+        const SizedBox(height: GpSpace.xl),
+        GpPrimaryButton(
           key: const Key('signIn.submit'),
-          // Disabled while busy: the first half of FM-G. The second half is
+          label: 'Send code',
+          busyLabel: 'Sending…',
+          busy: state.busy,
+          // Disabled in flight: the first half of FM-G. The second half is
           // the Idempotency-Key, which makes a double submit that slips
           // through harmless rather than merely unlikely.
-          onPressed: state.busy ? null : () => _submit(_field.text),
-          child: Text(state.busy ? 'Sending…' : 'Send code'),
+          onPressed: () => _submit(_field.text),
         ),
         _Message(message: state.message, correlationId: state.correlationId),
       ],
@@ -175,62 +243,78 @@ class _CodePane extends ConsumerStatefulWidget {
 }
 
 class _CodePaneState extends ConsumerState<_CodePane> {
-  final TextEditingController _field = TextEditingController();
-
-  @override
-  void dispose() {
-    _field.dispose();
-    super.dispose();
-  }
+  String _code = '';
 
   @override
   Widget build(BuildContext context) {
     final SignInState state = ref.watch(signInControllerProvider);
     final SignInController controller =
         ref.read(signInControllerProvider.notifier);
-    return _Frame(
-      title: 'Enter your code',
-      // Says where the code went WITHOUT confirming that anything was
-      // delivered, because the server does not tell us and must not: an
-      // unregistered identifier and a registered one produce byte-identical
-      // responses (gate 1.6).
-      subtitle: 'If ${state.identifier?.value ?? 'that account'} is '
-          'registered, a six-digit code is on its way.',
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        TextField(
-          key: const Key('signIn.code'),
-          controller: _field,
-          enabled: !state.busy,
-          autocorrect: false,
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.go,
-          maxLength: 6,
-          decoration: const InputDecoration(
-            labelText: 'Six-digit code',
-            counterText: '',
+        _Heading(
+          title: 'Enter your code',
+          // Says where the code went WITHOUT confirming that anything was
+          // delivered, because the server does not tell us and must not: an
+          // unregistered identifier and a registered one produce
+          // byte-identical responses (gate 1.6).
+          subtitle: Text.rich(
+            TextSpan(
+              style: GpTypography.bodyMedium,
+              children: <InlineSpan>[
+                const TextSpan(text: 'If '),
+                TextSpan(
+                  text: state.identifier?.value ?? 'that account',
+                  style: GpTypography.bodyMedium.copyWith(
+                    color: GpPalette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const TextSpan(
+                  text: ' is registered, a six-digit code is on its way.',
+                ),
+              ],
+            ),
           ),
-          onSubmitted:
-              state.busy ? null : (String v) => controller.submitCode(v),
         ),
-        const SizedBox(height: 16),
-        ElevatedButton(
+        GpOtpField(
+          key: const Key('signIn.code'),
+          enabled: !state.busy,
+          hasError: state.message != null,
+          onChanged: (String value) => _code = value,
+          // Submitting on the sixth digit saves a reach for a button the
+          // keyboard is probably covering.
+          onCompleted: state.busy ? null : controller.submitCode,
+        ),
+        const SizedBox(height: GpSpace.xl),
+        GpPrimaryButton(
           key: const Key('signIn.verify'),
-          onPressed:
-              state.busy ? null : () => controller.submitCode(_field.text),
-          child: Text(state.busy ? 'Checking…' : 'Confirm'),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          key: const Key('signIn.resend'),
-          onPressed: state.busy ? null : controller.resend,
-          child: const Text('Send a new code'),
-        ),
-        TextButton(
-          key: const Key('signIn.restart'),
-          onPressed: state.busy ? null : controller.restart,
-          child: const Text('Use a different number or email'),
+          label: 'Verify and sign in',
+          busyLabel: 'Checking…',
+          busy: state.busy,
+          onPressed: () => controller.submitCode(_code),
         ),
         _Message(message: state.message, correlationId: state.correlationId),
+        const SizedBox(height: GpSpace.sm),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            GpTextAction(
+              key: const Key('signIn.resend'),
+              label: 'Resend',
+              emphasis: true,
+              onPressed: state.busy ? null : controller.resend,
+            ),
+            const Text('·', style: GpTypography.bodySmall),
+            GpTextAction(
+              key: const Key('signIn.restart'),
+              label: 'Use another number',
+              onPressed: state.busy ? null : controller.restart,
+            ),
+          ],
+        ),
       ],
     );
   }
