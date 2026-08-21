@@ -10,6 +10,7 @@
 #   2. no staff API paths        (FM-H, principal confusion)
 #   3. no tokens in logs         (FM-A)
 #   4. import boundaries         (§3.1 layering)
+#   5. presentation names no transport type (3.1 / gate 1.6)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -92,6 +93,37 @@ if [[ -n "${hits}" ]]; then
   report "a presentation layer imports gp_api_client directly (§3.1)."
 fi
 
+# --- 5. Presentation names no transport type --------------------------------
+# The import check above is necessary and not sufficient: core/providers.dart
+# already imports gp_api_client, so a screen that imports the composition root
+# can name GpHttpClient or ApiError with no import line of its own. A widget
+# that switches on a status code or a server category has turned the server's
+# private vocabulary into UI (gate 1.6) and breaks when it is renamed.
+# Controllers translate; screens render what they are handed.
+TRANSPORT_TYPES='\b(GpHttpClient|ApiError|ApiFailureKind|CertificatePinning|TokenStore|TokenStorage)\b'
+presentation_transport() {
+  # Comment leaders are stripped before testing, so a doc comment may still
+  # SAY "this layer never sees an ApiError" -- which several of them do, and
+  # which is worth being able to write down.
+  grep -nHE "${TRANSPORT_TYPES}" "$@" 2>/dev/null \
+    | awk '{
+        content = $0;
+        sub(/^[^:]*:[0-9]+:/, "", content);
+        if (content !~ /^[[:space:]]*\/\//) { print }
+      }'
+}
+
+mapfile -t PRESENTATION_FILES < <(
+  find "${MOBILE}" -path '*/presentation/*' -name '*.dart' 2>/dev/null
+)
+if [[ "${#PRESENTATION_FILES[@]}" -gt 0 ]]; then
+  hits="$(presentation_transport "${PRESENTATION_FILES[@]}")"
+  if [[ -n "${hits}" ]]; then
+    echo "${hits}" >&2
+    report "a presentation layer names a transport type (3.1 / gate 1.6)."
+  fi
+fi
+
 # gp_api_client holds transport, not UI.
 hits="$(find "${MOBILE}/gp_api_client" -name '*.dart' -not -path '*/test/*' -print0 2>/dev/null \
   | xargs -0 grep -nE "import 'package:flutter/(widgets|material|cupertino).dart'" 2>/dev/null || true)"
@@ -113,6 +145,9 @@ if [[ -d "${FIXTURES}" ]]; then
       staff_path.dart.fixture)
         grep -qE "${STAFF_PATHS}" "${fixture}" \
           || report "the staff-path sweep no longer catches its own fixture." ;;
+      presentation_transport.dart.fixture)
+        [[ -n "$(presentation_transport "${fixture}")" ]] \
+          || report "the presentation-transport sweep no longer catches its own fixture." ;;
       token_log.dart.fixture)
         grep -qE '(print|debugPrint|log)\(.*(accessToken|refreshToken|access_token|refresh_token|Bearer)' "${fixture}" \
           || report "the token-in-log sweep no longer catches its own fixture." ;;
