@@ -188,8 +188,8 @@ class _Components extends StatelessWidget {
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        const _Label('Balance hero'),
-        const GpBalanceHero(
+        _Label('Balance hero'),
+        GpBalanceHero(
           title: 'Total savings',
           value: '248500.00',
           figures: <GpHeroFigure>[
@@ -198,8 +198,8 @@ class _Components extends StatelessWidget {
           ],
           onToggleHidden: _noop,
         ),
-        const SizedBox(height: GpSpace.md),
-        const GpBalanceHero(
+        SizedBox(height: GpSpace.md),
+        GpBalanceHero(
           title: 'Total savings',
           value: '248500.00',
           hidden: true,
@@ -209,33 +209,33 @@ class _Components extends StatelessWidget {
           ],
           onToggleHidden: _noop,
         ),
-        const _Label('Card and banners'),
-        const GpCard(
+        _Label('Card and banners'),
+        GpCard(
           child: Text(
             'A card is white, one hairline border, 16px corners. The '
             'prototype is a border design and this is the whole of it.',
             style: GpTypography.bodyMedium,
           ),
         ),
-        const SizedBox(height: GpSpace.md),
-        const GpBanner(
+        SizedBox(height: GpSpace.md),
+        GpBanner(
           'Showing figures saved on this device.',
           icon: Icons.cloud_off_rounded,
         ),
-        const SizedBox(height: GpSpace.sm),
-        const GpBanner(
+        SizedBox(height: GpSpace.sm),
+        GpBanner(
           'Your guarantee request was recorded.',
           tone: GpBannerTone.positive,
           icon: Icons.check_circle_rounded,
         ),
-        const SizedBox(height: GpSpace.sm),
-        const GpBanner(
+        SizedBox(height: GpSpace.sm),
+        GpBanner(
           'Too many attempts. Wait a minute, then try again.',
           tone: GpBannerTone.danger,
           icon: Icons.error_rounded,
         ),
-        const _Label('Pills'),
-        const Wrap(
+        _Label('Pills'),
+        Wrap(
           spacing: GpSpace.sm,
           runSpacing: GpSpace.sm,
           children: <Widget>[
@@ -246,32 +246,32 @@ class _Components extends StatelessWidget {
             GpPill('Guarantor', tone: GpPillTone.brand),
           ],
         ),
-        const _Label('Buttons'),
-        const GpPrimaryButton(label: 'Send code', onPressed: _noop),
-        const SizedBox(height: GpSpace.sm),
-        const GpPrimaryButton(
+        _Label('Buttons'),
+        GpPrimaryButton(label: 'Send code', onPressed: _noop),
+        SizedBox(height: GpSpace.sm),
+        GpPrimaryButton(
           label: 'Send code',
           onPressed: _noop,
           busy: true,
           busyLabel: 'Sending…',
         ),
-        const SizedBox(height: GpSpace.sm),
-        const GpPrimaryButton(label: 'Send code', onPressed: null),
-        const SizedBox(height: GpSpace.sm),
-        const GpSecondaryButton(
+        SizedBox(height: GpSpace.sm),
+        GpPrimaryButton(label: 'Send code', onPressed: null),
+        SizedBox(height: GpSpace.sm),
+        GpSecondaryButton(
           label: 'Use a different number',
           onPressed: _noop,
         ),
-        const SizedBox(height: GpSpace.sm),
-        const Row(
+        SizedBox(height: GpSpace.sm),
+        Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             GpTextAction(label: 'Resend', onPressed: _noop, emphasis: true),
             GpTextAction(label: 'Change number', onPressed: _noop),
           ],
         ),
-        const _Label('Money'),
-        const GpCard(
+        _Label('Money'),
+        GpCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -289,8 +289,8 @@ class _Components extends StatelessWidget {
             ],
           ),
         ),
-        const _Label('Inputs'),
-        const _FieldSample(),
+        _Label('Inputs'),
+        _FieldSample(),
       ],
     );
   }
@@ -353,8 +353,8 @@ class _States extends StatelessWidget {
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        const _Label('Quick action tiles'),
-        const GpCard(
+        _Label('Quick action tiles'),
+        GpCard(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
@@ -381,16 +381,16 @@ class _States extends StatelessWidget {
             ],
           ),
         ),
-        const _Label('Nothing to show, versus not built yet'),
-        const GpCard(
+        _Label('Nothing to show, versus not built yet'),
+        GpCard(
           padding: EdgeInsets.zero,
           child: GpEmptyState(
             title: 'No transactions this month',
             message: 'Anything you deposit or withdraw will appear here.',
           ),
         ),
-        const SizedBox(height: GpSpace.md),
-        const GpCard(
+        SizedBox(height: GpSpace.md),
+        GpCard(
           padding: EdgeInsets.zero,
           child: GpNotYetState(
             title: 'Statements are on the way',
@@ -398,8 +398,8 @@ class _States extends StatelessWidget {
                 'soon as it is ready, with nothing for you to do.',
           ),
         ),
-        const _Label('Bottom navigation'),
-        const GpCard(
+        _Label('Bottom navigation'),
+        GpCard(
           padding: EdgeInsets.zero,
           child: GpBottomNav(
             currentIndex: 0,

@@ -675,8 +675,7 @@ mobile:goldens:
     when: always
     expire_in: 30 days
     paths:
-      - mobile/*/test/goldens/
-      - mobile/*/test/failures/
+      - mobile/*/test/golden/images/
 
 # Regenerates the client from the committed OpenAPI snapshot and fails on any
 # diff: a hand-edited or stale generated tree is a red pipeline -- the same

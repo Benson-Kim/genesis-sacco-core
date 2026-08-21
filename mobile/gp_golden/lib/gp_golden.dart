@@ -238,13 +238,18 @@ Future<void> pumpGolden(
   await tester.pump(const Duration(milliseconds: 100));
 }
 
-/// Capture the whole frame to `test/goldens/<name>.png`.
+/// Capture the whole frame to `<test file's directory>/images/<name>.png`.
 ///
-/// The file path is relative to the calling package's test directory, which
-/// is where `flutter test` resolves golden paths from.
+/// `matchesGoldenFile` resolves its path against the directory of the TEST
+/// FILE, not the package's test root — which is easy to assume the other way
+/// round and produces a passing run that writes its images somewhere nobody
+/// is looking. With golden tests living in `test/golden/`, images land in
+/// `test/golden/images/`: beside the tests that produce them, and named
+/// distinctly enough that `golden/` and `images/` cannot be misread for each
+/// other at a glance. The CI collector reads from the same place.
 Future<void> expectGolden(WidgetTester tester, String name) async {
   await expectLater(
     find.byType(MaterialApp),
-    matchesGoldenFile('goldens/$name.png'),
+    matchesGoldenFile('images/$name.png'),
   );
 }
