@@ -66,8 +66,12 @@ jobs:
       # contributor without a local Dart SDK nothing they can act on; the
       # unified diff applies verbatim. Same reasoning as the web client-drift
       # job, which prints its own diff rather than just failing.
+      # `always()`: these three gates are INDEPENDENT of each other, and a
+      # gate that hides the next one costs a whole pipeline per finding. The
+      # analyzer failing tells you nothing about the formatter, so run both and
+      # report both. Every finding in one run, not one finding per run.
       - name: Check formatting
-        if: steps.guard.outputs.present == 'true'
+        if: always() && steps.guard.outputs.present == 'true'
         run: |
           mapfile -t DART_FILES < <(find mobile -name '*.dart' -not -path '*/generated/*')
           if ! dart format --output=none --set-exit-if-changed "${DART_FILES[@]}"; then
@@ -79,7 +83,7 @@ jobs:
           fi
 
       - name: Guard sweeps (money math, staff paths, tokens in logs, imports)
-        if: steps.guard.outputs.present == 'true'
+        if: always() && steps.guard.outputs.present == 'true'
         run: bash mobile/scripts/guard_sweeps.sh
 
   # ---------------------------------------------------------------------------

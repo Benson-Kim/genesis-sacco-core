@@ -115,6 +115,10 @@ class GpHttpClient {
       path: '${_baseUrl.path}$path',
       queryParameters: query,
     );
+    // Sampled BEFORE the call, so a 401 is judged against the credential this
+    // request actually presented rather than whatever custody holds by the
+    // time the response lands.
+    final bool authenticated = _accessToken() != null;
     final http.Response response;
     try {
       response = await call(uri);
@@ -126,7 +130,17 @@ class GpHttpClient {
       throw const ApiError(kind: ApiFailureKind.transport, statusCode: null);
     }
     if (response.statusCode == 401) {
-      _onSessionEnded?.call();
+      // Only a request that PRESENTED a credential can have its session
+      // ended. The pre-auth routes carry no Authorization header, and their
+      // 401s mean something else entirely: a wrong OTP, an expired code, a
+      // refused tenant header. Firing the teardown for those would let a
+      // mistyped digit during sign-in clear token custody — harmless today,
+      // because inactivity logout is the only route back to the sign-in
+      // screen and it already ended the session, and a live trap the moment
+      // any flow re-authenticates without signing out first.
+      if (authenticated) {
+        _onSessionEnded?.call();
+      }
       throw ApiError.fromResponse(response.statusCode, response.body);
     }
     if (response.statusCode >= 400) {

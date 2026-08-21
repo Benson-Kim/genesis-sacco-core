@@ -67,6 +67,73 @@ therefore rests on CI rather than a local run. Two consequences worth keeping:
 
 ---
 
+## 0c. MR-1 is green — the OTP auth slice
+
+PR [#2](https://github.com/Benson-Kim/genesis-sacco-core/pull/2), stacked on
+MR-0's branch. Run `32448810575`: `mobile:analyze`, `mobile:test` and
+`mobile:codegen-drift` all pass. **139 tests** — 38 `gp_api_client`, 11 `gp_ui`,
+90 `member_app`. Backend and web workflows pass. The security stage fails
+exactly as it did on MR-0, with zero findings naming `mobile/`.
+
+`POST /member/auth/{otp/request, otp/verify, refresh}` is wired end to end: a
+domain port, a data repository, the sign-in flow, two screens, and inactivity
+logout. MR-0's placeholder `AuthRepository` and its two placeholder routes are
+gone.
+
+### Three defects MR-1 fixed in MR-0's code before adding anything
+
+1. **The dev flavor's tenant id was never a UUID.** `tenant_id_from_headers`
+   parses `x-tenant-id` with `uuid.UUID(raw)`; MR-0 shipped `'dev-tenant'`, so
+   every request that build could have made would have returned 401 before
+   reaching a handler — and would have looked like a dead backend rather than a
+   misconfigured flavor. Now checked in `Flavor`'s constructor, with a throw
+   rather than an assert so release builds are covered.
+2. **Any 401 ended the session, even from a request carrying no credential.**
+   The pre-auth routes send no `Authorization` header and their 401s mean a
+   wrong OTP or a refused tenant header. Only an authenticated 401 now tears
+   custody down.
+3. **An unreadable `exp` meant one family rotation per request.** MR-0 treated
+   an unparseable token as expired, reasoning that refreshing needlessly is
+   cheap. On a rotating family it is not: every needless refresh rotates, and
+   every rotation is a chance for a dropped response to strand the app holding
+   a retired token. `expires_in` is now the fallback; the `exp` claim still
+   wins when it can be read.
+
+### What MR-1 discovered about the auth routes
+
+The Idempotency-Key middleware **covers the pre-auth OTP routes**. They resolve
+a tenant from `x-tenant-id` with the empty string as actor, so
+`IdempotencyMiddleware` applies in full, and its rules decide what the member
+experiences:
+
+- Same key, same body replays the stored response and the handler never runs —
+  so a "Resend" that reuses its key returns `{"status":"sent"}` and mints no
+  second code.
+- Same key, different body is a hard 409 — so a corrected OTP must rotate the
+  key or the typo fix answers 409 forever.
+- Every response under 500 is stored, 401 and 429 included, so a key that
+  catches a rate limit stays poisoned for the retention window.
+
+The client keeps three slots accordingly. The refresh slot keys on the refresh
+token itself, which turns a dropped response mid-rotation from a family
+revocation into a replay — a dropped connection stops being a logout.
+
+### The CI reporting change
+
+`mobile:analyze` runs three independent gates and a failure in the first was
+skipping the other two, so each finding cost a whole pipeline. Three runs on
+this branch found the analyzer's three complaints one at a time. GitHub now has
+`if: always()` on the format and sweep steps; GitLab accumulates failures and
+exits once at the end. Same verdict, everything reported at once — which
+matters most to whoever has no local Dart SDK, currently everyone.
+
+### Still not shipped, and why
+
+**PIN and biometrics.** The sign-off makes the PIN server-verified and no
+backend verifier exists (see 6.2). A local gate shipped now would be the
+local-unlock-only design that sign-off overruled, so `local_auth` stays
+declared and unused with the reason in the pubspec.
+
 ## 1. The member API contract
 
 Money is a server-rendered decimal string on every shape below. Every list is keyset-paginated,
@@ -264,6 +331,12 @@ Two consequences that need owner action:
 
 MR-0 is unaffected either way: it ships the session machine and token custody,
 and neither depends on which factor sits in front of them.
+
+### Follow-ups MR-1 did not close
+
+- **Amend ADR-0012 on !29 before it merges** (6.2). Still outstanding.
+- **File the backend PIN verifier work item.** Still outstanding, and now blocking: MR-2 onward assume a session whose second factor exists.
+- **#42's real keypair.** `Flavor.dev` still carries placeholder pins, which is why enforcement stays in `report`.
 
 ### Still open from the review (§12)
 

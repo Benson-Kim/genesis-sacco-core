@@ -30,9 +30,24 @@ typedef RefreshTokens = Future<TokenPair> Function(String refreshToken);
 /// What a refresh returns. The access token is held in memory; only
 /// [refreshToken] is persisted.
 class TokenPair {
-  const TokenPair({required this.accessToken, required this.refreshToken});
+  const TokenPair({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.expiresIn,
+  });
   final String accessToken;
   final String refreshToken;
+
+  /// `TokenResponse.expires_in`, as the server sent it.
+  ///
+  /// The access token's own `exp` claim is the better source and is preferred
+  /// — it is absolute, so it survives a clock the device disagrees about. This
+  /// is the fallback for when the claim cannot be read: an opaque token, a
+  /// payload that is not JSON, an `exp` that is not an integer. Without it,
+  /// such a token is treated as already expired and every single request
+  /// triggers a refresh, which on a rotating family is a lot of rotation to
+  /// pay for one unreadable field.
+  final Duration expiresIn;
 }
 
 enum SessionState {
@@ -79,7 +94,7 @@ class MemberSession {
   Future<void> adopt(TokenPair pair) async {
     await _storage.writeRefreshToken(pair.refreshToken);
     _accessToken = pair.accessToken;
-    _accessTokenExpiry = _expiryOf(pair.accessToken);
+    _accessTokenExpiry = _expiryFor(pair);
     _transition(SessionState.signedIn);
   }
 
@@ -133,7 +148,7 @@ class MemberSession {
     // Persist before use — the rotation invariant.
     await _storage.writeRefreshToken(pair.refreshToken);
     _accessToken = pair.accessToken;
-    _accessTokenExpiry = _expiryOf(pair.accessToken);
+    _accessTokenExpiry = _expiryFor(pair);
     return pair.accessToken;
   }
 
@@ -160,9 +175,15 @@ class MemberSession {
     _states.add(next);
   }
 
-  /// Read `exp` from the JWT payload. A token we cannot read is treated as
-  /// already expired: refreshing needlessly is cheap, sending a dead token is
-  /// a 401 that ends the session.
+  /// When [pair]'s access token stops being usable.
+  ///
+  /// The token's own `exp` first, because it is absolute and authoritative.
+  /// `expires_in` second, measured from now, for tokens whose claim cannot be
+  /// read.
+  DateTime _expiryFor(TokenPair pair) =>
+      _expiryOf(pair.accessToken) ?? _now().add(pair.expiresIn);
+
+  /// Read `exp` from the JWT payload, or null when it cannot be read.
   static DateTime? _expiryOf(String jwt) {
     final List<String> parts = jwt.split('.');
     if (parts.length != 3) {

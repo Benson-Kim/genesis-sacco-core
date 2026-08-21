@@ -51,7 +51,7 @@ void main() {
 
       await clientWith(inner).post(
         '/member/auth/otp/request',
-        body: <String, Object?>{'signin_identifier': 'a@b.test'},
+        body: <String, Object?>{'identifier': 'a@b.test'},
         idempotencyKey: 'key-1',
       );
 
@@ -110,6 +110,31 @@ void main() {
 
       expect(calls, 1, reason: 'a refresh-and-retry loop would make this 2');
       expect(ended, isTrue);
+    });
+
+    test('a 401 on a request that carried NO credential ends nothing',
+        () async {
+      // The pre-auth routes (`POST /member/auth/*`) send no Authorization
+      // header, and their 401s mean a wrong OTP or a refused tenant header —
+      // not a dead session. Tearing custody down for those would let a
+      // mistyped digit during sign-in wipe the refresh token of whoever was
+      // signed in. Remove the `authenticated` check and this fails.
+      bool ended = false;
+      final MockClient inner = MockClient(
+        (http.Request request) async =>
+            http.Response('{"category":"unauthenticated"}', 401),
+      );
+
+      await expectLater(
+        clientWith(inner, onSessionEnded: () => ended = true).post(
+          '/member/auth/otp/verify',
+          body: <String, Object?>{'identifier': 'a@b.test', 'code': '000000'},
+          idempotencyKey: 'key-1',
+        ),
+        throwsA(isA<ApiError>()),
+      );
+
+      expect(ended, isFalse);
     });
   });
 

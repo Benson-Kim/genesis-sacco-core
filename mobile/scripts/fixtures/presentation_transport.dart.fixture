@@ -1,0 +1,23 @@
+// Fixture: a presentation layer reaching for transport types. Rejected by
+// sweep 5.
+//
+// The import-line check in sweep 4 alone does not catch this:
+// core/providers.dart already imports the transport, so a screen that imports
+// the composition root can name GpHttpClient and ApiError with no gp_api_client
+// import line of its own. A screen that switches on a status code has turned
+// the server's internal vocabulary into UI (gate 1.6).
+import '../../core/providers.dart';
+
+class WrongScreen {
+  String render(Object failure) {
+    // Deciding UI from a transport failure, in the widget layer.
+    if (failure is ApiError && failure.statusCode == 409) {
+      return 'stale';
+    }
+    return 'ok';
+  }
+
+  void fetch(GpHttpClient client) {
+    client.get('/member/me');
+  }
+}

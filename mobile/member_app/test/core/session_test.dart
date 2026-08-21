@@ -21,6 +21,23 @@ String jwtExpiringAt(DateTime expiry) {
   return '$header.$body.signature-not-verified-client-side';
 }
 
+/// The server's `expires_in`, as it comes back from `/member/auth/*`.
+///
+/// Only consulted when the token's own `exp` cannot be read, so most tests
+/// here take the default and never exercise it.
+const Duration _serverLifetime = Duration(minutes: 15);
+
+TokenPair pairOf(
+  String accessToken,
+  String refreshToken, {
+  Duration expiresIn = _serverLifetime,
+}) =>
+    TokenPair(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      expiresIn: expiresIn,
+    );
+
 void main() {
   late InMemoryTokenStore store;
   late DateTime clock;
@@ -41,9 +58,9 @@ void main() {
       final MemberSession session =
           sessionWith((_) async => throw StateError('unused'));
 
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.add(const Duration(minutes: 15))),
-        refreshToken: 'refresh-1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.add(const Duration(minutes: 15))),
+        'refresh-1',
       ));
 
       expect(await store.readRefreshToken(), 'refresh-1');
@@ -56,8 +73,7 @@ void main() {
       final MemberSession session =
           sessionWith((_) async => throw StateError('unused'));
 
-      await session
-          .adopt(TokenPair(accessToken: access, refreshToken: 'refresh-1'));
+      await session.adopt(pairOf(access, 'refresh-1'));
 
       // Custody holds the refresh token and the cache key. Nothing else.
       expect(await store.readRefreshToken(), isNot(access));
@@ -71,11 +87,11 @@ void main() {
       int refreshes = 0;
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
-        return TokenPair(accessToken: jwtExpiringAt(clock), refreshToken: 'r2');
+        return pairOf(jwtExpiringAt(clock), 'r2');
       });
       final String access =
           jwtExpiringAt(clock.add(const Duration(minutes: 15)));
-      await session.adopt(TokenPair(accessToken: access, refreshToken: 'r1'));
+      await session.adopt(pairOf(access, 'r1'));
 
       expect(await session.validAccessToken(), access);
       expect(refreshes, 0);
@@ -89,11 +105,11 @@ void main() {
           jwtExpiringAt(clock.add(const Duration(minutes: 15)));
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
-        return TokenPair(accessToken: fresh, refreshToken: 'r2');
+        return pairOf(fresh, 'r2');
       });
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.add(const Duration(seconds: 20))),
-        refreshToken: 'r1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.add(const Duration(seconds: 20))),
+        'r1',
       ));
 
       expect(await session.validAccessToken(), fresh);
@@ -112,11 +128,11 @@ void main() {
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
         await gate.future;
-        return TokenPair(accessToken: fresh, refreshToken: 'r2');
+        return pairOf(fresh, 'r2');
       });
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
-        refreshToken: 'r1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+        'r1',
       ));
 
       final List<Future<String?>> callers = List<Future<String?>>.generate(
@@ -137,13 +153,13 @@ void main() {
       // returned, a crash in between would leave the app holding a token the
       // server has already retired.
       String? storedAtHandout;
-      final MemberSession session = sessionWith((String t) async => TokenPair(
-            accessToken: jwtExpiringAt(clock.add(const Duration(minutes: 15))),
-            refreshToken: 'r2',
+      final MemberSession session = sessionWith((String t) async => pairOf(
+            jwtExpiringAt(clock.add(const Duration(minutes: 15))),
+            'r2',
           ));
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
-        refreshToken: 'r1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+        'r1',
       ));
 
       await session.validAccessToken();
@@ -159,9 +175,9 @@ void main() {
           statusCode: 401,
         ),
       );
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
-        refreshToken: 'r1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+        'r1',
       ));
 
       expect(await session.validAccessToken(), isNull);
@@ -176,15 +192,14 @@ void main() {
       int refreshes = 0;
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
-        return TokenPair(
-          accessToken:
-              jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
-          refreshToken: 'r${refreshes + 1}',
+        return pairOf(
+          jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+          'r${refreshes + 1}',
         );
       });
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
-        refreshToken: 'r1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+        'r1',
       ));
 
       await session.validAccessToken();
@@ -220,9 +235,9 @@ void main() {
     test('is idempotent and always purges', () async {
       final MemberSession session =
           sessionWith((_) async => throw StateError('unused'));
-      await session.adopt(TokenPair(
-        accessToken: jwtExpiringAt(clock.add(const Duration(minutes: 15))),
-        refreshToken: 'r1',
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.add(const Duration(minutes: 15))),
+        'r1',
       ));
 
       await session.end();
@@ -234,21 +249,80 @@ void main() {
     });
   });
 
-  group('malformed tokens', () {
-    test('an unreadable access token is treated as expired, not trusted',
+  group('an access token whose exp cannot be read', () {
+    // MR-0 treated any unreadable token as already expired, on the reasoning
+    // that "refreshing needlessly is cheap". MR-1 overturns that, because on a
+    // ROTATING family it is not cheap and never was: every needless refresh
+    // rotates the family, and each rotation is a chance for a dropped response
+    // to strand the app holding a retired token, which reuse detection answers
+    // by revoking everything. Refreshing on every single request was the
+    // riskiest thing this client could have done with an unparseable token.
+    //
+    // `expires_in` is the server's own statement of the token's lifetime,
+    // delivered over the same TLS-verified response as the token itself. A
+    // client that will use the token but not believe the lifetime shipped
+    // beside it is drawing a line with nothing on either side of it. And the
+    // safety net is unchanged: if the token really is dead, the server answers
+    // 401 and the session ends — once, instead of after every request.
+
+    test('falls back to expires_in rather than refreshing on every call',
         () async {
+      int refreshes = 0;
+      final MemberSession session = sessionWith((String t) async {
+        refreshes++;
+        return pairOf(
+            jwtExpiringAt(clock.add(const Duration(minutes: 15))), 'r2');
+      });
+
+      await session.adopt(
+          pairOf('not-a-jwt', 'r1', expiresIn: const Duration(minutes: 15)));
+
+      expect(await session.validAccessToken(), 'not-a-jwt');
+      expect(refreshes, 0,
+          reason: 'delete the expires_in fallback and this becomes 1 — and '
+              'one rotation per request in production');
+    });
+
+    test('an expires_in that has already elapsed still refreshes', () async {
+      // The fallback is a lifetime, not a blank cheque: a token the server
+      // said would live 20 seconds is inside the 30s margin immediately.
       int refreshes = 0;
       final String fresh =
           jwtExpiringAt(clock.add(const Duration(minutes: 15)));
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
-        return TokenPair(accessToken: fresh, refreshToken: 'r2');
+        return pairOf(fresh, 'r2');
       });
-      await session
-          .adopt(const TokenPair(accessToken: 'not-a-jwt', refreshToken: 'r1'));
+
+      await session.adopt(
+          pairOf('not-a-jwt', 'r1', expiresIn: const Duration(seconds: 20)));
 
       expect(await session.validAccessToken(), fresh);
       expect(refreshes, 1);
+    });
+
+    test('a readable exp still wins over expires_in', () async {
+      // The claim is absolute and survives a device clock the server does not
+      // share; expires_in is measured from whenever we happened to receive it.
+      // A pair whose two sources disagree must follow the claim.
+      int refreshes = 0;
+      final String fresh =
+          jwtExpiringAt(clock.add(const Duration(minutes: 15)));
+      final MemberSession session = sessionWith((String t) async {
+        refreshes++;
+        return pairOf(fresh, 'r2');
+      });
+
+      await session.adopt(pairOf(
+        jwtExpiringAt(clock.subtract(const Duration(minutes: 1))),
+        'r1',
+        expiresIn: const Duration(hours: 1),
+      ));
+
+      expect(refreshes, 0);
+      expect(await session.validAccessToken(), fresh);
+      expect(refreshes, 1,
+          reason: 'the expired claim must beat the generous expires_in');
     });
   });
 }

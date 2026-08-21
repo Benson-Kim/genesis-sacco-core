@@ -69,10 +69,55 @@ void main() {
     test('bakes a tenant id, so nothing has to ask the member for one', () {
       expect(Flavor.dev.tenantId, isNotEmpty);
     });
-
     test('logs the member out on inactivity regardless of token lifetime', () {
       expect(Flavor.dev.inactivityTimeout,
           lessThanOrEqualTo(const Duration(minutes: 15)));
     });
+
+    test('the tenant id is a UUID, because the server parses it as one', () {
+      // `tenant_id_from_headers` does `uuid.UUID(raw)` and raises
+      // UnauthenticatedError when it will not parse. The scaffold's
+      // 'dev-tenant' placeholder therefore 401'd EVERY request, pre-auth
+      // routes included, and did it in a way that reads like a dead backend
+      // rather than a misconfigured build.
+      expect(
+        Flavor.dev.tenantId,
+        matches(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+          r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        ),
+      );
+    });
+  });
+
+  group('Flavor construction refuses a tenant id the server would reject', () {
+    Flavor flavorWith(String tenantId) => Flavor(
+          name: 'test',
+          baseUrl: Uri.parse('https://example.test'),
+          tenantId: tenantId,
+          pinSet: Flavor.dev.pinSet,
+          pinEnforcement: Flavor.dev.pinEnforcement,
+          capabilities: Capabilities.asMergedToday,
+          inactivityTimeout: const Duration(minutes: 5),
+        );
+
+    test('a canonical UUID is accepted', () {
+      expect(flavorWith('4d1a3d2e-9c1b-4a44-8f2a-1b2c3d4e5f60').tenantId,
+          isNotEmpty);
+    });
+
+    for (final String bad in <String>[
+      'dev-tenant',
+      '',
+      '4d1a3d2e9c1b4a448f2a1b2c3d4e5f60',
+      '{4d1a3d2e-9c1b-4a44-8f2a-1b2c3d4e5f60}',
+      'urn:uuid:4d1a3d2e-9c1b-4a44-8f2a-1b2c3d4e5f60',
+      '4d1a3d2e-9c1b-4a44-8f2a-1b2c3d4e5f6',
+    ]) {
+      test('"$bad" is refused at build time, not at 401 time', () {
+        // A throw rather than an assert, so RELEASE builds are covered too.
+        expect(() => flavorWith(bad), throwsArgumentError);
+      });
+    }
   });
 }

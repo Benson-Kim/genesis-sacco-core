@@ -577,10 +577,18 @@ mobile:analyze:
   rules:
     - exists: ["mobile/**/pubspec.yaml"]
   script:
+    # The three gates below are INDEPENDENT, so a failure in one must not hide
+    # the next: the analyzer failing tells you nothing about the formatter.
+    # Each records a failure and the job exits once at the end, so one run
+    # reports every finding. Without this, a contributor with no local Dart SDK
+    # pays a whole pipeline per finding and discovers them one at a time.
+    # (The GitHub mirror does the same with `if: always()` on each step.)
+    - failures=0
     - |
       for package in mobile/*/; do
         if [ -f "${package}pubspec.yaml" ]; then
-          (cd "$package" && flutter pub get && flutter analyze)
+          (cd "$package" && flutter pub get && flutter analyze) \
+            || failures=$((failures + 1))
         fi
       done
     # lib/src/generated/ is EXCLUDED from the format gate: dart format rewraps
@@ -596,11 +604,16 @@ mobile:analyze:
       if ! dart format --output=none --set-exit-if-changed "${DART_FILES[@]}"; then
         dart format "${DART_FILES[@]}" >/dev/null
         git --no-pager diff -- mobile/
-        exit 1
+        failures=$((failures + 1))
       fi
     # The P17 guard sweeps. One script, shared with the GitHub workflow, so
     # the two pipelines cannot disagree about what green means.
-    - bash mobile/scripts/guard_sweeps.sh
+    - bash mobile/scripts/guard_sweeps.sh || failures=$((failures + 1))
+    - |
+      if [ "${failures}" -gt 0 ]; then
+        echo "${failures} mobile gate(s) failed." >&2
+        exit 1
+      fi
 
 
 mobile:test:
