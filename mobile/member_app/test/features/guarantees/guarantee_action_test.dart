@@ -121,8 +121,9 @@ void main() {
           controller.submit(id, GuaranteeAct.consent, version: 3);
       await controller.submit(id, GuaranteeAct.consent, version: 3);
 
-      expect(port.calls, 1, reason: 'the busy check is the guard; remove it '
-          'and a double tap consents twice');
+      expect(port.calls, 1,
+          reason: 'the busy check is the guard; remove it '
+              'and a double tap consents twice');
       gate.complete();
       await first;
       expect(port.calls, 1);

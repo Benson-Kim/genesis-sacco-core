@@ -55,8 +55,7 @@ class GuaranteeRequestSheet extends ConsumerStatefulWidget {
       _GuaranteeRequestSheetState();
 }
 
-class _GuaranteeRequestSheetState
-    extends ConsumerState<GuaranteeRequestSheet> {
+class _GuaranteeRequestSheetState extends ConsumerState<GuaranteeRequestSheet> {
   /// Which act the member has chosen but not yet confirmed.
   GuaranteeAct? _pending;
 
@@ -90,9 +89,10 @@ class _GuaranteeRequestSheetState
             GuaranteeActionStatus.idle ||
             GuaranteeActionStatus.submitting =>
               _pending == null
-                  ? _Choices(onChoose: (GuaranteeAct a) => setState(() {
-                        _pending = a;
-                      }))
+                  ? _Choices(
+                      onChoose: (GuaranteeAct a) => setState(() {
+                            _pending = a;
+                          }))
                   : _Confirm(
                       act: _pending!,
                       request: widget.request,
@@ -256,9 +256,7 @@ class _Confirm extends StatelessWidget {
         ),
         const SizedBox(height: GpSpace.lg),
         GpPrimaryButton(
-          label: consenting
-              ? 'Yes, guarantee this'
-              : 'Yes, withdraw my pledge',
+          label: consenting ? 'Yes, guarantee this' : 'Yes, withdraw my pledge',
           busyLabel: 'Submitting…',
           busy: busy,
           onPressed: onConfirm,

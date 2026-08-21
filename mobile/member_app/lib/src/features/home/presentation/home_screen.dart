@@ -78,8 +78,7 @@ class HomeScreen extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
-              for (final ({IconData icon, String label}) action
-                  in quickActions)
+              for (final ({IconData icon, String label}) action in quickActions)
                 Expanded(
                   child: GpActionTile(
                     icon: action.icon,

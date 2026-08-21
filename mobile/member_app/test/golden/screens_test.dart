@@ -153,8 +153,7 @@ void main() {
         tester,
         const SignInScreen(),
         overrides: <Override>[
-          authPortProvider
-              .overrideWithValue(FakeAuthPort(rejectCode: true)),
+          authPortProvider.overrideWithValue(FakeAuthPort(rejectCode: true)),
         ],
       );
 

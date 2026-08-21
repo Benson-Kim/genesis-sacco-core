@@ -48,9 +48,7 @@ class GpCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(GpRadius.card),
         side: const BorderSide(color: GpPalette.line),
       ),
-      child: onTap == null
-          ? content
-          : InkWell(onTap: onTap, child: content),
+      child: onTap == null ? content : InkWell(onTap: onTap, child: content),
     );
   }
 }

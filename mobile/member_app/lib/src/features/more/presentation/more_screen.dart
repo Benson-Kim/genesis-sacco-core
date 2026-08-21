@@ -62,12 +62,12 @@ class MoreScreen extends ConsumerWidget {
         const SizedBox(height: GpSpace.xl),
         const GpSectionHeader('Your SACCO'),
         const SizedBox(height: GpSpace.md),
-        GpCard(
+        const GpCard(
           padding: EdgeInsets.zero,
           // Every one of these opens in-app rather than linking out. A
           // member should not have to leave a banking app to read its terms,
           // and an external link is one more thing to get wrong.
-          child: const Column(
+          child: Column(
             children: <Widget>[
               _Entry(
                 icon: Icons.description_outlined,
