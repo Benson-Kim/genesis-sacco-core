@@ -65,9 +65,34 @@ class Capabilities {
   );
 }
 
+/// The canonical hyphenated UUID form, which is what the server parses.
+///
+/// Deliberately stricter than the server's `uuid.UUID()`, which also accepts
+/// braces, a `urn:` prefix and the unhyphenated form: a build should EMIT the
+/// canonical spelling, and accepting more here would only let a flavor ship a
+/// spelling no one reviewing it expects.
+final RegExp _canonicalUuid = RegExp(
+  r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+  r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+);
+
 /// One SACCO's build.
 class Flavor {
-  const Flavor({
+  /// Not a `const` constructor, and that is the point: [tenantId] is checked
+  /// HERE, at the one place a flavor comes into existence.
+  ///
+  /// `genesis.api.auth.tenant_id_from_headers` parses `x-tenant-id` with
+  /// `uuid.UUID(raw)` and raises `UnauthenticatedError` when it will not parse.
+  /// A build carrying a non-UUID tenant id therefore fails EVERY request,
+  /// including the pre-auth OTP routes — and fails them as a 401, which reads
+  /// to everyone involved like a broken credential or a dead backend rather
+  /// than like a misconfigured flavor. It is a build-time mistake, so it is
+  /// caught at build time.
+  ///
+  /// A throw rather than an assert, for the same reason the pin-set check
+  /// throws: asserts are compiled out of release builds, so an assert would
+  /// let exactly the builds that matter ship the broken value.
+  Flavor({
     required this.name,
     required this.baseUrl,
     required this.tenantId,
@@ -75,7 +100,16 @@ class Flavor {
     required this.pinEnforcement,
     required this.capabilities,
     required this.inactivityTimeout,
-  });
+  }) {
+    if (!_canonicalUuid.hasMatch(tenantId)) {
+      throw ArgumentError.value(
+        tenantId,
+        'tenantId',
+        'x-tenant-id must be a canonical UUID: the server rejects anything '
+            'else with a 401 on every route, pre-auth routes included',
+      );
+    }
+  }
 
   final String name;
   final Uri baseUrl;
@@ -111,8 +145,13 @@ class Flavor {
       const String.fromEnvironment('GP_BASE_URL',
           defaultValue: 'https://dev.invalid'),
     ),
-    tenantId: const String.fromEnvironment('GP_TENANT_ID',
-        defaultValue: 'dev-tenant'),
+    // A UUID, not a slug. The previous 'dev-tenant' placeholder was well
+    // meant and completely unusable: every request it produced came back 401
+    // from `tenant_id_from_headers` before reaching a handler.
+    tenantId: const String.fromEnvironment(
+      'GP_TENANT_ID',
+      defaultValue: '00000000-0000-4000-8000-000000000001',
+    ),
     pinSet: const <String>[
       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
       'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=',
