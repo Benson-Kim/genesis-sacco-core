@@ -64,22 +64,22 @@ class MoreScreen extends ConsumerWidget {
         const SizedBox(height: GpSpace.md),
         GpCard(
           padding: EdgeInsets.zero,
-          child: Column(
+          // Every one of these opens in-app rather than linking out. A
+          // member should not have to leave a banking app to read its terms,
+          // and an external link is one more thing to get wrong.
+          child: const Column(
             children: <Widget>[
-              // Every one of these opens in-app rather than linking out. A
-              // member should not have to leave a banking app to read its
-              // terms, and an external link is one more thing to get wrong.
-              const _Entry(
+              _Entry(
                 icon: Icons.description_outlined,
                 label: 'Terms of service',
               ),
-              const _Divider(),
-              const _Entry(
+              _Divider(),
+              _Entry(
                 icon: Icons.privacy_tip_outlined,
                 label: 'Privacy notice',
               ),
-              const _Divider(),
-              const _Entry(
+              _Divider(),
+              _Entry(
                 icon: Icons.support_agent_rounded,
                 label: 'Contact your SACCO',
               ),

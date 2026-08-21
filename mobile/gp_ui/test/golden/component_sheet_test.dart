@@ -359,27 +359,34 @@ class _States extends StatelessWidget {
         _Label('Quick action tiles'),
         GpCard(
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              GpActionTile(
-                icon: Icons.south_rounded,
-                label: 'Deposit',
-                locked: true,
+              Expanded(
+                child: GpActionTile(
+                  icon: Icons.south_rounded,
+                  label: 'Deposit',
+                  locked: true,
+                ),
               ),
-              GpActionTile(
-                icon: Icons.north_rounded,
-                label: 'Withdraw',
-                locked: true,
+              Expanded(
+                child: GpActionTile(
+                  icon: Icons.north_rounded,
+                  label: 'Withdraw',
+                  locked: true,
+                ),
               ),
-              GpActionTile(
-                icon: Icons.swap_horiz_rounded,
-                label: 'Transfer',
-                locked: true,
+              Expanded(
+                child: GpActionTile(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Transfer',
+                  locked: true,
+                ),
               ),
-              GpActionTile(
-                icon: Icons.payments_rounded,
-                label: 'Repay loan',
-                onTap: _noop,
+              Expanded(
+                child: GpActionTile(
+                  icon: Icons.payments_rounded,
+                  label: 'Repay loan',
+                  onTap: _noop,
+                ),
               ),
             ],
           ),

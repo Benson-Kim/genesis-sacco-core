@@ -80,13 +80,15 @@ class HomeScreen extends ConsumerWidget {
             children: <Widget>[
               for (final ({IconData icon, String label}) action
                   in quickActions)
-                GpActionTile(
-                  icon: action.icon,
-                  label: action.label,
-                  // The capability map is the only thing that decides. There
-                  // is no runtime probe, so a server cannot enable a screen
-                  // this build has no code for.
-                  locked: !_unlocked(action.label, capabilities),
+                Expanded(
+                  child: GpActionTile(
+                    icon: action.icon,
+                    label: action.label,
+                    // The capability map is the only thing that decides.
+                    // There is no runtime probe, so a server cannot enable a
+                    // screen this build has no code for.
+                    locked: !_unlocked(action.label, capabilities),
+                  ),
                 ),
             ],
           ),

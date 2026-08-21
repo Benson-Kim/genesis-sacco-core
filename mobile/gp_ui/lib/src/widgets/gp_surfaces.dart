@@ -34,24 +34,23 @@ class GpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget surface = DecoratedBox(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(GpRadius.card),
-        border: Border.all(color: GpPalette.line),
-      ),
-      child: Padding(padding: padding, child: child),
-    );
-    if (onTap == null) {
-      return surface;
-    }
+    final Widget content = Padding(padding: padding, child: child);
+    // A Material rather than a DecoratedBox, even when nothing is tappable.
+    // ListTile and every ink effect paint on the nearest Material ancestor,
+    // so a plain DecoratedBox in between swallows them — and Flutter says so
+    // by asserting, which is how this was found: a card holding a
+    // SwitchListTile threw "background color or ink splashes may be
+    // invisible" the first time one was rendered.
     return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
+      color: color,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(GpRadius.card),
-        child: surface,
+        side: const BorderSide(color: GpPalette.line),
       ),
+      child: onTap == null
+          ? content
+          : InkWell(onTap: onTap, child: content),
     );
   }
 }

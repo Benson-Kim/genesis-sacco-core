@@ -95,23 +95,24 @@ class GpActionTile extends StatelessWidget {
       ],
     );
 
+    // No fixed width. Four of these at 80 need 320px and a 360dp phone gives
+    // the row 304, so they overflowed by exactly 16 — invisible in source,
+    // and a yellow striped bar the first time one was rendered. Callers put
+    // them in Expanded and the row divides whatever it has.
     return Semantics(
       button: true,
       enabled: !locked,
       label: locked ? '$label, not available yet' : label,
-      child: SizedBox(
-        width: 80,
-        child: locked
-            ? tile
-            : Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(GpRadius.control),
-                  child: tile,
-                ),
+      child: locked
+          ? tile
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(GpRadius.control),
+                child: tile,
               ),
-      ),
+            ),
     );
   }
 }

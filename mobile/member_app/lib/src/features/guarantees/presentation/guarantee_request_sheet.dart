@@ -154,7 +154,7 @@ class _Summary extends StatelessWidget {
             ],
           ),
           const SizedBox(height: GpSpace.lg),
-          Text('You would be standing behind',
+          const Text('You would be standing behind',
               style: GpTypography.bodySmall),
           const SizedBox(height: GpSpace.xs),
           GpMoney(request.figure, size: GpMoneySize.large),
