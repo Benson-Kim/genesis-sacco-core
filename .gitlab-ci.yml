@@ -569,7 +569,10 @@ sbom:web:
 # Mobile — Flutter (member_app, admin_app, shared packages)
 # -----------------------------------------------------------------------------
 .mobile:
-  image: ghcr.io/cirruslabs/flutter:stable
+  # PINNED, not :stable. dart format's output is version dependent, so a
+  # byte-exact gate on a floating tag means a branch that was green can go
+  # red with no commit behind it. The GitHub mirror pins the same version.
+  image: ghcr.io/cirruslabs/flutter:3.47.1
 
 mobile:analyze:
   extends: .mobile
@@ -584,11 +587,22 @@ mobile:analyze:
     # pays a whole pipeline per finding and discovers them one at a time.
     # (The GitHub mirror does the same with `if: always()` on each step.)
     - failures=0
+    # Resolution first, as its own pass. `dart format` reads
+    # .dart_tool/package_config.json to learn a package's language version;
+    # without it, it assumes the newest and switches to the tall style,
+    # reformatting perfectly good files. Resolving inside the analyze loop
+    # meant an analyzer complaint in one package left later packages
+    # unresolved and produced a phantom formatting diff in all of them.
     - |
       for package in mobile/*/; do
         if [ -f "${package}pubspec.yaml" ]; then
-          (cd "$package" && flutter pub get && flutter analyze) \
-            || failures=$((failures + 1))
+          (cd "$package" && flutter pub get) || exit 1
+        fi
+      done
+    - |
+      for package in mobile/*/; do
+        if [ -f "${package}pubspec.yaml" ]; then
+          (cd "$package" && flutter analyze) || failures=$((failures + 1))
         fi
       done
     # lib/src/generated/ is EXCLUDED from the format gate: dart format rewraps
@@ -647,7 +661,10 @@ mobile:goldens:
   script:
     - |
       for package in mobile/*/; do
-        if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
+        # test/golden/ by convention: `flutter test --tags golden` exits 79
+        # when a package has tests but none tagged, which is a normal state
+        # rather than a failure.
+        if [ -d "${package}test/golden" ]; then
           (cd "$package" && flutter pub get && flutter test --tags golden --update-goldens)
         fi
       done

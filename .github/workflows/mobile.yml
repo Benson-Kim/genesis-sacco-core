@@ -45,16 +45,44 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.guard.outputs.present == 'true'
         with:
-          channel: stable
+          # PINNED, not `channel: stable`. dart format's output is version
+          # dependent -- the tall style landed in a Dart release and rewraps
+          # almost every file -- so a byte-exact gate on a floating channel
+          # means a branch that was green can go red with no commit behind
+          # it. Bumping this is a deliberate commit that carries its own
+          # reformatting, reviewed like any other change.
+          flutter-version: 3.47.1
 
-      - name: Analyze every package
+      # Resolution is its OWN step, and everything below depends on it having
+      # happened. `dart format` reads .dart_tool/package_config.json to learn
+      # a package's language version; without it, it assumes the newest
+      # language version and switches to the tall style, reformatting
+      # perfectly good files. Resolving inside the analyze loop meant one
+      # package's analyzer complaint aborted the loop under `bash -e`, left
+      # later packages unresolved, and turned a one-line analyzer info into a
+      # two-thousand-line phantom formatting diff.
+      - name: Resolve every package
         if: steps.guard.outputs.present == 'true'
         run: |
           for package in mobile/*/; do
             if [ -f "${package}pubspec.yaml" ]; then
-              (cd "$package" && flutter pub get && flutter analyze)
+              (cd "$package" && flutter pub get)
             fi
           done
+
+      - name: Analyze every package
+        if: always() && steps.guard.outputs.present == 'true'
+        run: |
+          failures=0
+          for package in mobile/*/; do
+            if [ -f "${package}pubspec.yaml" ]; then
+              (cd "$package" && flutter analyze) || failures=$((failures + 1))
+            fi
+          done
+          if [ "$failures" -gt 0 ]; then
+            echo "${failures} package(s) failed analysis." >&2
+            exit 1
+          fi
 
       # lib/src/generated/ is EXCLUDED: dart format rewraps long lines with an
       # algorithm the generator cannot reproduce, so the two gates would fight
@@ -108,7 +136,13 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.guard.outputs.present == 'true'
         with:
-          channel: stable
+          # PINNED, not `channel: stable`. dart format's output is version
+          # dependent -- the tall style landed in a Dart release and rewraps
+          # almost every file -- so a byte-exact gate on a floating channel
+          # means a branch that was green can go red with no commit behind
+          # it. Bumping this is a deliberate commit that carries its own
+          # reformatting, reviewed like any other change.
+          flutter-version: 3.47.1
 
       # Golden tests are EXCLUDED here and run in mobile:goldens instead.
       # They are a design review artifact before they are a regression gate:
@@ -158,13 +192,22 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.guard.outputs.present == 'true'
         with:
-          channel: stable
+          # PINNED, not `channel: stable`. dart format's output is version
+          # dependent -- the tall style landed in a Dart release and rewraps
+          # almost every file -- so a byte-exact gate on a floating channel
+          # means a branch that was green can go red with no commit behind
+          # it. Bumping this is a deliberate commit that carries its own
+          # reformatting, reviewed like any other change.
+          flutter-version: 3.47.1
 
       - name: Render goldens
         if: steps.guard.outputs.present == 'true'
         run: |
           for package in mobile/*/; do
-            if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
+            # `test/golden/` by convention, not `test/`: `flutter test --tags
+            # golden` exits 79 when a package has tests but none tagged, and
+            # that is a normal state for gp_api_client rather than a failure.
+            if [ -d "${package}test/golden" ]; then
               (cd "$package" && flutter pub get \
                 && flutter test --tags golden --update-goldens)
             fi
