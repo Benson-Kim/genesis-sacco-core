@@ -4,10 +4,11 @@
 /// go. Screens never check the session themselves — a screen that guards
 /// itself is a screen someone can forget to guard.
 ///
-/// There are three routes and no fourth. In particular there is no route for
-/// "a code has been sent": that state belongs to the sign-in controller, and
-/// giving it an address would make a half-authenticated step deep-linkable and
-/// restorable, which the redirect would then have to be taught to refuse.
+/// There are four routes and no fifth. In particular there is no route for
+/// "a code has been sent" or "choosing a new PIN": those states belong to
+/// their controllers, and giving them addresses would make half-authenticated
+/// steps deep-linkable and restorable, which the redirect would then have to
+/// be taught to refuse.
 library;
 
 import 'dart:async';
@@ -17,16 +18,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gp_ui/gp_ui.dart';
 
+import '../features/auth/presentation/pin_sign_in_screen.dart';
 import '../features/auth/presentation/sign_in_screen.dart';
+import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/shell/presentation/app_shell.dart';
+import 'env.dart';
 import 'providers.dart';
 import 'session.dart';
 
 abstract final class Routes {
   static const String splash = '/';
+  static const String welcome = '/welcome';
   static const String signIn = '/sign-in';
   static const String home = '/home';
 }
+
+/// Whether onboarding has been shown.
+///
+/// In memory, so it is shown once per launch to a signed-out member and never
+/// to a signed-in one. Showing it once EVER needs a durable preference, and
+/// the only storage this app has is the secure one holding the refresh token
+/// — the wrong place for a display flag, and purged on logout anyway. A small
+/// preferences store is the follow-up; until then, Skip is on every page and
+/// the cost of the gap is one extra tap for a member who has signed out.
+final StateProvider<bool> onboardingSeenProvider =
+    StateProvider<bool>((Ref ref) => false);
 
 /// Rebuilds the redirect whenever the session flips, so a 401 anywhere in the
 /// app lands the member on sign-in without every caller handling it.
@@ -46,6 +62,7 @@ class _SessionListenable extends ChangeNotifier {
 
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
   final MemberSession session = ref.watch(sessionProvider);
+  final AuthMode mode = ref.watch(flavorProvider).authMode;
   final _SessionListenable listenable = _SessionListenable(session);
   ref.onDispose(listenable.dispose);
 
@@ -54,13 +71,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
     refreshListenable: listenable,
     redirect: (BuildContext context, GoRouterState state) {
       final bool signedIn = session.state == SessionState.signedIn;
-      final bool atSignIn = state.matchedLocation == Routes.signIn;
-      if (!signedIn) {
-        return atSignIn ? null : Routes.signIn;
+      final String at = state.matchedLocation;
+      if (signedIn) {
+        return at == Routes.home ? null : Routes.home;
       }
-      return atSignIn || state.matchedLocation == Routes.splash
-          ? Routes.home
-          : null;
+      if (!ref.read(onboardingSeenProvider)) {
+        return at == Routes.welcome ? null : Routes.welcome;
+      }
+      return at == Routes.signIn ? null : Routes.signIn;
     },
     routes: <RouteBase>[
       GoRoute(
@@ -69,9 +87,25 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
             const GpLoadingView(),
       ),
       GoRoute(
-        path: Routes.signIn,
+        path: Routes.welcome,
         builder: (BuildContext context, GoRouterState state) =>
-            const SignInScreen(),
+            OnboardingScreen(
+          onDone: () {
+            ref.read(onboardingSeenProvider.notifier).state = true;
+            context.go(Routes.signIn);
+          },
+        ),
+      ),
+      GoRoute(
+        path: Routes.signIn,
+        // The flavor picks the sign in, and it picks at build time. An app
+        // that could switch its own authentication at runtime would be an app
+        // whose authentication a server response can change.
+        builder: (BuildContext context, GoRouterState state) =>
+            switch (mode) {
+          AuthMode.otpOnly => const SignInScreen(),
+          AuthMode.pinThenOtp => const PinSignInScreen(),
+        },
       ),
       GoRoute(
         path: Routes.home,

@@ -65,6 +65,23 @@ class Capabilities {
   );
 }
 
+/// Which sign in the build presents.
+///
+/// A build-time constant, like every other capability here, because an app
+/// that could switch its own authentication at runtime would be an app whose
+/// authentication a server response can change.
+enum AuthMode {
+  /// What `develop` carries today: an email address or a Kenyan mobile
+  /// number, then a code. No PIN anywhere on the member surface.
+  otpOnly,
+
+  /// What the backend is being built to: member number and PIN, then a code
+  /// to the registered phone or email. The screens exist and are complete;
+  /// the endpoints behind them do not, so no shipping flavor selects this
+  /// until they merge.
+  pinThenOtp,
+}
+
 /// The canonical hyphenated UUID form, which is what the server parses.
 ///
 /// Deliberately stricter than the server's `uuid.UUID()`, which also accepts
@@ -100,6 +117,8 @@ class Flavor {
     required this.pinEnforcement,
     required this.capabilities,
     required this.inactivityTimeout,
+    this.authMode = AuthMode.otpOnly,
+    this.pinLength = 6,
   }) {
     if (!_canonicalUuid.hasMatch(tenantId)) {
       throw ArgumentError.value(
@@ -126,6 +145,19 @@ class Flavor {
   final PinEnforcement pinEnforcement;
 
   final Capabilities capabilities;
+
+  /// Which sign in this build presents. See [AuthMode].
+  final AuthMode authMode;
+
+  /// How many digits a PIN has, under [AuthMode.pinThenOtp].
+  ///
+  /// A constant rather than a literal four, because it is a security decision
+  /// rather than a layout one. Four digits is ten thousand combinations, and
+  /// as a FIRST factor that is only safe behind server-side attempt counting
+  /// and lockout. Six is the recommendation on the record; four is what the
+  /// concept drawings showed. Whoever sets this should know which they are
+  /// choosing.
+  final int pinLength;
 
   /// #43 T0: the session ends on inactivity regardless of token lifetime.
   final Duration inactivityTimeout;
@@ -159,5 +191,31 @@ class Flavor {
     pinEnforcement: PinEnforcement.report,
     capabilities: Capabilities.asMergedToday,
     inactivityTimeout: const Duration(minutes: 5),
+    // OTP-only, because that is what is merged. The PIN screens are built
+    // and reviewable; selecting them in a shipping flavor before the
+    // endpoints exist would be a build that cannot sign anybody in.
+    authMode: AuthMode.otpOnly,
+  );
+
+  /// The same build with the PIN flow selected.
+  ///
+  /// For review and for the day the endpoints land. It is deliberately a
+  /// separate flavor rather than a flag inside [dev]: a reviewer picks it
+  /// explicitly, and no shipping build reaches it by accident.
+  static Flavor previewPinAuth = Flavor(
+    name: 'preview-pin',
+    baseUrl: Uri.parse(
+      const String.fromEnvironment('GP_BASE_URL',
+          defaultValue: 'https://dev.invalid'),
+    ),
+    tenantId: const String.fromEnvironment(
+      'GP_TENANT_ID',
+      defaultValue: '00000000-0000-4000-8000-000000000001',
+    ),
+    pinSet: dev.pinSet,
+    pinEnforcement: dev.pinEnforcement,
+    capabilities: Capabilities.asMergedToday,
+    inactivityTimeout: const Duration(minutes: 5),
+    authMode: AuthMode.pinThenOtp,
   );
 }

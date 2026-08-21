@@ -10,7 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gp_api_client/gp_api_client.dart';
 
 import '../features/auth/data/member_auth_repository.dart';
+import '../features/auth/data/member_credential_repository.dart';
 import '../features/auth/domain/auth_port.dart';
+import '../features/auth/domain/credential_port.dart';
 import '../features/guarantees/data/member_guarantee_repository.dart';
 import '../features/guarantees/domain/guarantee_port.dart';
 import 'env.dart';
@@ -91,6 +93,17 @@ final Provider<GpHttpClient> httpClientProvider =
 /// on; the implementation is the only thing here that knows there is HTTP.
 final Provider<AuthPort> authPortProvider = Provider<AuthPort>(
   (Ref ref) => MemberAuthRepository(ref.watch(httpClientProvider)),
+);
+
+/// The two-factor sign in the backend is being built to.
+///
+/// Every endpoint behind this is a PROPOSAL and none exist yet, which is why
+/// no shipping flavor selects [AuthMode.pinThenOtp]. The screens are complete
+/// and reviewable; the day the real contract lands, this provider is where it
+/// arrives.
+final Provider<CredentialPort> credentialPortProvider =
+    Provider<CredentialPort>(
+  (Ref ref) => MemberCredentialRepository(ref.watch(httpClientProvider)),
 );
 
 /// `POST /member/guarantees/{id}/{consent,release}` — the two member acts
