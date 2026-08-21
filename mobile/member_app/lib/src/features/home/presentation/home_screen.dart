@@ -60,8 +60,7 @@ class HomeScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: <Widget>[
-            const Text('You are signed in',
-                style: GpTypography.headlineMedium),
+            const Text('You are signed in', style: GpTypography.headlineMedium),
             const SizedBox(height: 8),
             const Text(
               'Your session is active on this device and ends automatically '

@@ -74,7 +74,6 @@ void main() {
           lessThanOrEqualTo(const Duration(minutes: 15)));
     });
 
-
     test('the tenant id is a UUID, because the server parses it as one', () {
       // `tenant_id_from_headers` does `uuid.UUID(raw)` and raises
       // UnauthenticatedError when it will not parse. The scaffold's

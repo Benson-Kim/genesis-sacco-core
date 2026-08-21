@@ -59,7 +59,8 @@ void main() {
   });
 
   group('a suspended process — the case a timer cannot cover', () {
-    test('resuming after the timeout ends the session, with no timer having '
+    test(
+        'resuming after the timeout ends the session, with no timer having '
         'fired', () async {
       DateTime now = start;
       int expiries = 0;

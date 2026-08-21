@@ -270,8 +270,8 @@ void main() {
       int refreshes = 0;
       final MemberSession session = sessionWith((String t) async {
         refreshes++;
-        return pairOf(jwtExpiringAt(clock.add(const Duration(minutes: 15))),
-            'r2');
+        return pairOf(
+            jwtExpiringAt(clock.add(const Duration(minutes: 15))), 'r2');
       });
 
       await session.adopt(

@@ -42,8 +42,7 @@ void main() {
   }
 
   MemberAuthRepository repositoryOk(String body, [int status = 200]) =>
-      repositoryReturning(
-          (_) => <http.Response>[http.Response(body, status)]);
+      repositoryReturning((_) => <http.Response>[http.Response(body, status)]);
 
   const String tokenBody = '{"access_token":"a.b.c",'
       '"refresh_token":"r-1","expires_in":900}';
@@ -210,8 +209,8 @@ void main() {
 
       await expectLater(
         repository.verifyOtp(phone, '123456'),
-        throwsA(isA<ApiError>().having((ApiError e) => e.kind, 'kind',
-            ApiFailureKind.malformedResponse)),
+        throwsA(isA<ApiError>().having(
+            (ApiError e) => e.kind, 'kind', ApiFailureKind.malformedResponse)),
       );
     });
   });

@@ -74,8 +74,10 @@ void main() {
     ]) {
       test('$typo is rejected as a malformed phone, not treated as an email',
           () {
-        final ({SignInIdentifier? identifier, IdentifierProblem? problem})
-            result = parse(typo);
+        final ({
+          SignInIdentifier? identifier,
+          IdentifierProblem? problem
+        }) result = parse(typo);
         expect(result.identifier, isNull);
         expect(result.problem, IdentifierProblem.malformedPhone);
       });
@@ -84,8 +86,8 @@ void main() {
 
   group('email addresses', () {
     test('an ordinary address is accepted', () {
-      final SignInIdentifier? identifier = parse('member@example.test')
-          .identifier;
+      final SignInIdentifier? identifier =
+          parse('member@example.test').identifier;
       expect(identifier!.kind, IdentifierKind.email);
     });
 

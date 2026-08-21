@@ -93,8 +93,8 @@ class SignInIdentifier {
       return (identifier: null, problem: IdentifierProblem.length);
     }
     if (_looksNumeric.hasMatch(value)) {
-      final bool accepted = _kenyaMsisdnLocal.hasMatch(value) ||
-          _kenyaMsisdnE164.hasMatch(value);
+      final bool accepted =
+          _kenyaMsisdnLocal.hasMatch(value) || _kenyaMsisdnE164.hasMatch(value);
       return accepted
           ? (
               identifier: SignInIdentifier._(value, IdentifierKind.phone),
