@@ -68,7 +68,7 @@ class _NumberPaneState extends ConsumerState<_NumberPane> {
           key: const Key('pinReset.number'),
           label: 'Member number',
           controller: _number,
-          hint: 'From your passbook or statement',
+          hint: 'As on your passbook',
           enabled: !state.busy,
           textInputAction: TextInputAction.go,
           onSubmitted: state.busy ? null : (_) => _submit(),

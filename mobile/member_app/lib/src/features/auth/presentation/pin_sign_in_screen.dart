@@ -78,7 +78,7 @@ class _CredentialsPaneState extends ConsumerState<_CredentialsPane> {
           key: const Key('pinSignIn.number'),
           label: 'Member number',
           controller: _number,
-          hint: 'From your passbook or statement',
+          hint: 'As on your passbook',
           enabled: !state.busy,
           keyboardType: TextInputType.text,
           textInputAction: TextInputAction.next,
