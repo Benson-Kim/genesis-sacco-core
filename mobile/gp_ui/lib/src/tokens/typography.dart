@@ -22,8 +22,8 @@ import 'palette.dart';
 /// default: San Francisco on iOS, Roboto on Android. That is the prototype's
 /// own rule (`-apple-system,'Segoe UI',Roboto,system-ui`), and it means the
 /// app ships no font payload, renders with no first-paint swap, and inherits
-/// the reader's system font scaling for free. The one place a family IS named
-/// is [brandMark], where the serif is a logotype rather than text.
+/// the reader's system font scaling for free. Nothing is exempt, [brandMark]
+/// included — see the note there for what happened when it was.
 abstract final class GpTypography {
   /// Numbers are ALWAYS tabular.
   ///
@@ -173,18 +173,21 @@ abstract final class GpTypography {
 
   /// The single letter inside the gold square.
   ///
-  /// The one style in this file that names a family. It is a logotype, not
-  /// text, and the prototype sets it in Georgia. Georgia is not present on
-  /// Android or in CI, so the fallback chain ends at the platform serif and,
-  /// failing that, the default face — which is why the mark is a filled
-  /// square with a letter in it rather than a letterform alone. It survives
-  /// the substitution.
+  /// This named Georgia, with a serif fallback chain, on the reasoning that
+  /// the prototype sets its mark in Georgia and a letterform in a square
+  /// survives substitution. The first golden render disproved it: no Georgia,
+  /// no Times, no serif in the container, so the glyph fell through to notdef
+  /// and the brand mark came out as a featureless filled box.
+  ///
+  /// It could be made to work by bundling a serif, but bundling a font for
+  /// ONE GLYPH is a poor trade, and every device where the fallback silently
+  /// differs is a device whose mark nobody has looked at. The default face,
+  /// heavy and tight, renders identically everywhere including in review.
   static const TextStyle brandMark = TextStyle(
-    fontFamily: 'Georgia',
-    fontFamilyFallback: <String>['Times New Roman', 'serif'],
     fontSize: 22,
     fontWeight: FontWeight.w800,
     color: GpPalette.navy,
+    letterSpacing: -0.5,
     height: 1.1,
   );
 

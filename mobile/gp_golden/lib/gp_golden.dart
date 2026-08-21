@@ -194,9 +194,11 @@ class GoldenDevice {
 /// `pumpAndSettle` waits for every animation to finish, and some never do. A
 /// busy button holds a `CircularProgressIndicator`, a focused field blinks its
 /// caret; both are states a design review has to see, and both spin forever.
-/// So this pumps a first frame to build, then advances a fixed 100ms to let
-/// entrance animations land. The interval is fixed, so a spinner is captured
-/// at the same phase every run and the image stays reproducible.
+/// So this pumps a first frame to build, then advances a fixed interval. The
+/// interval is 400ms rather than something smaller because a
+/// `CircularProgressIndicator` sampled too early is a sliver that reads as a
+/// rendering artifact rather than as a spinner; by 400ms its arc is formed.
+/// Being fixed is what keeps the image reproducible run to run.
 Future<void> pumpGolden(
   WidgetTester tester,
   Widget child, {
@@ -235,7 +237,7 @@ Future<void> pumpGolden(
     ),
   );
   await tester.pump();
-  await tester.pump(const Duration(milliseconds: 100));
+  await tester.pump(const Duration(milliseconds: 400));
 }
 
 /// Capture the whole frame to `<test file's directory>/images/<name>.png`.

@@ -74,17 +74,24 @@ class GpActionTile extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-        if (locked) ...<Widget>[
-          const SizedBox(height: 2),
-          Text(
-            lockedCaption,
-            textAlign: TextAlign.center,
-            style: GpTypography.bodySmall.copyWith(
-              fontSize: 11,
-              color: GpPalette.sub.withValues(alpha: 0.8),
-            ),
-          ),
-        ],
+        // The caption slot is always present, even when empty. Rendering it
+        // only for locked tiles left the unlocked one's label a line higher
+        // than its neighbours, and a row of tiles that do not share a
+        // baseline reads as a layout bug rather than as a distinction.
+        const SizedBox(height: 2),
+        SizedBox(
+          height: 14,
+          child: locked
+              ? Text(
+                  lockedCaption,
+                  textAlign: TextAlign.center,
+                  style: GpTypography.bodySmall.copyWith(
+                    fontSize: 11,
+                    color: GpPalette.sub.withValues(alpha: 0.8),
+                  ),
+                )
+              : null,
+        ),
       ],
     );
 

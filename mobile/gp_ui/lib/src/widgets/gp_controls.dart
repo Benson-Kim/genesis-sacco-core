@@ -52,8 +52,15 @@ class GpPrimaryButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: GpPalette.navy,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: GpPalette.navy.withValues(alpha: 0.38),
-          disabledForegroundColor: Colors.white.withValues(alpha: 0.8),
+          // Busy is not disabled, and must not look like it. Both states
+          // take the disabled colours because both null the callback, so
+          // busy re-asserts full navy: the first render had "Sending…" and
+          // an unpressable "Send code" rendered identically, which tells a
+          // waiting member nothing about whether anything is happening.
+          disabledBackgroundColor:
+              busy ? GpPalette.navy : GpPalette.navy.withValues(alpha: 0.38),
+          disabledForegroundColor:
+              busy ? Colors.white : Colors.white.withValues(alpha: 0.8),
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(GpRadius.control),

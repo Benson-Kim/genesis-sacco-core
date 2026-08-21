@@ -16,9 +16,13 @@ import 'package:gp_golden/gp_golden.dart';
 import 'package:gp_ui/gp_ui.dart';
 
 /// Tall enough to hold the whole sheet without scrolling it out of frame.
+///
+/// A golden captures the VIEWPORT, so anything below the fold is simply
+/// absent from the image rather than scrollable in it. The first render lost
+/// the inputs section this way, and lost it silently.
 const GoldenDevice _sheet = GoldenDevice(
   name: 'sheet',
-  size: Size(420, 1500),
+  size: Size(420, 2600),
 );
 
 void main() {
