@@ -112,9 +112,8 @@ class GpMoney extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle figure = color == null
-        ? _figureStyle
-        : _figureStyle.copyWith(color: color);
+    final TextStyle figure =
+        color == null ? _figureStyle : _figureStyle.copyWith(color: color);
     final Color prefixColor =
         (color ?? figure.color ?? GpPalette.ink).withValues(alpha: 0.72);
 

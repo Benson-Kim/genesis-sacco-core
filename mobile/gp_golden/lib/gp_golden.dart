@@ -38,7 +38,16 @@ const String goldenFontFamily = 'Roboto';
 
 bool _loaded = false;
 
+/// Whether [loadGoldenFonts] has run.
+bool get goldenFontsLoaded => _loaded;
+
 /// Load Roboto and the Material icon font. Safe to call repeatedly.
+///
+/// MUST be called from `setUpAll`, never from inside a `testWidgets` body.
+/// `testWidgets` runs its callback in a `FakeAsync` zone where real file I/O
+/// futures never complete, so awaiting this there does not fail — it hangs
+/// until the ten minute test timeout, three times over, with nothing in the
+/// log to say why. [pumpGolden] refuses to run rather than let that happen.
 Future<void> loadGoldenFonts() async {
   if (_loaded) {
     return;
@@ -175,17 +184,34 @@ class GoldenDevice {
   );
 }
 
-/// Render [child] at [device] and settle it, ready for a golden capture.
+/// Render [child] at [device], ready for a golden capture.
 ///
 /// The frame is a plain `MaterialApp` rather than the real router, so a
 /// golden shows one screen in one state and nothing about how it was reached.
+///
+/// # Two frames, deliberately, rather than `pumpAndSettle`
+///
+/// `pumpAndSettle` waits for every animation to finish, and some never do. A
+/// busy button holds a `CircularProgressIndicator`, a focused field blinks its
+/// caret; both are states a design review has to see, and both spin forever.
+/// So this pumps a first frame to build, then advances a fixed 100ms to let
+/// entrance animations land. The interval is fixed, so a spinner is captured
+/// at the same phase every run and the image stays reproducible.
 Future<void> pumpGolden(
   WidgetTester tester,
   Widget child, {
   required ThemeData theme,
   GoldenDevice device = GoldenDevice.android,
 }) async {
-  await loadGoldenFonts();
+  if (!goldenFontsLoaded) {
+    throw StateError(
+      'loadGoldenFonts() has not run. Call it from setUpAll:\n\n'
+      '  setUpAll(loadGoldenFonts);\n\n'
+      'It reads font files from the Flutter SDK, and real I/O never '
+      'completes inside the FakeAsync zone a testWidgets body runs in — '
+      'awaiting it there hangs until the test timeout instead of failing.',
+    );
+  }
 
   tester.view.physicalSize = Size(
     device.size.width * device.devicePixelRatio,
@@ -208,7 +234,8 @@ Future<void> pumpGolden(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 100));
 }
 
 /// Capture the whole frame to `test/goldens/<name>.png`.

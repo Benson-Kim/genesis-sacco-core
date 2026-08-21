@@ -102,7 +102,9 @@ class GpField extends StatelessWidget {
   }
 
   static OutlineInputBorder _border(Color color) => OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(GpRadius.field)),
+        borderRadius: const BorderRadius.all(
+          Radius.circular(GpRadius.field),
+        ),
         borderSide: BorderSide(color: color, width: 1.5),
       );
 }
@@ -288,9 +290,8 @@ class _GpOtpFieldState extends State<GpOtpField> {
           inputFormatters: <TextInputFormatter>[
             FilteringTextInputFormatter.digitsOnly,
           ],
-          autofillHints: index == 0
-              ? const <String>[AutofillHints.oneTimeCode]
-              : null,
+          autofillHints:
+              index == 0 ? const <String>[AutofillHints.oneTimeCode] : null,
           style: GpTypography.headlineMedium.copyWith(fontSize: 22),
           onChanged: (String raw) => _onChanged(raw, index),
           decoration: InputDecoration(

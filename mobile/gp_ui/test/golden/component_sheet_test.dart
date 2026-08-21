@@ -22,6 +22,12 @@ const GoldenDevice _sheet = GoldenDevice(
 );
 
 void main() {
+  // In setUpAll, not in a test body: font loading is real file I/O, and a
+  // testWidgets callback runs inside a FakeAsync zone where real I/O futures
+  // never complete. Awaiting it there does not fail, it hangs until the ten
+  // minute timeout.
+  setUpAll(loadGoldenFonts);
+
   testWidgets('foundations: colour and type', (WidgetTester tester) async {
     await pumpGolden(
       tester,
@@ -139,8 +145,7 @@ class _Foundations extends StatelessWidget {
                       height: 40,
                       decoration: BoxDecoration(
                         color: swatch.color,
-                        borderRadius:
-                            BorderRadius.circular(GpRadius.control),
+                        borderRadius: BorderRadius.circular(GpRadius.control),
                         border: Border.all(color: GpPalette.line),
                       ),
                     ),
@@ -180,7 +185,7 @@ class _Components extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const _Label('Balance hero'),
@@ -345,7 +350,7 @@ class _States extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const _Label('Quick action tiles'),
@@ -389,8 +394,7 @@ class _States extends StatelessWidget {
           padding: EdgeInsets.zero,
           child: GpNotYetState(
             title: 'Statements are on the way',
-            message:
-                'Your SACCO is finishing this off. It will appear here as '
+            message: 'Your SACCO is finishing this off. It will appear here as '
                 'soon as it is ready, with nothing for you to do.',
           ),
         ),
