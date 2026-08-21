@@ -79,12 +79,18 @@ class GpField extends StatelessWidget {
               horizontal: GpSpace.md,
               vertical: GpSpace.md,
             ),
-            border: _border(GpPalette.line),
-            enabledBorder: _border(GpPalette.line),
+            // The BORDER carries the error too, not just the sentence
+            // underneath. InputDecoration's own errorBorder only applies
+            // when its own errorText is set, and this widget renders that
+            // message itself -- so without keying the border off the same
+            // flag, a rejected field looked untouched and the complaint
+            // read as being about something else on the screen.
+            border: _border(error != null ? GpPalette.brick : GpPalette.line),
+            enabledBorder:
+                _border(error != null ? GpPalette.brick : GpPalette.line),
             disabledBorder: _border(GpPalette.line),
-            focusedBorder: _border(GpPalette.navy),
-            errorBorder: _border(GpPalette.brick),
-            focusedErrorBorder: _border(GpPalette.brick),
+            focusedBorder:
+                _border(error != null ? GpPalette.brick : GpPalette.navy),
           ),
         ),
         if (error != null || helperText != null) ...<Widget>[

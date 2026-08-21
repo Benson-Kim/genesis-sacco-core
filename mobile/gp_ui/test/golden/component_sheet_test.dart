@@ -15,15 +15,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gp_golden/gp_golden.dart';
 import 'package:gp_ui/gp_ui.dart';
 
-/// Tall enough to hold the whole sheet without scrolling it out of frame.
-///
 /// A golden captures the VIEWPORT, so anything below the fold is simply
-/// absent from the image rather than scrollable in it. The first render lost
-/// the inputs section this way, and lost it silently.
-const GoldenDevice _sheet = GoldenDevice(
-  name: 'sheet',
-  size: Size(420, 2600),
-);
+/// absent from the image rather than scrollable in it — the first render lost
+/// the inputs section that way, silently. Each sheet therefore gets a canvas
+/// sized to its own content: one shared height tall enough for the longest
+/// spends most of the other two images on empty background, which makes them
+/// tedious to read at exactly the moment someone is trying to review them.
+GoldenDevice _sheet(double height) =>
+    GoldenDevice(name: 'sheet', size: Size(420, height));
 
 void main() {
   // In setUpAll, not in a test body: font loading is real file I/O, and a
@@ -37,7 +36,7 @@ void main() {
       tester,
       const _Sheet(title: 'Foundations', child: _Foundations()),
       theme: GpTheme.light,
-      device: _sheet,
+      device: _sheet(1180),
     );
     await expectGolden(tester, 'foundations');
   });
@@ -48,7 +47,7 @@ void main() {
       tester,
       const _Sheet(title: 'Components', child: _Components()),
       theme: GpTheme.light,
-      device: _sheet,
+      device: _sheet(2540),
     );
     await expectGolden(tester, 'components');
   });
@@ -59,7 +58,7 @@ void main() {
       tester,
       const _Sheet(title: 'States', child: _States()),
       theme: GpTheme.light,
-      device: _sheet,
+      device: _sheet(1240),
     );
     await expectGolden(tester, 'states');
   });
