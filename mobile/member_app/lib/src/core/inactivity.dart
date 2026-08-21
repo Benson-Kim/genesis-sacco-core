@@ -22,6 +22,11 @@ library;
 
 import 'dart:async';
 
+// PointerSignalEvent lives in gestures.dart, which widgets.dart does not
+// re-export. It is the trackpad and wheel scroll on desktop and web; on a
+// phone onPointerDown already covers touch, including the start of a
+// scroll.
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:meta/meta.dart';
 
