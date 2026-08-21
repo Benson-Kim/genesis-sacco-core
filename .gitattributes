@@ -15,3 +15,8 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 Dockerfile text eol=lf
+
+# Guard-sweep fixtures are deliberate violations that the sweeps grep. They
+# are not .dart (the analyzer must never see them), so the rule above misses
+# them, and a CRLF copy would change what the patterns match.
+*.fixture text eol=lf
