@@ -18,7 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gp_ui/gp_ui.dart';
 
 import '../features/auth/presentation/sign_in_screen.dart';
-import '../features/home/presentation/home_screen.dart';
+import '../features/shell/presentation/app_shell.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -75,8 +75,12 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
       ),
       GoRoute(
         path: Routes.home,
+        // One route for the whole signed-in app: the five tabs are shell
+        // state, not addresses. Giving each tab a route would make a locked
+        // one reachable by URL, and the lock would then have to be enforced
+        // in the router as well as in the bar and the shell.
         builder: (BuildContext context, GoRouterState state) =>
-            const HomeScreen(),
+            const AppShell(),
       ),
     ],
   );

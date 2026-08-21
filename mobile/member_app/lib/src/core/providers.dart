@@ -11,6 +11,8 @@ import 'package:gp_api_client/gp_api_client.dart';
 
 import '../features/auth/data/member_auth_repository.dart';
 import '../features/auth/domain/auth_port.dart';
+import '../features/guarantees/data/member_guarantee_repository.dart';
+import '../features/guarantees/domain/guarantee_port.dart';
 import 'env.dart';
 import 'inactivity.dart';
 import 'session.dart';
@@ -90,6 +92,24 @@ final Provider<GpHttpClient> httpClientProvider =
 final Provider<AuthPort> authPortProvider = Provider<AuthPort>(
   (Ref ref) => MemberAuthRepository(ref.watch(httpClientProvider)),
 );
+
+/// `POST /member/guarantees/{id}/{consent,release}` — the two member acts
+/// that are merged on `develop`.
+final Provider<GuaranteePort> guaranteePortProvider = Provider<GuaranteePort>(
+  (Ref ref) => MemberGuaranteeRepository(ref.watch(httpClientProvider)),
+);
+
+/// Whether figures are concealed on screen (#43 T0 hide/reveal).
+///
+/// Deliberately in memory and per launch. Persisting it would mean writing a
+/// preference somewhere, and the only storage this app has is the secure one
+/// holding the refresh token — the wrong place for a display setting, and a
+/// place that gets purged on logout anyway. Starting revealed each launch is
+/// also the safer default of the two: a member who wants concealment reaches
+/// for it in the moment they need it, whereas a remembered setting can leave
+/// somebody believing figures are hidden on a device where they are not.
+final StateProvider<bool> balancesHiddenProvider =
+    StateProvider<bool>((Ref ref) => false);
 
 /// Ends the session after a period with no interaction (#43 T0).
 ///

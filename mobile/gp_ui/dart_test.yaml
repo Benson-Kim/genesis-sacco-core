@@ -1,0 +1,10 @@
+# Declares the `golden` tag so the runner does not warn about it, and so
+# `--exclude-tags golden` in mobile:test is checking a tag that exists rather
+# than silently matching nothing.
+#
+# Golden tests are split out because they are a DESIGN REVIEW artifact before
+# they are a regression gate: mobile:goldens renders them with real fonts and
+# publishes the images, while mobile:test stays fast and skips them.
+tags:
+  golden:
+    description: Renders an image for review. Run by mobile:goldens.

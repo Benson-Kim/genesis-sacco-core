@@ -45,16 +45,44 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.guard.outputs.present == 'true'
         with:
-          channel: stable
+          # PINNED, not `channel: stable`. dart format's output is version
+          # dependent -- the tall style landed in a Dart release and rewraps
+          # almost every file -- so a byte-exact gate on a floating channel
+          # means a branch that was green can go red with no commit behind
+          # it. Bumping this is a deliberate commit that carries its own
+          # reformatting, reviewed like any other change.
+          flutter-version: 3.47.1
 
-      - name: Analyze every package
+      # Resolution is its OWN step, and everything below depends on it having
+      # happened. `dart format` reads .dart_tool/package_config.json to learn
+      # a package's language version; without it, it assumes the newest
+      # language version and switches to the tall style, reformatting
+      # perfectly good files. Resolving inside the analyze loop meant one
+      # package's analyzer complaint aborted the loop under `bash -e`, left
+      # later packages unresolved, and turned a one-line analyzer info into a
+      # two-thousand-line phantom formatting diff.
+      - name: Resolve every package
         if: steps.guard.outputs.present == 'true'
         run: |
           for package in mobile/*/; do
             if [ -f "${package}pubspec.yaml" ]; then
-              (cd "$package" && flutter pub get && flutter analyze)
+              (cd "$package" && flutter pub get)
             fi
           done
+
+      - name: Analyze every package
+        if: always() && steps.guard.outputs.present == 'true'
+        run: |
+          failures=0
+          for package in mobile/*/; do
+            if [ -f "${package}pubspec.yaml" ]; then
+              (cd "$package" && flutter analyze) || failures=$((failures + 1))
+            fi
+          done
+          if [ "$failures" -gt 0 ]; then
+            echo "${failures} package(s) failed analysis." >&2
+            exit 1
+          fi
 
       # lib/src/generated/ is EXCLUDED: dart format rewraps long lines with an
       # algorithm the generator cannot reproduce, so the two gates would fight
@@ -108,16 +136,109 @@ jobs:
       - uses: subosito/flutter-action@v2
         if: steps.guard.outputs.present == 'true'
         with:
-          channel: stable
+          # PINNED, not `channel: stable`. dart format's output is version
+          # dependent -- the tall style landed in a Dart release and rewraps
+          # almost every file -- so a byte-exact gate on a floating channel
+          # means a branch that was green can go red with no commit behind
+          # it. Bumping this is a deliberate commit that carries its own
+          # reformatting, reviewed like any other change.
+          flutter-version: 3.47.1
 
+      # Golden tests are EXCLUDED here and run in mobile:goldens instead.
+      # They are a design review artifact before they are a regression gate:
+      # they need real fonts loaded from the SDK, they write PNGs, and their
+      # images have to be published somewhere a person can look at them.
+      # Mixing that into the unit run would slow every push for a benefit
+      # nobody reads on every push.
       - name: Run every package's tests
         if: steps.guard.outputs.present == 'true'
         run: |
           for package in mobile/*/; do
             if [ -f "${package}pubspec.yaml" ] && [ -d "${package}test" ]; then
-              (cd "$package" && flutter pub get && flutter test)
+              (cd "$package" && flutter pub get \
+                && flutter test --exclude-tags golden)
             fi
           done
+
+  # ---------------------------------------------------------------------------
+  # Mirrors GitLab `mobile:goldens`. Renders every screen and component state
+  # to a PNG and publishes them as a workflow artifact.
+  #
+  # This is how the design gets reviewed. There is no local Flutter SDK on the
+  # authoring machine, so CI is the only thing in this project that can draw a
+  # pixel; a job that renders and publishes is the difference between a design
+  # somebody can approve and a pile of Dart nobody can picture.
+  #
+  # `--update-goldens` WRITES the images rather than comparing them, which is
+  # correct while the design is still being agreed. Once it is signed off the
+  # images get committed and this flips to a comparison, at which point it
+  # also becomes the regression gate that stops an unintended visual change.
+  # ---------------------------------------------------------------------------
+  mobile-goldens:
+    name: "mobile:goldens"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip when the workspace is absent
+        id: guard
+        run: |
+          if ls mobile/*/pubspec.yaml >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: subosito/flutter-action@v2
+        if: steps.guard.outputs.present == 'true'
+        with:
+          # PINNED, not `channel: stable`. dart format's output is version
+          # dependent -- the tall style landed in a Dart release and rewraps
+          # almost every file -- so a byte-exact gate on a floating channel
+          # means a branch that was green can go red with no commit behind
+          # it. Bumping this is a deliberate commit that carries its own
+          # reformatting, reviewed like any other change.
+          flutter-version: 3.47.1
+
+      - name: Render goldens
+        if: steps.guard.outputs.present == 'true'
+        run: |
+          for package in mobile/*/; do
+            # `test/golden/` by convention, not `test/`: `flutter test --tags
+            # golden` exits 79 when a package has tests but none tagged, and
+            # that is a normal state for gp_api_client rather than a failure.
+            if [ -d "${package}test/golden" ]; then
+              (cd "$package" && flutter pub get \
+                && flutter test --tags golden --update-goldens)
+            fi
+          done
+
+      - name: Collect the images
+        if: always() && steps.guard.outputs.present == 'true'
+        run: |
+          mkdir -p golden-output
+          find mobile -path '*/test/golden/images/*.png' -print0 \
+            | while IFS= read -r -d '' image; do
+                package="$(echo "$image" | cut -d/ -f2)"
+                cp "$image" "golden-output/${package}__$(basename "$image")"
+              done
+          ls -la golden-output || true
+
+      # `always()`: when a golden test FAILS the comparison, Flutter writes
+      # the expected, actual and diff images into test/failures/. Those are
+      # the most useful artifacts in the whole job and they only exist on the
+      # run that failed, so publishing them only on success would throw away
+      # the evidence exactly when it is needed.
+      - name: Publish
+        if: always() && steps.guard.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-goldens
+          path: |
+            golden-output/
+            mobile/*/test/golden/images/failures/
+          if-no-files-found: warn
+          retention-days: 30
 
   # ---------------------------------------------------------------------------
   # Mirrors GitLab `mobile:codegen-drift`. Regenerates the member models from
