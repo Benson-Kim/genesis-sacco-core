@@ -19,7 +19,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gp_ui/gp_ui.dart';
 
-import '../../../core/env.dart';
 import '../../../core/providers.dart';
 import '../domain/credential_port.dart';
 import '../domain/pin_sign_in_controller.dart';
@@ -31,8 +30,7 @@ class PinSignInScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final PinSignInStep step =
-        ref.watch(pinSignInControllerProvider).step;
+    final PinSignInStep step = ref.watch(pinSignInControllerProvider).step;
     return switch (step) {
       PinSignInStep.credentials => const _CredentialsPane(),
       PinSignInStep.code => const _CodePane(),

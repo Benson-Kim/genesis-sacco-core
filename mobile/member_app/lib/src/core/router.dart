@@ -101,8 +101,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
         // The flavor picks the sign in, and it picks at build time. An app
         // that could switch its own authentication at runtime would be an app
         // whose authentication a server response can change.
-        builder: (BuildContext context, GoRouterState state) =>
-            switch (mode) {
+        builder: (BuildContext context, GoRouterState state) => switch (mode) {
           AuthMode.otpOnly => const SignInScreen(),
           AuthMode.pinThenOtp => const PinSignInScreen(),
         },

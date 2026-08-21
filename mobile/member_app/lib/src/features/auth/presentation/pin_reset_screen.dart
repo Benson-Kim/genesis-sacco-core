@@ -18,7 +18,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gp_ui/gp_ui.dart';
 
-import '../../../core/env.dart';
 import '../../../core/providers.dart';
 import '../domain/pin_reset_controller.dart';
 import 'auth_scaffold.dart';

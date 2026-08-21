@@ -110,26 +110,26 @@ class MoreScreen extends ConsumerWidget {
         const SizedBox(height: GpSpace.xl),
         const GpSectionHeader('Need help?'),
         const SizedBox(height: GpSpace.md),
-        GpCard(
+        const GpCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const _Contact(
+              _Contact(
                 icon: Icons.call_rounded,
                 label: 'Call your SACCO',
                 value: '0700 123 456',
               ),
-              const SizedBox(height: GpSpace.md),
-              const _Contact(
+              SizedBox(height: GpSpace.md),
+              _Contact(
                 icon: Icons.mail_outline_rounded,
                 label: 'Email',
                 value: 'support@example.co.ke',
               ),
-              const SizedBox(height: GpSpace.lg),
+              SizedBox(height: GpSpace.lg),
               // The one warning worth putting where a member will see it
               // before they need it. Every OTP fraud in this market runs on
               // somebody being talked into reading a code aloud.
-              const GpBanner(
+              GpBanner(
                 'Never share your PIN or a verification code with anyone, '
                 'including people who say they are from your SACCO.',
                 icon: Icons.shield_outlined,

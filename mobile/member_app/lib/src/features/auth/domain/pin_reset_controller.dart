@@ -19,7 +19,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gp_api_client/gp_api_client.dart';
 import 'package:meta/meta.dart';
 
-import '../../../core/env.dart';
 import '../../../core/providers.dart';
 import 'credential_port.dart';
 import 'member_credential.dart';

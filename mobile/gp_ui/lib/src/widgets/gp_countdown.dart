@@ -101,8 +101,7 @@ class _GpCountdownState extends State<GpCountdown> {
       return Text(widget.expired, style: style, textAlign: TextAlign.center);
     }
     final String minutes = left.inMinutes.toString();
-    final String seconds =
-        (left.inSeconds % 60).toString().padLeft(2, '0');
+    final String seconds = (left.inSeconds % 60).toString().padLeft(2, '0');
     return Text(
       '${widget.prefix} $minutes:$seconds',
       textAlign: TextAlign.center,

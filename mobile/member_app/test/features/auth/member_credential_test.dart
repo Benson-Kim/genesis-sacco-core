@@ -56,14 +56,13 @@ void main() {
     });
 
     test('requires the configured length', () {
-      expect(MemberPin.parse('12345', length: 6).problem,
-          PinProblem.incomplete);
+      expect(
+          MemberPin.parse('12345', length: 6).problem, PinProblem.incomplete);
       expect(MemberPin.parse('123456', length: 6).pin, isNotNull);
     });
 
     test('refuses anything that is not digits', () {
-      expect(MemberPin.parse('12a4', length: 4).problem,
-          PinProblem.notNumeric);
+      expect(MemberPin.parse('12a4', length: 4).problem, PinProblem.notNumeric);
     });
   });
 
