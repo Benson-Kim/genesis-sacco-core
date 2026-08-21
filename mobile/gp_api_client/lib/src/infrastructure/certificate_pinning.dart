@@ -11,8 +11,9 @@
 /// 2. `badCertificateCallback` fires only when the platform's own chain
 ///    validation FAILS. A rogue certificate that is validly signed by any CA
 ///    in the trust store never reaches it — precisely the attack pinning
-///    exists to stop. The check must therefore run on the connected socket
-///    BEFORE the request is written, which is what [connectionFactory] does.
+///    exists to stop. Enforcement therefore restricts the TRUST ANCHORS
+///    instead, so the handshake itself fails. See [buildClient], which also
+///    records the socket-interception approach that Dart does not permit.
 ///
 /// There is no bypass flag. [PinEnforcement] is a build-time flavor constant,
 /// not a runtime toggle: a switch an attacker (or a hurried release) can flip
