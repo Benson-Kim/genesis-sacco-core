@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gp_ui/gp_ui.dart';
 
 import 'src/core/env.dart';
+import 'src/core/inactivity.dart';
 import 'src/core/providers.dart';
 import 'src/core/router.dart';
 
@@ -25,10 +26,18 @@ Future<void> main() async {
   // sign-in screen at an already-signed-in member.
   await container.read(sessionProvider).restore();
 
+  // Started here rather than inside its provider, because start() registers a
+  // WidgetsBindingObserver and the binding exists only from this point on.
+  final InactivityMonitor monitor = container.read(inactivityMonitorProvider);
+  monitor.start();
+
   runApp(
     UncontrolledProviderScope(
       container: container,
-      child: const MemberApp(),
+      child: InactivityScope(
+        monitor: monitor,
+        child: const MemberApp(),
+      ),
     ),
   );
 }

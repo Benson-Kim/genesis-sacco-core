@@ -3,6 +3,11 @@
 /// The router is the only place that decides where an unauthenticated app may
 /// go. Screens never check the session themselves — a screen that guards
 /// itself is a screen someone can forget to guard.
+///
+/// There are three routes and no fourth. In particular there is no route for
+/// "a code has been sent": that state belongs to the sign-in controller, and
+/// giving it an address would make a half-authenticated step deep-linkable and
+/// restorable, which the redirect would then have to be taught to refuse.
 library;
 
 import 'dart:async';
@@ -10,7 +15,10 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:gp_ui/gp_ui.dart';
 
+import '../features/auth/presentation/sign_in_screen.dart';
+import '../features/home/presentation/home_screen.dart';
 import 'providers.dart';
 import 'session.dart';
 
@@ -58,28 +66,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((Ref ref) {
       GoRoute(
         path: Routes.splash,
         builder: (BuildContext context, GoRouterState state) =>
-            const _Placeholder('Starting'),
+            const GpLoadingView(),
       ),
-      // MR-1 replaces these two with the real OTP flow and the session shell.
       GoRoute(
         path: Routes.signIn,
         builder: (BuildContext context, GoRouterState state) =>
-            const _Placeholder('Sign in'),
+            const SignInScreen(),
       ),
       GoRoute(
         path: Routes.home,
         builder: (BuildContext context, GoRouterState state) =>
-            const _Placeholder('Home'),
+            const HomeScreen(),
       ),
     ],
   );
 });
-
-class _Placeholder extends StatelessWidget {
-  const _Placeholder(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Center(child: Text(label));
-}

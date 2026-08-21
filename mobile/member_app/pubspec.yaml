@@ -18,10 +18,26 @@ dependencies:
     path: ../gp_ui
   # Local unlock only. Per ADR-0012 the biometric gate wraps a server
   # round-trip; it never substitutes for one.
+  #
+  # UNUSED as of MR-1, deliberately. The owner sign-off makes the PIN a
+  # SERVER-VERIFIED second factor, and no backend verifier exists yet
+  # (no issue or MR covers one; filing that is an MR-1 follow-up). A local
+  # biometric gate shipped before it would be exactly the local-unlock-only
+  # design the sign-off overruled, so this stays declared and unused until
+  # there is a round-trip for it to wrap.
   local_auth: ^2.2.0
+  # @immutable on the sign-in state. Declared rather than leaned on
+  # transitively, which `depend_on_referenced_packages` requires anyway.
+  meta: ^1.11.0
 
 dev_dependencies:
+  # Drives the inactivity timer without sleeping. A deadline that can only be
+  # tested by waiting five minutes is a deadline nobody tests.
+  fake_async: ^1.3.1
   flutter_lints: ^3.0.0
+  # MockClient, so the repository's tests exercise the REAL transport and see
+  # the real wire bytes rather than a stubbed client that agrees with them.
+  http: ^1.2.0
   flutter_test:
     sdk: flutter
 

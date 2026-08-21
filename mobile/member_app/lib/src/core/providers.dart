@@ -9,7 +9,10 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gp_api_client/gp_api_client.dart';
 
+import '../features/auth/data/member_auth_repository.dart';
+import '../features/auth/domain/auth_port.dart';
 import 'env.dart';
+import 'inactivity.dart';
 import 'session.dart';
 
 /// The build's flavor. Overridden in `main()` per white-label build and in
@@ -18,6 +21,15 @@ final Provider<Flavor> flavorProvider = Provider<Flavor>(
   (Ref ref) =>
       throw UnimplementedError('flavorProvider must be overridden in main()'),
 );
+
+/// The wall clock, as a seam.
+///
+/// Everything time-dependent in this app is a security property — token
+/// expiry, the resend cooldown, the inactivity deadline — and a security
+/// property that can only be tested by sleeping is a security property nobody
+/// tests. Overriding one provider makes all three falsifiable in milliseconds.
+final Provider<DateTime Function()> clockProvider =
+    Provider<DateTime Function()>((Ref ref) => DateTime.now);
 
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
   (Ref ref) => TokenStorage(),
@@ -40,9 +52,15 @@ final Provider<CertificatePinning> pinningProvider =
 final Provider<MemberSession> sessionProvider =
     Provider<MemberSession>((Ref ref) {
   final MemberSession session = MemberSession(
-    storage: ref.watch(tokenStoreProvider),
+    // `ref.read` inside the callback, not `ref.watch` at build time, and that
+    // is load-bearing: the auth port needs the http client, which needs this
+    // session. Resolving the port lazily — at the moment a refresh actually
+    // happens, by which time all three exist — is what keeps the cycle from
+    // closing.
     refresh: (String refreshToken) =>
-        ref.read(authRepositoryProvider).refresh(refreshToken),
+        ref.read(authPortProvider).refresh(refreshToken),
+    storage: ref.watch(tokenStoreProvider),
+    now: ref.watch(clockProvider),
   );
   ref.onDispose(session.dispose);
   return session;
@@ -67,16 +85,26 @@ final Provider<GpHttpClient> httpClientProvider =
   return client;
 });
 
-/// Placeholder until MR-1 lands the auth repository. Declared here so the
-/// session's refresh seam has a home and the composition root is complete;
-/// MR-1 replaces the body, not the wiring.
-final Provider<AuthRepository> authRepositoryProvider =
-    Provider<AuthRepository>(
-  (Ref ref) => AuthRepository(),
+/// `POST /member/auth/*`. The interface is what the rest of the app depends
+/// on; the implementation is the only thing here that knows there is HTTP.
+final Provider<AuthPort> authPortProvider = Provider<AuthPort>(
+  (Ref ref) => MemberAuthRepository(ref.watch(httpClientProvider)),
 );
 
-/// MR-1 fills this in against `POST /member/auth/*`.
-class AuthRepository {
-  Future<TokenPair> refresh(String refreshToken) =>
-      throw UnimplementedError('MR-1: POST /member/auth/refresh');
-}
+/// Ends the session after a period with no interaction (#43 T0).
+///
+/// Not started here. `main()` starts it once the binding exists, because
+/// [InactivityMonitor.start] registers a `WidgetsBindingObserver`; a provider
+/// that reached for `WidgetsBinding.instance` on first read would be a
+/// provider that behaves differently depending on who read it first.
+final Provider<InactivityMonitor> inactivityMonitorProvider =
+    Provider<InactivityMonitor>((Ref ref) {
+  final MemberSession session = ref.watch(sessionProvider);
+  final InactivityMonitor monitor = InactivityMonitor(
+    timeout: ref.watch(flavorProvider).inactivityTimeout,
+    onExpired: session.end,
+    now: ref.watch(clockProvider),
+  );
+  ref.onDispose(monitor.dispose);
+  return monitor;
+});
